@@ -50,4 +50,17 @@ class TagSettings(context: Context) {
     var calendarExcluded: Set<String>
         get() = sp.getStringSet("calendar_excluded", emptySet())?.toSet() ?: emptySet()
         set(v) = sp.edit { putStringSet("calendar_excluded", v) }
+
+    /** Swap the lime for the system accent colour. */
+    var materialYou: Boolean
+        get() = sp.getBoolean("material_you", false)
+        set(v) = sp.edit { putBoolean("material_you", v) }
+
+    var reducedMotion: Boolean
+        get() = sp.getBoolean("reduced_motion", false)
+        set(v) = sp.edit { putBoolean("reduced_motion", v) }
+
+    var haptics: Boolean
+        get() = sp.getBoolean("haptics", true)
+        set(v) = sp.edit { putBoolean("haptics", v) }
 }
