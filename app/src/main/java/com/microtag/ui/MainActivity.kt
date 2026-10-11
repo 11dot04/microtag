@@ -23,9 +23,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
 import com.microtag.core.MicrotagPrefs
 import com.microtag.rules.RuleEngine
 import com.microtag.shizuku.ShizukuBridge
+
+private enum class Screen { Onboarding, Dashboard, Inspect, Settings }
 
 class MainActivity : ComponentActivity() {
 
@@ -35,23 +38,30 @@ class MainActivity : ComponentActivity() {
         RuleEngine.init(applicationContext)
         ShizukuBridge.init(applicationContext)
 
+        // Apply saved look-and-feel before the first frame, so there is no lime flash.
+        val settings = TagSettings(applicationContext)
+        TagColors.useMaterialYou(applicationContext, settings.materialYou)
+        TagMotion.enabled = !settings.reducedMotion
+        TagMotion.haptics = settings.haptics
+
         setContent {
             TagTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val prefs = remember { MicrotagPrefs(applicationContext) }
-                    var onboardingDone by remember { mutableStateOf(prefs.hasCompletedOnboarding) }
+                    var screen by remember {
+                        mutableStateOf(if (prefs.hasCompletedOnboarding) Screen.Dashboard else Screen.Onboarding)
+                    }
 
-                    // Dashboard is black (light status icons); onboarding is lime (dark status icons).
-                    LaunchedEffect(onboardingDone) {
+                    // Onboarding sits on the accent colour; everything else is black.
+                    val lightBackdrop = screen == Screen.Onboarding && TagColors.Lime.luminance() > 0.5f
+                    LaunchedEffect(lightBackdrop) {
                         val clear = AndroidColor.TRANSPARENT
-                        enableEdgeToEdge(
-                            statusBarStyle = if (onboardingDone) SystemBarStyle.dark(clear) else SystemBarStyle.light(clear, clear),
-                            navigationBarStyle = if (onboardingDone) SystemBarStyle.dark(clear) else SystemBarStyle.light(clear, clear)
-                        )
+                        val style = if (lightBackdrop) SystemBarStyle.light(clear, clear) else SystemBarStyle.dark(clear)
+                        enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
                     }
 
                     AnimatedContent(
-                        targetState = onboardingDone,
+                        targetState = screen,
                         transitionSpec = {
                             (fadeIn(tween(350)) + scaleIn(
                                 initialScale = 0.94f,
@@ -59,15 +69,23 @@ class MainActivity : ComponentActivity() {
                             )) togetherWith fadeOut(tween(200))
                         },
                         label = "ScreenSwitch"
-                    ) { done ->
-                        if (!done) {
-                            OnboardingScreen(onFinish = {
+                    ) { s ->
+                        when (s) {
+                            Screen.Onboarding -> OnboardingScreen(onFinish = {
                                 prefs.hasCompletedOnboarding = true
-                                onboardingDone = true
+                                screen = Screen.Dashboard
                             })
-                        } else {
-                            // The gear re-opens setup without wiping the saved flag.
-                            DashboardScreen(prefs = prefs, onOpenSetup = { onboardingDone = false })
+                            Screen.Dashboard -> DashboardScreen(
+                                prefs = prefs,
+                                onOpenInspect = { screen = Screen.Inspect },
+                                onOpenSettings = { screen = Screen.Settings }
+                            )
+                            Screen.Inspect -> InspectScreen(onBack = { screen = Screen.Dashboard })
+                            Screen.Settings -> SettingsScreen(
+                                onBack = { screen = Screen.Dashboard },
+                                // Replaying the intro never clears the saved "done" flag.
+                                onReplayIntro = { screen = Screen.Onboarding }
+                            )
                         }
                     }
                 }
