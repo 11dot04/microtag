@@ -1,0 +1,122 @@
+[
+  {
+    "package_name": "com.google.android.apps.nbu.paisa.user",
+    "regex": "(?i)(?:received|credited with|sent you)\\D*₹?\\s*([\\d,]+(?:\\.\\d{2})?)",
+    "pill_text": "₹$1",
+    "icon_name": "ic_upi_rupee",
+    "timeout_seconds": 15,
+    "tile": "upi"
+  },
+  {
+    "package_name": "com.phonepe.app",
+    "regex": "(?i)(?:credited by|received)\\D*₹?\\s*([\\d,]+(?:\\.\\d{2})?)",
+    "pill_text": "₹$1",
+    "icon_name": "ic_upi_rupee",
+    "timeout_seconds": 15,
+    "tile": "upi"
+  },
+  {
+    "package_name": "org.brilliant.android",
+    "regex": "(?i)(\\d+)\\s*(?:day streak|days streak)",
+    "pill_text": "$1d",
+    "icon_name": "ic_streak",
+    "timeout_seconds": 180,
+    "tile": "streaks"
+  },
+  {
+    "package_name": "com.chess",
+    "regex": "(?i)(\\d+)[-\\s]*(?:day)?[-\\s]*streak",
+    "pill_text": "$1d",
+    "icon_name": "ic_capsule_flame",
+    "timeout_seconds": 0,
+    "tile": "streaks"
+  },
+  {
+    "package_name": "com.duolingo",
+    "regex": "(?i)(\\d+)[-\\s]*(?:day|days)?\\s*streak(?!\\s*freeze)",
+    "pill_text": "$1d",
+    "icon_name": "ic_capsule_flame",
+    "timeout_seconds": 0,
+    "tile": "streaks"
+  },
+  {
+    "package_name": "com.matiks",
+    "regex": "(?i)(\\d+)\\s*(?:day streak|days streak|streak)",
+    "pill_text": "$1d",
+    "icon_name": "ic_streak",
+    "timeout_seconds": 180,
+    "tile": "streaks"
+  },
+  {
+    "package_name": "app.getglobo.android",
+    "regex": "(?i)(\\d+)\\s*(?:day streak|days streak|streak)",
+    "pill_text": "$1d",
+    "icon_name": "ic_streak",
+    "timeout_seconds": 180,
+    "tile": "streaks"
+  },
+  {
+    "package_name": "com.android.printspooler",
+    "regex": "(?i)printing page (\\d+) of (\\d+)",
+    "pill_text": "Page $1/$2",
+    "icon_name": "ic_print",
+    "timeout_seconds": 30,
+    "tile": "print"
+  },
+  {
+    "package_name": "com.android.printspooler",
+    "regex": "(?i)printing",
+    "pill_text": "Printing",
+    "icon_name": "ic_print",
+    "timeout_seconds": 30,
+    "tile": "print"
+  },
+  {
+    "package_name": "com.google.android.calendar",
+    "regex": "(?i)in\\s+(\\d+\\s*(?:min|m|hr|h))",
+    "pill_text": "in $1",
+    "icon_name": "ic_calendar_countdown",
+    "timeout_seconds": 30,
+    "tile": "calendar"
+  },
+  {
+    "package_name": "com.google.android.calendar",
+    "regex": "(\\d{1,2}:\\d{2}(?:\\s*[–-]\\s*\\d{1,2}:\\d{2})?(?:\\s*(?:AM|PM|am|pm))?)",
+    "pill_text": "$1",
+    "icon_name": "ic_calendar_countdown",
+    "timeout_seconds": 30,
+    "tile": "calendar"
+  },
+  {
+    "package_name": "com.oplus.calendar",
+    "regex": "(\\d{1,2}:\\d{2})",
+    "pill_text": "$1",
+    "icon_name": "ic_calendar_countdown",
+    "timeout_seconds": 30,
+    "tile": "calendar"
+  },
+  {
+    "package_name": "com.coloros.weather",
+    "regex": "(?i)(\\d{1,2}°[CF]?)",
+    "pill_text": "$1",
+    "icon_name": "ic_weather",
+    "timeout_seconds": 0,
+    "tile": "weather"
+  },
+  {
+    "package_name": "com.coloros.weather.service",
+    "regex": "(?i)(\\d{1,2}°[CF]?)",
+    "pill_text": "$1",
+    "icon_name": "ic_weather",
+    "timeout_seconds": 0,
+    "tile": "weather"
+  },
+  {
+    "package_name": "com.google.android.googlequicksearchbox",
+    "regex": "(?i)(\\d{1,2}°[CF]?)",
+    "pill_text": "$1",
+    "icon_name": "ic_weather",
+    "timeout_seconds": 0,
+    "tile": "weather"
+  }
+]
