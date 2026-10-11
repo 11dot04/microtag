@@ -28,7 +28,7 @@ import com.microtag.core.MicrotagPrefs
 import com.microtag.rules.RuleEngine
 import com.microtag.shizuku.ShizukuBridge
 
-private enum class Screen { Onboarding, Dashboard, Inspect, Settings }
+private enum class Screen { Onboarding, Dashboard, Inspect, Settings, Stats }
 
 class MainActivity : ComponentActivity() {
 
@@ -78,9 +78,11 @@ class MainActivity : ComponentActivity() {
                             Screen.Dashboard -> DashboardScreen(
                                 prefs = prefs,
                                 onOpenInspect = { screen = Screen.Inspect },
-                                onOpenSettings = { screen = Screen.Settings }
+                                onOpenSettings = { screen = Screen.Settings },
+                                onOpenStats = { screen = Screen.Stats }
                             )
                             Screen.Inspect -> InspectScreen(onBack = { screen = Screen.Dashboard })
+                            Screen.Stats -> StatsScreen(prefs = prefs, onBack = { screen = Screen.Dashboard })
                             Screen.Settings -> SettingsScreen(
                                 onBack = { screen = Screen.Dashboard },
                                 // Replaying the intro never clears the saved "done" flag.
