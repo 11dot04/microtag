@@ -79,6 +79,24 @@ import androidx.compose.ui.platform.LocalDensity
 import kotlinx.coroutines.delay
 import kotlin.math.hypot
 import androidx.compose.ui.geometry.isSpecified
+import android.graphics.RuntimeShader
+import android.provider.Settings
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.foundation.layout.fillMaxSize
+import kotlin.math.PI
+import kotlin.math.sin
+import android.content.Context
+import android.os.Build
 import com.microtag.R
 import kotlin.math.max
 
@@ -89,12 +107,32 @@ import kotlin.math.max
 // ==========================================================
 
 object TagColors {
-    val Lime = Color(0xFFCCFF00)
+    private val DefaultLime = Color(0xFFCCFF00)
+    private var accent by mutableStateOf(DefaultLime)
+
+    /** The accent. Brand lime by default, the system accent when Material You is on. */
+    val Lime: Color get() = accent
+
+    /** Whatever reads on top of the accent: black on light accents, white on dark ones. */
+    val OnLime: Color get() = if (accent.luminance() > 0.4f) Black else White
+
     val Black = Color(0xFF000000)
     val White = Color(0xFFF6F6F6)
     val Outline = Color(0xFFC3C9D4)
     val Steel = Color(0xFFC5CCD8)
     val Dim = Color(0xFF6E737C)
+
+    fun useMaterialYou(context: Context, enabled: Boolean) {
+        accent = if (enabled && Build.VERSION.SDK_INT >= 31) {
+            Color(context.getColor(android.R.color.system_accent1_200))
+        } else DefaultLime
+    }
+}
+
+/** Global motion and haptics switches, driven from Settings. */
+object TagMotion {
+    var enabled by mutableStateOf(true)
+    var haptics by mutableStateOf(true)
 }
 
 // ==========================================================
@@ -184,7 +222,7 @@ fun TagTheme(content: @Composable () -> Unit) {
     // Dark only, no dynamic colour: the lime is the identity.
     val scheme = darkColorScheme(
         primary = TagColors.Lime,
-        onPrimary = TagColors.Black,
+        onPrimary = TagColors.OnLime,
         background = TagColors.Black,
         onBackground = TagColors.White,
         surface = TagColors.Black,
@@ -219,6 +257,7 @@ object TagShapes {
 enum class Tick { Press, On, Off, Detent, Confirm }
 
 fun View.tick(kind: Tick) {
+    if (!TagMotion.haptics) return
     performHapticFeedback(
         when (kind) {
             Tick.Press -> HapticFeedbackConstants.CONTEXT_CLICK
@@ -333,11 +372,55 @@ private fun fillOf(state: TileState): Color = when (state) {
     TileState.Static -> TagColors.White
 }
 
+private fun fgOf(state: TileState): Color = when (state) {
+    TileState.Off -> TagColors.White
+    TileState.On -> TagColors.OnLime
+    TileState.Static -> TagColors.Black
+}
+
+private fun edgeOf(state: TileState): Color =
+    if (state == TileState.Off) TagColors.Outline else fillOf(state)
+
+private const val FLOOD_EDGE = 0.22f
+
 /**
- * Three bits of motion live here:
- *  - a springy squish while pressed
- *  - the new state's colour floods out from the exact point you touched
+ * Grainy dissolve. Every pixel gets a random threshold; the front sweeps out from the touch
+ * point and flips pixels whose threshold it has passed, so the edge is a speckled band
+ * instead of a hard circle.
+ */
+private const val FLOOD_AGSL = """
+uniform float2 touch;
+uniform float reach;
+uniform float prog;
+uniform float grain;
+uniform float band;
+layout(color) uniform half4 fromColor;
+layout(color) uniform half4 toColor;
+
+float hash(float2 p) {
+    float3 p3 = fract(float3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+half4 main(float2 fragCoord) {
+    float d = distance(fragCoord, touch) / reach;
+    float n = hash(floor(fragCoord / grain));
+    float t = prog * (1.0 + band);
+    float covered = clamp((t - d) / band, 0.0, 1.0);
+    half m = half(step(n, covered));
+    return mix(fromColor, toColor, m);
+}
+"""
+
+/**
+ * Motion that lives here:
+ *  - springy squish while pressed
+ *  - the new state grains outward from the exact point you touched; text and border change
+ *    colour as the front reaches them, so contrast never breaks mid-way
+ *  - the content gives a small lift while the fill travels
  *  - tiles spring in on first show, cascading down and across the screen
+ * Everything snaps instead when Reduce motion is on or the system animation scale is 0.
  */
 @Composable
 fun TagTile(
@@ -348,51 +431,70 @@ fun TagTile(
     content: @Composable BoxScope.(fg: Color) -> Unit
 ) {
     val view = LocalView.current
+    val ctx = LocalContext.current
     val density = LocalDensity.current
+    val systemScale = remember {
+        Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+    }
+    val animate = TagMotion.enabled && systemScale > 0f
+
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val press by animateFloatAsState(
-        targetValue = if (pressed) 0.94f else 1f,
+        targetValue = if (pressed && animate) 0.94f else 1f,
         animationSpec = spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMedium),
         label = "press"
     )
-    val fg by animateColorAsState(
-        if (state == TileState.Off) TagColors.White else TagColors.Black,
-        tween(160), label = "fg"
-    )
-    val edge by animateColorAsState(
-        if (state == TileState.Off) TagColors.Outline else fillOf(state),
-        tween(160), label = "edge"
-    )
 
-    // Colour flood: `base` is what's painted underneath, `target` floods over it from `origin`.
+    // `base` is what is painted underneath; `target` grains over it from `origin`.
     var base by remember { mutableStateOf(state) }
     var target by remember { mutableStateOf(state) }
     val reveal = remember { Animatable(1f) }
     var origin by remember { mutableStateOf(Offset.Unspecified) }
+    var tileSize by remember { mutableStateOf(IntSize.Zero) }
     LaunchedEffect(state) {
         if (state != target) {
-            base = target
-            target = state
-            reveal.snapTo(0f)
-            reveal.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 220f))
-            base = state
+            if (!animate) {
+                base = state; target = state; reveal.snapTo(1f)
+            } else {
+                base = target
+                target = state
+                reveal.snapTo(0f)
+                reveal.animateTo(1f, tween(520, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)))
+                base = state
+            }
+            origin = Offset.Unspecified   // programmatic changes flood from the centre
         }
     }
+
+    // Colours follow the front: they flip when it reaches the middle of the tile.
+    val t = reveal.value
+    val o = if (origin.isSpecified) origin else Offset(tileSize.width / 2f, tileSize.height / 2f)
+    val far = hypot(maxOf(o.x, tileSize.width - o.x), maxOf(o.y, tileSize.height - o.y)).coerceAtLeast(1f)
+    val toCentre = hypot(tileSize.width / 2f - o.x, tileSize.height / 2f - o.y)
+    val crossAt = (toCentre / far + FLOOD_EDGE * 0.5f) / (1f + FLOOD_EDGE)
+    val mix = if (base == target) 1f else ((t - (crossAt - 0.1f)) / 0.2f).coerceIn(0f, 1f)
+    val fg = lerp(fgOf(base), fgOf(target), mix)
+    val edgeColor = lerp(edgeOf(base), edgeOf(target), mix)
+
+    val shader = remember { RuntimeShader(FLOOD_AGSL) }
 
     // Entrance: delay grows with distance from the top-left, capped so nothing feels slow.
     val enter = remember { Animatable(0f) }
     var enterDelay by remember { mutableLongStateOf(-1L) }
     LaunchedEffect(enterDelay) {
         if (enterDelay >= 0) {
-            delay(enterDelay)
-            enter.animateTo(1f, spring(dampingRatio = 0.68f, stiffness = Spring.StiffnessLow))
+            if (!animate) enter.snapTo(1f) else {
+                delay(enterDelay)
+                enter.animateTo(1f, spring(dampingRatio = 0.68f, stiffness = Spring.StiffnessLow))
+            }
         }
     }
 
     Box(
         modifier = modifier
             .onGloballyPositioned { c ->
+                tileSize = c.size
                 if (enterDelay < 0) {
                     val pos = c.positionInRoot()
                     enterDelay = ((pos.y + pos.x * 0.35f) / density.density * 0.3f).toLong().coerceIn(0L, 420L)
@@ -408,14 +510,23 @@ fun TagTile(
             }
             .clip(shape)
             .drawBehind {
-                val o = if (origin.isSpecified) origin else center
-                drawRect(fillOf(base))
-                if (reveal.value < 1f) {
-                    val far = hypot(maxOf(o.x, size.width - o.x), maxOf(o.y, size.height - o.y))
-                    drawCircle(fillOf(target), radius = far * reveal.value.coerceAtLeast(0f), center = o)
+                val p = reveal.value
+                if (p >= 1f) {
+                    drawRect(fillOf(target))
+                } else {
+                    val origin2 = if (origin.isSpecified) origin else center
+                    val far2 = hypot(maxOf(origin2.x, size.width - origin2.x), maxOf(origin2.y, size.height - origin2.y))
+                    shader.setFloatUniform("touch", origin2.x, origin2.y)
+                    shader.setFloatUniform("reach", far2.coerceAtLeast(1f))
+                    shader.setFloatUniform("prog", p)
+                    shader.setFloatUniform("grain", 2.2f * density.density)
+                    shader.setFloatUniform("band", FLOOD_EDGE)
+                    shader.setColorUniform("fromColor", fillOf(base).toArgb())
+                    shader.setColorUniform("toColor", fillOf(target).toArgb())
+                    drawRect(ShaderBrush(shader))
                 }
             }
-            .border(2.dp, edge, shape)
+            .border(2.dp, edgeColor, shape)
             .pointerInput(Unit) {
                 // Watch only: remember where the finger landed, never consume.
                 awaitEachGesture {
@@ -424,12 +535,38 @@ fun TagTile(
                 }
             }
             .then(
-                if (onClick != null) Modifier.clickable(interactionSource = source, indication = null) {
-                    view.tick(if (state == TileState.Off) Tick.On else Tick.Off)
-                    onClick()
-                } else Modifier
+                if (onClick != null) Modifier
+                    .semantics {
+                        if (state != TileState.Static) toggleableState = ToggleableState(state == TileState.On)
+                    }
+                    .clickable(
+                        interactionSource = source,
+                        indication = null,
+                        role = if (state == TileState.Static) Role.Button else Role.Switch
+                    ) {
+                        view.tick(
+                            when (state) {
+                                TileState.Off -> Tick.On
+                                TileState.On -> Tick.Off
+                                TileState.Static -> Tick.Press
+                            }
+                        )
+                        onClick()
+                    }
+                else Modifier
             )
-    ) { content(fg) }
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val v = reveal.value
+                    val pop = if (v < 1f) 1f + 0.06f * sin(PI.toFloat() * v) else 1f
+                    scaleX = pop
+                    scaleY = pop
+                }
+        ) { content(fg) }
+    }
 }
 
 @Composable
@@ -463,7 +600,7 @@ fun TagSwitch(
     onChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     trackOn: Color = TagColors.Lime,
-    thumbOn: Color = TagColors.Black,
+    thumbOn: Color = TagColors.OnLime,
     trackOff: Color = TagColors.White,
     thumbOff: Color = TagColors.Black
 ) {
