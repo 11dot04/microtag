@@ -197,7 +197,7 @@ fun TagLabel(
             withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(bold) }
             if (light != null) {
                 append(if (inline) " " else "\n")
-                withStyle(SpanStyle(fontWeight = FontWeight.Light)) { append(light) }
+                withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(light) }
             }
         },
         style = TextStyle(
@@ -383,6 +383,9 @@ private fun edgeOf(state: TileState): Color =
 
 private const val FLOOD_EDGE = 0.22f
 
+/** Size of one grain in physical pixels: 1 is the finest the screen can draw. */
+private const val FLOOD_GRAIN_PX = 1f
+
 /**
  * Grainy dissolve. Every pixel gets a random threshold; the front sweeps out from the touch
  * point and flips pixels whose threshold it has passed, so the edge is a speckled band
@@ -519,7 +522,7 @@ fun TagTile(
                     shader.setFloatUniform("touch", origin2.x, origin2.y)
                     shader.setFloatUniform("reach", far2.coerceAtLeast(1f))
                     shader.setFloatUniform("prog", p)
-                    shader.setFloatUniform("grain", 2.2f * density.density)
+                    shader.setFloatUniform("grain", FLOOD_GRAIN_PX)
                     shader.setFloatUniform("band", FLOOD_EDGE)
                     shader.setColorUniform("fromColor", fillOf(base).toArgb())
                     shader.setColorUniform("toColor", fillOf(target).toArgb())
