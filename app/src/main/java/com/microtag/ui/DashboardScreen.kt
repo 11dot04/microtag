@@ -63,6 +63,20 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.Typeface
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.em
+import androidx.core.content.res.ResourcesCompat
+import kotlin.math.roundToInt
 import com.microtag.R
 import com.microtag.core.MicrotagPrefs
 import com.microtag.core.MicrotagReminder
@@ -99,7 +113,7 @@ private enum class DashSheet { Streaks, Calendar }
 // ==========================================================
 
 @Composable
-fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSettings: () -> Unit) {
+fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSettings: () -> Unit, onOpenStats: () -> Unit) {
     val context = LocalContext.current
     val settings = remember { TagSettings(context) }
     var count by remember { mutableIntStateOf(prefs.interceptCount) }
@@ -135,16 +149,26 @@ fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSetti
         if (ok) calendar.set(true)
     }
 
+    val perms = rememberPermissions()
     Column(
         Modifier
             .fillMaxSize()
             .background(TagColors.Black)
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .navigationBarsPadding()
     ) {
+      Column(Modifier.padding(horizontal = 20.dp)) {
         Header(onSettings = onOpenSettings)
+        AnimatedVisibility(
+            visible = !perms.hasListener || !perms.hasNotif,
+            enter = expandVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column {
+                Spacer(Modifier.height(20.dp))
+                PermissionBanner(perms)
+            }
+        }
         Spacer(Modifier.height(28.dp))
         Hero(
             count = count,
@@ -161,7 +185,8 @@ fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSetti
                     iconName = "ic_capsule_bolt"
                 )
             },
-            onLogs = { context.startActivity(Intent(context, MicrotagLogActivity::class.java)) }
+            onLogs = { context.startActivity(Intent(context, MicrotagLogActivity::class.java)) },
+            onStats = onOpenStats
         )
         Spacer(Modifier.height(36.dp))
 
@@ -212,10 +237,10 @@ fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSetti
             IconTile(Modifier.cell(3f, b), R.drawable.ic_upload, upload)
             MicroTile(Modifier.cell(0f, b + 1f, 2f, 1f), R.drawable.ic_otp, "OTP", "2FA", otp)
             MicroTile(Modifier.cell(2f, b + 1f, 2f, 1f), R.drawable.ic_print, "Print", "in\nProgress", print, inline = true)
-            MicroTile(Modifier.cell(0f, b + 2f, 2f, 1f), R.drawable.ic_clipboard, "Clipboard", "Context", clipboard, size = 16.sp)
+            MicroTile(Modifier.cell(0f, b + 2f, 2f, 1f), R.drawable.ic_clipboard, "Clipboard", "Context", clipboard)
             PillTile(
-                Modifier.cell(2f, b + 2f, 2f, 1f), R.drawable.ic_calendar_countdown, "Events", "countdown", calendar,
-                shape = TagShapes.Rect, size = 14.sp, chevron = true,
+                Modifier.cell(2f, b + 2f, 2f, 1f), R.drawable.ic_calendar_countdown, "Events", null, calendar,
+                shape = TagShapes.Rect, chevron = true,
                 onToggle = {
                     if (!calendar.on && !hasCalendarPermission(context)) {
                         calendarPermission.launch(Manifest.permission.READ_CALENDAR)
@@ -239,6 +264,8 @@ fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSetti
             BigTile(Modifier.cell(2f, b3, 2f, 2f), R.drawable.ic_vpn, "ProtonVPN", "SESSIONS", proton)
         }
         Spacer(Modifier.height(40.dp))
+      }
+        EasterEgg()
     }
 
     when (sheet) {
@@ -270,38 +297,86 @@ private fun Header(onSettings: () -> Unit) {
     }
 }
 
+private const val HERO_LS = -0.02f
+
+/** Ink bounds of `text` at 100px in Montserrat Black, so edges can be aligned to the pixel. */
+private fun inkBounds(typeface: Typeface?, text: String): Rect {
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.typeface = typeface
+        textSize = 100f
+        letterSpacing = HERO_LS
+    }
+    return Rect().also { paint.getTextBounds(text, 0, text.length, it) }
+}
+
+/**
+ * INTERCEPTIONS is sized so its ink runs exactly margin to margin. The count lines up on the
+ * left, SO FAR lines up on the right, and the whole block reads as one justified slab.
+ */
 @Composable
-private fun Hero(count: Int, onSimulate: () -> Unit, onLogs: () -> Unit) {
-    // INTERCEPTIONS sets the size; everything else follows it so the block stays one unit.
-    var fit by remember { mutableFloatStateOf(56f) }
-    fun style(weight: FontWeight, color: Color) = TextStyle(
-        fontFamily = Montserrat,
-        fontWeight = weight,
-        fontSize = fit.sp,
-        lineHeight = (fit * 1.08f).sp,
-        letterSpacing = (-1).sp,
-        color = color
-    )
+private fun Hero(count: Int, onSimulate: () -> Unit, onLogs: () -> Unit, onStats: () -> Unit) {
+    val view = LocalView.current
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val typeface = remember { ResourcesCompat.getFont(context, R.font.montserrat_black) }
+
     Column(Modifier.fillMaxWidth()) {
-        RollingNumber(count, style(FontWeight.Black, TagColors.White))
-        Text(
-            "INTERCEPTIONS",
-            style = style(FontWeight.Black, TagColors.White),
-            maxLines = 1,
-            softWrap = false,
-            onTextLayout = { if (it.didOverflowWidth && fit > 20f) fit *= 0.95f }
-        )
-        Text(
-            "SO FAR",
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.End,
-            maxLines = 1,
-            style = style(FontWeight.Black, TagColors.Outline).copy(drawStyle = Stroke(width = 3f))
-        )
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val wPx = constraints.maxWidth.toFloat()
+            val big = remember(wPx) { inkBounds(typeface, "INTERCEPTIONS") }
+            val scale = wPx / (big.right - big.left).coerceAtLeast(1)
+            val sizeSp = with(density) { (100f * scale).toSp() }
+            val countInk = remember(count) { inkBounds(typeface, count.toString()) }
+            val soFarInk = remember { inkBounds(typeface, "SO FAR") }
+            val strokePx = with(density) { 2.5.dp.toPx() }
+
+            fun style(color: Color) = TextStyle(
+                fontFamily = Montserrat,
+                fontWeight = FontWeight.Black,
+                fontSize = sizeSp,
+                lineHeight = sizeSp * 1.04f,
+                letterSpacing = HERO_LS.em,
+                color = color
+            )
+
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                        view.tick(Tick.Press)
+                        onStats()
+                    }
+            ) {
+                Box(Modifier.offset { IntOffset((-countInk.left * scale).roundToInt(), 0) }) {
+                    RollingNumber(count, style(TagColors.White))
+                }
+                Text(
+                    "INTERCEPTIONS",
+                    style = style(TagColors.White),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Visible,
+                    modifier = Modifier.offset { IntOffset((-big.left * scale).roundToInt(), 0) }
+                )
+                Box(Modifier.fillMaxWidth()) {
+                    Text(
+                        "SO FAR",
+                        style = style(TagColors.Outline).copy(drawStyle = Stroke(width = strokePx)),
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Visible,
+                        modifier = Modifier.offset {
+                            IntOffset((wPx - soFarInk.right * scale - strokePx / 2f).roundToInt(), 0)
+                        }
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(24.dp))
         Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            SplitButton(TagShapes.JoinLeft, onSimulate) { TagIcon(R.drawable.ic_play, TagColors.Black, size = 26.dp) }
-            SplitButton(TagShapes.JoinRight, onLogs) {
+            SplitButton(TagShapes.JoinLeft, onSimulate, 22.dp) { TagIcon(R.drawable.ic_play, TagColors.Black, size = 26.dp) }
+            SplitButton(RoundedCornerShape(6.dp), onStats, 22.dp) { TagIcon(R.drawable.ic_stats, TagColors.Black, size = 26.dp) }
+            SplitButton(TagShapes.JoinRight, onLogs, 26.dp) {
                 Text(
                     "Logs",
                     style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 20.sp, color = TagColors.Black)
@@ -312,7 +387,12 @@ private fun Hero(count: Int, onSimulate: () -> Unit, onLogs: () -> Unit) {
 }
 
 @Composable
-private fun SplitButton(shape: androidx.compose.ui.graphics.Shape, onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun SplitButton(
+    shape: androidx.compose.ui.graphics.Shape,
+    onClick: () -> Unit,
+    padH: androidx.compose.ui.unit.Dp,
+    content: @Composable () -> Unit
+) {
     val view = LocalView.current
     Box(
         Modifier
@@ -320,9 +400,43 @@ private fun SplitButton(shape: androidx.compose.ui.graphics.Shape, onClick: () -
             .clip(shape)
             .background(TagColors.Steel)
             .clickable { view.tick(Tick.Press); onClick() }
-            .padding(horizontal = 26.dp),
+            .padding(horizontal = padH),
         contentAlignment = Alignment.Center
     ) { content() }
+}
+
+/** Shown while the listener or notification permission is off, because TAG does nothing without them. */
+@Composable
+private fun PermissionBanner(perms: Permissions) {
+    val noListener = !perms.hasListener
+    val title = if (noListener) "I can’t see a thing" else "I can’t speak up"
+    val sub = if (noListener) "Notification access is off. Tap to turn it on." else "Allow notifications so my chips can show."
+    TagTile(
+        Modifier.fillMaxWidth().height(84.dp),
+        TagShapes.Rect,
+        TileState.Static,
+        onClick = { if (noListener) perms.openListenerSettings() else perms.requestNotifications() }
+    ) { fg ->
+        Row(
+            Modifier.fillMaxSize().padding(start = 20.dp, end = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f).padding(end = 10.dp)) {
+                Text(
+                    title,
+                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = fg)
+                )
+                Text(
+                    sub, maxLines = 2,
+                    style = TextStyle(
+                        fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp,
+                        lineHeight = 17.sp, color = fg
+                    )
+                )
+            }
+            TagIcon(R.drawable.ic_chevron_right, fg, size = 26.dp)
+        }
+    }
 }
 
 // ==========================================================
@@ -346,7 +460,7 @@ private fun BigLabel(title: String, sub: String, fg: Color, modifier: Modifier =
         )
         FitText(
             AnnotatedString(sub),
-            TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Light, fontSize = 14.sp, letterSpacing = 0.3.sp, color = fg)
+            TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 14.sp, letterSpacing = 0.3.sp, color = fg)
         )
     }
 }
@@ -497,7 +611,7 @@ private fun MusicPair(modifier: Modifier, song: PrefToggle, ambient: PrefToggle)
     Column(modifier) {
         TagTile(Modifier.weight(1f).fillMaxWidth(), TagShapes.CapRight, song.state, song::toggle) { fg ->
             Row(Modifier.fillMaxSize().padding(start = 22.dp, end = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-                TagLabel("Song", "Up Next", fg, Modifier.weight(1f))
+                TagLabel("Song", "Up Next", fg, Modifier.weight(1f), size = 16.sp)
                 TagIcon(R.drawable.ic_song_next, fg, size = 28.dp)
             }
         }
