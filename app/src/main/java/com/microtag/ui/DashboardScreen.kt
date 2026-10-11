@@ -50,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -98,7 +99,7 @@ private enum class DashSheet { Streaks, Calendar }
 // ==========================================================
 
 @Composable
-fun DashboardScreen(prefs: MicrotagPrefs, onOpenSetup: () -> Unit) {
+fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     val settings = remember { TagSettings(context) }
     var count by remember { mutableIntStateOf(prefs.interceptCount) }
@@ -143,7 +144,7 @@ fun DashboardScreen(prefs: MicrotagPrefs, onOpenSetup: () -> Unit) {
             .padding(horizontal = 20.dp)
             .navigationBarsPadding()
     ) {
-        Header(onSettings = onOpenSetup)
+        Header(onSettings = onOpenSettings)
         Spacer(Modifier.height(28.dp))
         Hero(
             count = count,
@@ -181,10 +182,10 @@ fun DashboardScreen(prefs: MicrotagPrefs, onOpenSetup: () -> Unit) {
             // ---- rows 0-1: Discord + Inspect
             TagFrame("Inspect", TagColors.Lime, Modifier.cell(2, 0, 2, 2, outset = 6.dp))
             BigTile(Modifier.cell(0, 0, 2, 2), R.drawable.ic_discord, "Discord", "CALLS", discord)
-            InspectTile(Modifier.cell(2, 0), R.drawable.ic_inspect_calc)
-            InspectTile(Modifier.cell(3, 0), R.drawable.ic_inspect_colour)
-            InspectTile(Modifier.cell(2, 1), R.drawable.ic_inspect_convert)
-            InspectTile(Modifier.cell(3, 1), R.drawable.ic_inspect_define)
+            InspectTile(Modifier.cell(2, 0), R.drawable.ic_inspect_calc, onOpenInspect)
+            InspectTile(Modifier.cell(3, 0), R.drawable.ic_inspect_colour, onOpenInspect)
+            InspectTile(Modifier.cell(2, 1), R.drawable.ic_inspect_convert, onOpenInspect)
+            InspectTile(Modifier.cell(3, 1), R.drawable.ic_inspect_define, onOpenInspect)
 
             // ---- weather (top) / streaks (under it) / strava
             WeatherTile(
@@ -258,7 +259,8 @@ private fun Header(onSettings: () -> Unit) {
         Image(
             painter = painterResource(R.drawable.ic_tag_wordmark),
             contentDescription = "TAG",
-            modifier = Modifier.height(38.dp).aspectRatio(162f / 60f)
+            colorFilter = ColorFilter.tint(TagColors.Lime),
+            modifier = Modifier.height(40.dp).aspectRatio(776f / 292f)
         )
         Spacer(Modifier.weight(1f))
         Box(
@@ -371,8 +373,8 @@ private fun IconTile(modifier: Modifier, icon: Int, t: PrefToggle) {
 }
 
 @Composable
-private fun InspectTile(modifier: Modifier, icon: Int) {
-    TagTile(modifier, TagShapes.Rect, TileState.Static) { fg ->
+private fun InspectTile(modifier: Modifier, icon: Int, onClick: () -> Unit) {
+    TagTile(modifier, TagShapes.Rect, TileState.Static, onClick) { fg ->
         TagIcon(icon, fg, Modifier.align(Alignment.Center), 34.dp)
     }
 }
