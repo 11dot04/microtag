@@ -199,7 +199,7 @@ private fun TagChip(text: String, selected: Boolean, onClick: () -> Unit) {
                 fontFamily = Montserrat,
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp,
-                color = if (selected) TagColors.Black else TagColors.White
+                color = if (selected) TagColors.OnLime else TagColors.White
             )
         )
     }
@@ -332,7 +332,7 @@ fun CalendarSheet(settings: TagSettings, onDismiss: () -> Unit) {
                     .clickable { permission.launch(Manifest.permission.READ_CALENDAR) }
                     .padding(horizontal = 22.dp, vertical = 14.dp)
             ) {
-                TagLabel("Allow calendar access", color = TagColors.Black, size = 15.sp)
+                TagLabel("Allow calendar access", color = TagColors.OnLime, size = 15.sp)
             }
         } else {
             LazyColumn(Modifier.heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
