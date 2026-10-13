@@ -75,7 +75,8 @@ internal object UrlInspector {
         val mild: List<String>,
         val trackersRemoved: Int,
         val unwrapped: Boolean,
-        val assumedScheme: Boolean
+        val assumedScheme: Boolean,
+        val shortened: Boolean = false
     ) {
         val noteworthy: Boolean get() = strong.isNotEmpty() || mild.any { it.startsWith("Shortened") } || trackersRemoved > 0 || unwrapped
         val risky: Boolean get() = strong.isNotEmpty() || mild.size >= 2
@@ -105,7 +106,9 @@ internal object UrlInspector {
                 copyText = cleaned,
                 openUrl = cleaned,
                 timeoutSeconds = 20,
-                status = if (risky) Status.WARN else Status.OK
+                status = if (risky) Status.WARN else Status.OK,
+                checkHost = if (host.startsWith("[") || ipv4Re.matches(host)) "" else host,
+                resolveUrl = if (shortened) cleaned else ""
             )
         }
     }
@@ -124,6 +127,12 @@ internal object UrlInspector {
         if (host.isEmpty()) return null
         return Parts(scheme, authority, userInfo, host, m.groupValues[3], m.groupValues[4], m.groupValues[5])
     }
+
+    internal fun isShortener(host: String): Boolean = host in shorteners || registrableOf(host).first in shorteners
+
+    internal fun hostOf(url: String): String? = split(url)?.host
+
+    internal fun registrableDomain(host: String): String = registrableOf(host).first
 
     private fun registrableOf(host: String): Pair<String, String> {
         val labels = host.split('.')
@@ -216,7 +225,10 @@ internal object UrlInspector {
         val subCount = host.split('.').size - registrable.split('.').size
         if (subCount > 3) mild.add("Unusually many sub-domains")
 
-        return Analysis(raw.trim(), cleaned, host, registrable, strong, mild, removed, unwrapped, assumed)
+        return Analysis(
+            raw.trim(), cleaned, host, registrable, strong, mild, removed, unwrapped, assumed,
+            shortened = registrable in shorteners || host in shorteners
+        )
     }
 
     private fun skeleton(s: String): String {
