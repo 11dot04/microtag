@@ -67,6 +67,10 @@ data class InspectResult(
     val iconName: String? = null,
     /** ARGB colour drawn as the pill icon (colour swatch). */
     val swatch: Int? = null,
+    /** ARGB accent for the card (label, glow, Copy button). Null = the domain's default. */
+    val accent: Int? = null,
+    /** Colours to show as a strip in the card (a colour and its complement). */
+    val palette: List<Int> = emptyList(),
     val openUrl: String = "",
     val timeoutSeconds: Int = 15,
     val status: Status = Status.OK
@@ -79,7 +83,9 @@ data class InspectResult(
         copyText = copyText.ifBlank { title },
         rows = rows,
         url = openUrl,
-        status = status.name
+        status = status.name,
+        accent = accent ?: 0,
+        palette = palette
     )
 }
 
