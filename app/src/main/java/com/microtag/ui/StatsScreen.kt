@@ -60,6 +60,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.text.drawText
+import androidx.compose.runtime.rememberCoroutineScope
+import com.microtag.R
 import com.microtag.core.MicrotagLog
 import com.microtag.core.MicrotagPrefs
 import kotlinx.coroutines.launch
@@ -78,22 +80,37 @@ private class StatsData(
     val perPackage: Map<String, IntArray>      // package -> counts per day
 )
 
+/** Updates to the same notification within this window belong to the same session. */
+private const val SESSION_GAP_MS = 30 * 60 * 1000L
+
 private fun dayIndexOf(ms: Long): Int {
     val c = Calendar.getInstance().apply { timeInMillis = ms }
     return (c.get(Calendar.DAY_OF_WEEK) + 5) % 7   // Monday = 0 ... Sunday = 6
 }
 
+/**
+ * The log has an entry for every promoted update, so an ongoing notification (a VPN session, a workout)
+ * shows up dozens of times. Entries are folded by notification key: a new interception starts only when a key
+ * is first seen, or comes back after a long silence. The hour is the hour the session started.
+ */
 private fun loadStats(): StatsData {
     val grid = Array(7) { IntArray(24) }
     val perPackage = HashMap<String, IntArray>()
+    val lastSeen = HashMap<String, Long>()
     val c = Calendar.getInstance()
     MicrotagLog.snapshot()
         .filter { it.decision == MicrotagLog.Decision.PROMOTED }
+        .sortedBy { it.timeMs }
         .forEach { e ->
-            c.timeInMillis = e.timeMs
-            val day = (c.get(Calendar.DAY_OF_WEEK) + 5) % 7
-            grid[day][c.get(Calendar.HOUR_OF_DAY)]++
-            perPackage.getOrPut(e.pkg) { IntArray(7) }[day]++
+            val previous = lastSeen[e.key]
+            lastSeen[e.key] = e.timeMs
+            val isNewSession = previous == null || e.timeMs - previous > SESSION_GAP_MS
+            if (isNewSession) {
+                c.timeInMillis = e.timeMs
+                val day = (c.get(Calendar.DAY_OF_WEEK) + 5) % 7
+                grid[day][c.get(Calendar.HOUR_OF_DAY)]++
+                perPackage.getOrPut(e.pkg) { IntArray(7) }[day]++
+            }
         }
     return StatsData(grid, perPackage)
 }
@@ -102,7 +119,8 @@ private val DayLabels = listOf("MO", "TU", "WE", "TH", "FR", "SA", "SU")
 
 @Composable
 fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val data = remember { loadStats() }
     val today = remember { dayIndexOf(System.currentTimeMillis()) }
     val nowHour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
@@ -112,47 +130,61 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
     val total = values.sum()
     val peakHour = values.indices.maxByOrNull { values[it] }?.takeIf { values[it] > 0 }
 
-    Column(Modifier.fillMaxSize().background(TagColors.Black).statusBarsPadding()) {
-        BackBar(onBack)
-        Column(
-            Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            FitText(
-                AnnotatedString("Interceptions"),
-                TextStyle(
-                    fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 48.sp,
-                    lineHeight = 52.sp, letterSpacing = (-1.2).sp, color = TagColors.White
-                ),
-                Modifier.fillMaxWidth()
-            )
-
-            DayChips(selected, today) { day ->
-                // Always keep at least one day on.
-                selected = if (day in selected) (if (selected.size > 1) selected - day else selected) else selected + day
-            }
-
-            HourChart(
-                values = values,
-                nowHour = if (today in selected) nowHour else null,
-                dashFuture = selected == setOf(today),
-                modifier = Modifier.fillMaxWidth().height(260.dp)
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatTile("SELECTED", total.toString(), Modifier.weight(1f))
-                StatTile("PEAK HOUR", peakHour?.let { "%02d:00".format(it) } ?: "--", Modifier.weight(1f))
-                StatTile("ALL TIME", prefs.interceptCount.toString(), Modifier.weight(1f))
-            }
-
-            Sources(data, selected)
-            Spacer(Modifier.height(32.dp))
+    SubScreen(
+        onBack = onBack,
+        action = {
+            FloatingButton(filled = false, onClick = {
+                val sources = topSources(context, data, selected)
+                val days = selected.sorted().joinToString(" ") { DayLabels[it] }
+                scope.launch { StatsCard.share(context, days, total, values, peakHour, sources) }
+            }) { tint -> TagIcon(R.drawable.ic_share, tint, size = 26.dp) }
         }
+    ) {
+        Spacer(Modifier.height(12.dp))
+        FitText(
+            AnnotatedString("Interceptions"),
+            TextStyle(
+                fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 48.sp,
+                lineHeight = 52.sp, letterSpacing = (-1.2).sp, color = TagColors.White
+            ),
+            Modifier.fillMaxWidth()
+        )
+
+        DayChips(selected, today) { day ->
+            // Always keep at least one day on.
+            selected = if (day in selected) (if (selected.size > 1) selected - day else selected) else selected + day
+        }
+
+        HourChart(
+            values = values,
+            nowHour = if (today in selected) nowHour else null,
+            dashFuture = selected == setOf(today),
+            modifier = Modifier.fillMaxWidth().height(260.dp)
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatTile("SELECTED", total.toString(), Modifier.weight(1f))
+            StatTile("PEAK HOUR", peakHour?.let { "%02d:00".format(it) } ?: "--", Modifier.weight(1f))
+            StatTile("ALL TIME", prefs.interceptCount.toString(), Modifier.weight(1f))
+        }
+
+        Sources(data, selected)
     }
+}
+
+/** Top five sources for the selected days, as (label, count). */
+private fun topSources(context: android.content.Context, data: StatsData, selected: Set<Int>): List<Pair<String, Int>> {
+    val pm = context.packageManager
+    return data.perPackage
+        .map { (pkg, days) -> pkg to selected.sumOf { days[it] } }
+        .filter { it.second > 0 }
+        .sortedByDescending { it.second }
+        .take(5)
+        .map { (pkg, n) ->
+            val label = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }
+                .getOrDefault(pkg.substringAfterLast('.'))
+            label to n
+        }
 }
 
 // ==========================================================
@@ -372,19 +404,7 @@ private fun StatTile(caption: String, value: String, modifier: Modifier) {
 @Composable
 private fun Sources(data: StatsData, selected: Set<Int>) {
     val context = LocalContext.current
-    val pm = context.packageManager
-    val rows = remember(selected) {
-        data.perPackage
-            .map { (pkg, days) -> pkg to selected.sumOf { days[it] } }
-            .filter { it.second > 0 }
-            .sortedByDescending { it.second }
-            .take(5)
-            .map { (pkg, n) ->
-                val label = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }
-                    .getOrDefault(pkg.substringAfterLast('.'))
-                Triple(label, n, pkg)
-            }
-    }
+    val rows = remember(selected) { topSources(context, data, selected) }
     if (rows.isEmpty()) {
         Text(
             "Nothing logged on these days yet. Promotions show up here as they happen.",
@@ -404,7 +424,14 @@ private fun Sources(data: StatsData, selected: Set<Int>) {
                 letterSpacing = 1.2.sp, color = TagColors.Lime
             )
         )
-        rows.forEach { (label, n, _) ->
+        Text(
+            "One notification is one interception, however many times it updates.",
+            style = TextStyle(
+                fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 12.sp,
+                lineHeight = 16.sp, color = TagColors.Outline
+            )
+        )
+        rows.forEach { (label, n) ->
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
