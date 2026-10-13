@@ -21,6 +21,11 @@ object TagKeys {
 class TagSettings(context: Context) {
     private val sp = context.getSharedPreferences("tag_settings", Context.MODE_PRIVATE)
 
+    /** Master pause switch for all interceptions. */
+    var paused: Boolean
+        get() = sp.getBoolean("master_paused", false)
+        set(v) = sp.edit { putBoolean("master_paused", v) }
+
     /** Weather refresh interval in minutes. */
     var weatherIntervalMin: Int
         get() = sp.getInt("weather_interval_min", 60)
