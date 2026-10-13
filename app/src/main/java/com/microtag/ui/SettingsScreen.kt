@@ -1,22 +1,16 @@
 package com.microtag.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,6 +20,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
@@ -35,9 +31,31 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.microtag.R
 
+/** One row inside a block. `checked == null` means the row is a plain action. */
+private class Item(
+    val title: String,
+    val sub: String,
+    val checked: Boolean? = null,
+    val onChange: (Boolean) -> Unit = {},
+    val onClick: (() -> Unit)? = null
+)
+
+private val RowSurface = Color(0xFF15161A)
+
+/**
+ * Rows in a block interlock like the Simulate / Stats / Logs buttons on the dashboard,
+ * only stacked: big radius on the block's outer corners, a tight 6dp where rows meet.
+ */
+private fun groupShape(index: Int, count: Int): Shape {
+    val big = CornerSize(22.dp)
+    val small = CornerSize(6.dp)
+    val top = if (index == 0) big else small
+    val bottom = if (index == count - 1) big else small
+    return RoundedCornerShape(topStart = top, topEnd = top, bottomEnd = bottom, bottomStart = bottom)
+}
+
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
-    BackHandler(onBack = onBack)
     val context = LocalContext.current
     val settings = remember { TagSettings(context) }
     val perms = rememberPermissions()
@@ -49,155 +67,103 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "dev"
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(TagColors.Black)
-            .statusBarsPadding()
-    ) {
-        BackBar(onBack)
-        Column(
-            Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            FitText(
-                AnnotatedString("Settings"),
-                TextStyle(
-                    fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 56.sp,
-                    lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White
-                ),
-                Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(6.dp))
+    SubScreen(onBack, spacing = 10.dp) {
+        Spacer(Modifier.height(12.dp))
+        FitText(
+            AnnotatedString("Settings"),
+            TextStyle(
+                fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 56.sp,
+                lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White
+            ),
+            Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(6.dp))
 
-            Section("Permissions")
-            SettingRow(
-                "Notification listener", "Lets TAG see notifications. Opens system settings.",
-                checked = perms.hasListener, onChange = { perms.openListenerSettings() }
+        Block(
+            "Permissions",
+            listOf(
+                Item("Notification listener", "Lets TAG see notifications. Opens system settings.", perms.hasListener, { perms.openListenerSettings() }),
+                Item("Post notifications", "Lets TAG show its chips.", perms.hasNotif, { perms.requestNotifications() }),
+                Item("Calendar", "For the events countdown.", perms.hasCalendar, { perms.requestCalendar() }),
+                Item("Shizuku", "Optional. Clipboard access in the background.", perms.hasShizuku, { perms.requestShizuku() })
             )
-            SettingRow(
-                "Post notifications", "Lets TAG show its chips.",
-                checked = perms.hasNotif, onChange = { perms.requestNotifications() }
-            )
-            SettingRow(
-                "Calendar", "For the events countdown.",
-                checked = perms.hasCalendar, onChange = { perms.requestCalendar() }
-            )
-            SettingRow(
-                "Shizuku", "Optional. Clipboard access in the background.",
-                checked = perms.hasShizuku, onChange = { perms.requestShizuku() }
-            )
-
-            Spacer(Modifier.height(8.dp))
-            Section("Look and feel")
-            SettingRow(
-                "Material You", "Swap the lime for your system accent colour.",
-                checked = materialYou,
-                onChange = {
+        )
+        Block(
+            "Look and feel",
+            listOf(
+                Item("Material You", "Swap the lime for your system accent colour.", materialYou, {
                     materialYou = it
                     settings.materialYou = it
                     TagColors.useMaterialYou(context, it)
-                }
-            )
-            SettingRow(
-                "Reduce motion", "Skip the springs, flood fills and entrances.",
-                checked = reducedMotion,
-                onChange = {
+                }),
+                Item("Reduce motion", "Skip the springs, flood fills and entrances.", reducedMotion, {
                     reducedMotion = it
                     settings.reducedMotion = it
                     TagMotion.enabled = !it
-                }
-            )
-            SettingRow(
-                "Haptics", "Taps, toggles and dial detents.",
-                checked = haptics,
-                onChange = {
+                }),
+                Item("Haptics", "Taps, toggles and dial detents.", haptics, {
                     haptics = it
                     settings.haptics = it
                     TagMotion.haptics = it
-                }
+                })
             )
-
-            Spacer(Modifier.height(8.dp))
-            Section("Intro")
-            ActionRow("Replay intro", "Walk through the welcome screens again.", onReplayIntro)
-
-            Spacer(Modifier.height(8.dp))
-            Section("About")
-            Text(
-                "TAG  ·  version $version",
-                style = TextStyle(
-                    fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 14.sp,
-                    color = TagColors.Outline
-                ),
-                modifier = Modifier.padding(start = 4.dp)
-            )
-            Spacer(Modifier.height(32.dp))
-        }
+        )
+        Block("Intro", listOf(Item("Replay intro", "Walk through the welcome screens again.", onClick = onReplayIntro)))
+        Block("About", listOf(Item("TAG", "Version $version")))
     }
 }
 
 @Composable
-private fun Section(label: String) {
+private fun Block(label: String, items: List<Item>) {
     Text(
         label.uppercase(),
-        modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+        modifier = Modifier.padding(start = 4.dp, top = 8.dp),
         style = TextStyle(
             fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
             letterSpacing = 1.2.sp, color = TagColors.Lime
         )
     )
-}
-
-@Composable
-private fun RowShell(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Box(
-        modifier
-            .fillMaxWidth()
-            .clip(TagShapes.Rect)
-            .border(2.dp, TagColors.Outline, TagShapes.Rect)
-            .padding(horizontal = 18.dp, vertical = 14.dp)
-    ) { content() }
-}
-
-@Composable
-private fun RowText(title: String, sub: String, modifier: Modifier = Modifier) {
-    Column(modifier) {
-        Text(
-            title,
-            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = TagColors.White)
-        )
-        Text(
-            sub,
-            style = TextStyle(
-                fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp,
-                lineHeight = 18.sp, color = TagColors.Outline
-            )
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        items.forEachIndexed { i, item -> SettingRow(item, groupShape(i, items.size)) }
     }
 }
 
 @Composable
-private fun SettingRow(title: String, sub: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    RowShell {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            RowText(title, sub, Modifier.weight(1f).padding(end = 14.dp))
-            TagSwitch(checked = checked, onChange = onChange)
-        }
-    }
-}
-
-@Composable
-private fun ActionRow(title: String, sub: String, onClick: () -> Unit) {
+private fun SettingRow(item: Item, shape: Shape) {
     val view = LocalView.current
-    RowShell(Modifier.clickable { view.tick(Tick.Press); onClick() }) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            RowText(title, sub, Modifier.weight(1f).padding(end = 14.dp))
-            TagIcon(R.drawable.ic_chevron_right, TagColors.White, size = 24.dp)
+    val interactive = item.checked != null || item.onClick != null
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(RowSurface)
+            .then(
+                if (interactive) Modifier.clickable {
+                    if (item.checked != null) item.onChange(!item.checked) else {
+                        view.tick(Tick.Press)
+                        item.onClick?.invoke()
+                    }
+                } else Modifier
+            )
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f).padding(end = 14.dp)) {
+            Text(
+                item.title,
+                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = TagColors.White)
+            )
+            Text(
+                item.sub,
+                style = TextStyle(
+                    fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp,
+                    lineHeight = 18.sp, color = TagColors.Outline
+                )
+            )
+        }
+        when {
+            item.checked != null -> TagSwitch(checked = item.checked, onChange = item.onChange)
+            item.onClick != null -> TagIcon(R.drawable.ic_chevron_right, TagColors.White, size = 24.dp)
         }
     }
 }
