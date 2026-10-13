@@ -136,6 +136,10 @@ fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSetti
     val ambient = rememberToggle(prefs, TagKeys.AMBIENT_MUSIC)
     val proton = rememberToggle(prefs, MicrotagPrefs.KEY_PROTON)
 
+    var paused by remember { mutableStateOf(settings.paused) }
+    val gridAlpha by animateFloatAsState(
+        if (paused) 0.38f else 1f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), label = "pausedDim"
+    )
     var weatherOpen by remember { mutableStateOf(false) }
     var stravaOpen by remember { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<DashSheet?>(null) }
@@ -173,18 +177,22 @@ fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSetti
         Spacer(Modifier.height(28.dp))
         Hero(
             count = count,
-            onSimulate = {
-                prefs.incrementInterceptCount()
-                count = prefs.interceptCount
-                MicrotagReminder.showCapsule(
-                    context = context,
-                    pillText = "98% • Fast",
-                    title = "TAG active",
-                    content = "Live Update chip docked to the status bar",
-                    notificationId = 9999,
-                    timeoutSeconds = 10,
-                    iconName = "ic_capsule_bolt"
-                )
+            paused = paused,
+            onTogglePause = {
+                paused = !paused
+                settings.paused = paused
+                // Coming back on posts the same Live Update the old simulate button did.
+                if (!paused) {
+                    MicrotagReminder.showCapsule(
+                        context = context,
+                        pillText = "TAG on",
+                        title = "TAG is back",
+                        content = "Interceptions resumed",
+                        notificationId = 9999,
+                        timeoutSeconds = 10,
+                        iconName = "ic_capsule_bolt"
+                    )
+                }
             },
             onLogs = { context.startActivity(Intent(context, MicrotagLogActivity::class.java)) },
             onStats = onOpenStats
@@ -204,7 +212,7 @@ fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSetti
         val b2 = b + 3f      // earbuds / sound mode
         val b3 = b2 + 2f     // music / VPN
 
-        TagGrid {
+        TagGrid(Modifier.graphicsLayer { alpha = gridAlpha }) {
             // ---- rows 0-1: Discord + Inspect
             TagFrame("Inspect", TagColors.Lime, Modifier.cell(2, 0, 2, 2, outset = 6.dp))
             BigTile(Modifier.cell(0, 0, 2, 2), R.drawable.ic_discord, "Discord", "CALLS", discord)
@@ -288,7 +296,7 @@ private fun Header(onSettings: () -> Unit) {
             painter = painterResource(R.drawable.ic_tag_wordmark),
             contentDescription = "TAG",
             colorFilter = ColorFilter.tint(TagColors.Lime),
-            modifier = Modifier.height(40.dp).aspectRatio(776f / 292f)
+            modifier = Modifier.height(40.dp).aspectRatio(778f / 293f)
         )
         Spacer(Modifier.weight(1f))
         Box(
@@ -315,7 +323,7 @@ private fun inkBounds(typeface: Typeface?, text: String): Rect {
  * left, SO FAR lines up on the right, and the whole block reads as one justified slab.
  */
 @Composable
-private fun Hero(count: Int, onSimulate: () -> Unit, onLogs: () -> Unit, onStats: () -> Unit) {
+private fun Hero(count: Int, paused: Boolean, onTogglePause: () -> Unit, onLogs: () -> Unit, onStats: () -> Unit) {
     val view = LocalView.current
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -374,8 +382,28 @@ private fun Hero(count: Int, onSimulate: () -> Unit, onLogs: () -> Unit, onStats
             }
         }
         Spacer(Modifier.height(24.dp))
-        Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            SplitButton(TagShapes.JoinLeft, onSimulate, 22.dp) { TagIcon(R.drawable.ic_play, TagColors.Black, size = 26.dp) }
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            if (paused) {
+                Text(
+                    "PAUSED",
+                    style = TextStyle(
+                        fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                        letterSpacing = 1.2.sp, color = TagColors.Lime
+                    )
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            // Master switch: pause icon while running, accent play icon while paused.
+            SplitButton(TagShapes.JoinLeft, onTogglePause, 22.dp, if (paused) TagColors.Lime else TagColors.Steel) {
+                TagIcon(
+                    if (paused) R.drawable.ic_play else R.drawable.ic_pause,
+                    if (paused) TagColors.OnLime else TagColors.Black, size = 26.dp
+                )
+            }
             SplitButton(RoundedCornerShape(6.dp), onStats, 22.dp) { TagIcon(R.drawable.ic_stats, TagColors.Black, size = 26.dp) }
             SplitButton(TagShapes.JoinRight, onLogs, 26.dp) {
                 Text(
@@ -392,6 +420,7 @@ private fun SplitButton(
     shape: androidx.compose.ui.graphics.Shape,
     onClick: () -> Unit,
     padH: androidx.compose.ui.unit.Dp,
+    container: Color = TagColors.Steel,
     content: @Composable () -> Unit
 ) {
     val view = LocalView.current
@@ -399,7 +428,7 @@ private fun SplitButton(
         Modifier
             .height(54.dp)
             .clip(shape)
-            .background(TagColors.Steel)
+            .background(container)
             .clickable { view.tick(Tick.Press); onClick() }
             .padding(horizontal = padH),
         contentAlignment = Alignment.Center
@@ -447,7 +476,7 @@ private fun PermissionBanner(perms: Permissions) {
 @Composable
 private fun BigTile(modifier: Modifier, icon: Int, title: String, sub: String, t: PrefToggle) {
     TagTile(modifier, TagShapes.Big, t.state, t::toggle) { fg ->
-        TagIcon(icon, fg, Modifier.align(Alignment.TopStart).padding(20.dp), 30.dp)
+        TagIcon(icon, fg, Modifier.align(Alignment.TopStart).padding(20.dp), 32.dp)
         BigLabel(title, sub, fg, Modifier.align(Alignment.BottomEnd).padding(20.dp))
     }
 }
@@ -475,7 +504,7 @@ private fun MicroTile(
     TagTile(modifier, TagShapes.Rect, t.state, t::toggle) { fg ->
         Row(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             TagLabel(bold, light, fg, Modifier.weight(1f), size, inline = inline)
-            TagIcon(icon, fg, size = 30.dp)
+            TagIcon(icon, fg, size = 28.dp)
         }
     }
 }
@@ -483,14 +512,14 @@ private fun MicroTile(
 @Composable
 private fun IconTile(modifier: Modifier, icon: Int, t: PrefToggle) {
     TagTile(modifier, TagShapes.Rect, t.state, t::toggle) { fg ->
-        TagIcon(icon, fg, Modifier.align(Alignment.Center), 32.dp)
+        TagIcon(icon, fg, Modifier.align(Alignment.Center), 30.dp)
     }
 }
 
 @Composable
 private fun InspectTile(modifier: Modifier, icon: Int, onClick: () -> Unit) {
     TagTile(modifier, TagShapes.Rect, TileState.Static, onClick) { fg ->
-        TagIcon(icon, fg, Modifier.align(Alignment.Center), 34.dp)
+        TagIcon(icon, fg, Modifier.align(Alignment.Center), 32.dp)
     }
 }
 
@@ -506,12 +535,12 @@ private fun PillTile(
 ) {
     TagTile(modifier, shape, t.state, onToggle) { fg ->
         Row(
-            Modifier.fillMaxSize().padding(start = if (icon == null) 26.dp else 18.dp, end = if (chevron) 8.dp else 20.dp),
+            Modifier.fillMaxSize().padding(start = if (icon == null) 26.dp else 16.dp, end = if (chevron) 6.dp else 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (icon != null) {
-                TagIcon(icon, fg, size = 22.dp)
-                Spacer(Modifier.width(8.dp))
+                TagIcon(icon, fg, size = 28.dp)
+                Spacer(Modifier.width(10.dp))
             }
             TagLabel(bold, light, fg, Modifier.weight(1f), size)
             if (chevron) ChevronButton(false, fg, onClick = onChevron)
@@ -565,7 +594,7 @@ private fun StravaTile(
     TagTile(modifier, TagShapes.Big, t.state, t::toggle) { fg ->
         val face = if (t.on) TagColors.Lime else TagColors.Black
         if (!open) {
-            TagIcon(R.drawable.ic_strava, fg, Modifier.align(Alignment.TopStart).padding(20.dp), 30.dp)
+            TagIcon(R.drawable.ic_strava, fg, Modifier.align(Alignment.TopStart).padding(20.dp), 32.dp)
             BigLabel("Strava", "WORKOUTS", fg, Modifier.align(Alignment.BottomEnd).padding(20.dp))
         } else {
             // Heading and chevron share one row, and the chips split whatever height is left,
@@ -651,7 +680,7 @@ private fun RingerSelector(modifier: Modifier, enabled: Boolean, modes: Set<Stri
                         .clickable { view.tick(if (on) Tick.Off else Tick.On); onChange(if (on) modes - key else modes + key) },
                     contentAlignment = Alignment.Center
                 ) {
-                    if (on) TagIcon(icon, TagColors.Lime, size = 30.dp)
+                    if (on) TagIcon(icon, TagColors.Lime, size = 28.dp)
                     else Box(Modifier.size(10.dp).clip(CircleShape).background(fg))
                 }
             }
