@@ -6,6 +6,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
+internal class Hop(val code: Int, val location: String?)
+
 /** code >= 0 is an HTTP status; -1 is a network failure (offline, timeout, DNS); -2 is a refused (non-https) URL. */
 internal class HttpResult(val code: Int, val body: String) {
     val ok: Boolean get() = code in 200..299
@@ -15,7 +17,7 @@ internal class HttpResult(val code: Int, val body: String) {
 /** Small, strict HTTP GET. HTTPS only, short timeouts, capped body size. */
 internal object Http {
 
-    fun get(url: String, timeoutMs: Int = 3000, maxBytes: Int = 1_000_000): HttpResult {
+    fun get(url: String, timeoutMs: Int = 3000, maxBytes: Int = 1_000_000, accept: String = "application/json"): HttpResult {
         if (!url.startsWith("https://")) return HttpResult(-2, "")
         var conn: HttpURLConnection? = null
         try {
@@ -24,7 +26,7 @@ internal object Http {
                 readTimeout = timeoutMs
                 instanceFollowRedirects = true
                 setRequestProperty("User-Agent", "Microtag/1.0 (Android; text inspector)")
-                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Accept", accept)
             }
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
@@ -32,6 +34,37 @@ internal object Http {
             return HttpResult(code, body)
         } catch (_: Exception) {
             return HttpResult(-1, "")
+        } finally {
+            try {
+                conn?.disconnect()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /** One redirect hop: asks for the URL without following it and reports where it points. No body is read. */
+    fun hop(url: String, timeoutMs: Int = 3500): Hop {
+        if (!url.startsWith("https://") && !url.startsWith("http://")) return Hop(-2, null)
+        var conn: HttpURLConnection? = null
+        try {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = timeoutMs
+                readTimeout = timeoutMs
+                instanceFollowRedirects = false
+                requestMethod = "GET"
+                setRequestProperty("User-Agent", "Microtag/1.0 (Android; text inspector)")
+            }
+            val code = conn.responseCode
+            val loc = conn.getHeaderField("Location")?.let { raw ->
+                try {
+                    URL(URL(url), raw).toString()
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            return Hop(code, loc)
+        } catch (_: Exception) {
+            return Hop(-1, null)
         } finally {
             try {
                 conn?.disconnect()
