@@ -17,7 +17,12 @@ object Detectors {
         all += TimeZoneDetector.candidates(t, env)
         all += DateDetector.candidates(t, env)
         all += UrlInspector.candidates(t, source)
+        all += UpiDetector.candidates(t, source)
+        all += IfscDetector.candidates(t, source)
+        all += PinCodeDetector.candidates(t, source)
+        all += NumberDetector.candidates(t, source, env)
         all += DefineDetector.candidates(t, source, env)
+        all += EntityDetector.candidates(t, source)
         all += ReadingDetector.candidates(t, source)
         return all.sortedByDescending { it.score }
     }
