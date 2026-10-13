@@ -23,7 +23,11 @@ data class InspectPayload(
     // Label/value rows, a link the card can open, and OK / WARN / ERROR.
     val rows: List<Pair<String, String>> = emptyList(),
     val url: String = "",
-    val status: String = "OK"
+    val status: String = "OK",
+    /** ARGB accent, 0 = use the domain default. */
+    val accent: Int = 0,
+    /** Colours drawn as a strip at the top of the card. */
+    val palette: List<Int> = emptyList()
 ) : Serializable {
 
     val heroText: String get() = title.ifBlank { primaryText }
@@ -36,6 +40,6 @@ data class InspectPayload(
             copyText.isBlank() && fullContent.isBlank() && rows.isEmpty()
 
     companion object {
-        private const val serialVersionUID = 2L
+        private const val serialVersionUID = 3L
     }
 }
