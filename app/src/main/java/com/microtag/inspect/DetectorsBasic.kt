@@ -147,6 +147,12 @@ internal object ColourDetector {
         )
         if (a < 255) rows.add("Alpha" to "${(a / 2.55).roundToInt()}%")
         rows.add("Readable with" to readable)
+
+        // The complement sits opposite on the colour wheel; the accent is the same hue, lifted so it reads on a dark card.
+        val comp = hslToRgb(h + 180.0, s / 100.0, l / 100.0)
+        val compHex = String.format(Locale.ROOT, "#%02X%02X%02X", comp[0], comp[1], comp[2])
+        rows.add("Complement" to compHex)
+        val acc = hslToRgb(h.toDouble(), (if (s < 8) 0 else maxOf(s, 55)) / 100.0, (l.coerceIn(62, 74)) / 100.0)
         return InspectResult(
             domain = "COLOUR",
             pill = hex,
@@ -157,6 +163,11 @@ internal object ColourDetector {
             rows = rows,
             copyText = full,
             swatch = (0xFF shl 24) or (r shl 16) or (g shl 8) or b,
+            accent = (0xFF shl 24) or (acc[0] shl 16) or (acc[1] shl 8) or acc[2],
+            palette = listOf(
+                (0xFF shl 24) or (r shl 16) or (g shl 8) or b,
+                (0xFF shl 24) or (comp[0] shl 16) or (comp[1] shl 8) or comp[2]
+            ),
             timeoutSeconds = 15
         )
     }
