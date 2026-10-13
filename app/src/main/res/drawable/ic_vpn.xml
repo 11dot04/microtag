@@ -1,0 +1,20 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="192"
+    android:viewportHeight="192">
+
+    <!-- The inner triangle, filled, like the monochrome Proton mark. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M33.386,63.659L121.394,73.842c5.61,0.649 8.569,6.98 5.468,11.701L91.401,139.529 86.731,146.547c-1.89,2.843 -6.123,2.668 -7.774,-0.322Z" />
+
+    <!-- Your outline, unchanged. -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="12"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="m33.386,63.659 88.008,10.183c5.61,0.649 8.569,6.98 5.468,11.701l-35.461,53.986 -4.67,7.018c-1.89,2.843 -6.123,2.668 -7.774,-0.322m4.813,8.718c4.969,9.003 17.73,9.49 23.372,0.893l52.605,-80.166c5.578,-8.501 0.24,-19.9 -9.861,-21.058l-103.4,-11.856c-11.024,-1.264 -18.873,10.45 -13.511,20.165z" />
+
+</vector>
