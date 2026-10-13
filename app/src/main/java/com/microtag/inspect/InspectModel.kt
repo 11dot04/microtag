@@ -73,7 +73,11 @@ data class InspectResult(
     val palette: List<Int> = emptyList(),
     val openUrl: String = "",
     val timeoutSeconds: Int = 15,
-    val status: Status = Status.OK
+    val status: Status = Status.OK,
+    /** Site name the card's CHECK button may look up (DNS filtering, domain age). Blank = no button. */
+    val checkHost: String = "",
+    /** A shortened link the card's RESOLVE button may expand. Blank = no button. */
+    val resolveUrl: String = ""
 ) {
     fun toPayload(): InspectPayload = InspectPayload(
         domain = domain,
@@ -85,7 +89,9 @@ data class InspectResult(
         url = openUrl,
         status = status.name,
         accent = accent ?: 0,
-        palette = palette
+        palette = palette,
+        checkHost = checkHost,
+        resolveUrl = resolveUrl
     )
 }
 
