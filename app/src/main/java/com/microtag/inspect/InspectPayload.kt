@@ -1,0 +1,41 @@
+package com.microtag.inspect
+
+import java.io.Serializable
+
+/**
+ * What the detail overlay shows. One class for every producer.
+ *
+ * The OTP capsule (CapsuleParser) still fills the older primaryText / secondaryText /
+ * copyContent fields, so they stay; the getters below read either set.
+ */
+data class InspectPayload(
+    val domain: String = "",
+    val title: String = "",
+    val subtitle: String = "",
+    val fullContent: String = "",
+    val copyText: String = "",
+    // Older fields, still used by the OTP capsule.
+    val primaryText: String = "",
+    val secondaryText: String = "",
+    val actionType: String = "COPY",
+    val copyContent: String = "",
+    val extraData: String = "",
+    // Label/value rows, a link the card can open, and OK / WARN / ERROR.
+    val rows: List<Pair<String, String>> = emptyList(),
+    val url: String = "",
+    val status: String = "OK"
+) : Serializable {
+
+    val heroText: String get() = title.ifBlank { primaryText }
+    val subText: String get() = subtitle.ifBlank { secondaryText }
+    val copyValue: String get() = copyText.ifBlank { copyContent }.ifBlank { fullContent }
+
+    /** A bare "tap to copy" payload (the OTP capsule): tapping copies instead of opening the overlay. */
+    val isCopyOnTap: Boolean
+        get() = actionType == "COPY" && copyContent.isNotBlank() &&
+            copyText.isBlank() && fullContent.isBlank() && rows.isEmpty()
+
+    companion object {
+        private const val serialVersionUID = 2L
+    }
+}
