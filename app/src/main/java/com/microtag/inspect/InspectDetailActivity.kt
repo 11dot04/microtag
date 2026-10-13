@@ -120,7 +120,10 @@ class InspectDetailActivity : Activity() {
         }
         // The pill has done its job once the card is open.
         if (notifId != -1) MicrotagReminder.cancelCapsule(applicationContext, notifId)
+        show(payload, animate)
+    }
 
+    private fun show(payload: InspectPayload, animate: Boolean) {
         val accent = accentFor(payload)
         val root = FrameLayout(this).apply { setOnClickListener { finish() } }
 
@@ -253,6 +256,43 @@ class InspectDetailActivity : Activity() {
                 } catch (_: Exception) {
                 }
                 finish()
+            })
+        }
+        if (payload.resolveUrl.isNotBlank()) {
+            buttons.addView(pill("RESOLVE", Color.argb(0x40, 255, 255, 255), Color.WHITE) { v ->
+                (v as TextView).text = "…"
+                v.isEnabled = false
+                Thread {
+                    val r = LinkCheck.resolveShort(payload.resolveUrl)
+                    val expanded = r.finalUrl?.let { UrlInspector.analyze(it) }
+                    runOnUiThread {
+                        if (isFinishing) return@runOnUiThread
+                        if (expanded == null) {
+                            show(payload.copy(resolveUrl = "", rows = payload.rows + ("Resolve" to "Couldn't expand it: ${r.problem ?: "unknown"}")), false)
+                        } else {
+                            val res = expanded.toResult().toPayload()
+                            show(res.copy(rows = listOf("Expanded from" to payload.title) + res.rows), false)
+                        }
+                    }
+                }.start()
+            })
+        }
+        if (payload.checkHost.isNotBlank()) {
+            buttons.addView(pill("CHECK", Color.argb(0x40, 255, 255, 255), Color.WHITE) { v ->
+                (v as TextView).text = "…"
+                v.isEnabled = false
+                Thread {
+                    val out = LinkCheck.check(payload.checkHost)
+                    runOnUiThread {
+                        if (isFinishing) return@runOnUiThread
+                        val status = when {
+                            out.status == Status.ERROR || payload.status == "ERROR" -> "ERROR"
+                            out.status == Status.WARN || payload.status == "WARN" -> "WARN"
+                            else -> payload.status
+                        }
+                        show(payload.copy(checkHost = "", status = status, rows = payload.rows + out.rows), false)
+                    }
+                }.start()
             })
         }
         buttons.addView(pill("DISMISS", Color.argb(0x26, 255, 255, 255), Color.parseColor("#D0D0D6")) { finish() })
