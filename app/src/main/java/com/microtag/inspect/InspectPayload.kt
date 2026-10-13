@@ -27,7 +27,11 @@ data class InspectPayload(
     /** ARGB accent, 0 = use the domain default. */
     val accent: Int = 0,
     /** Colours drawn as a strip at the top of the card. */
-    val palette: List<Int> = emptyList()
+    val palette: List<Int> = emptyList(),
+    /** Site name the CHECK button looks up. */
+    val checkHost: String = "",
+    /** Shortened link the RESOLVE button expands. */
+    val resolveUrl: String = ""
 ) : Serializable {
 
     val heroText: String get() = title.ifBlank { primaryText }
@@ -40,6 +44,6 @@ data class InspectPayload(
             copyText.isBlank() && fullContent.isBlank() && rows.isEmpty()
 
     companion object {
-        private const val serialVersionUID = 3L
+        private const val serialVersionUID = 4L
     }
 }
