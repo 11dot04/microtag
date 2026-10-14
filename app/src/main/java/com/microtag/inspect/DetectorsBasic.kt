@@ -131,7 +131,7 @@ internal object ColourDetector {
         return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
     }
 
-    private fun build(c: IntArray): InspectResult {
+    internal fun build(c: IntArray, nameOverride: String? = null): InspectResult {
         val (r, g, b, a) = listOf(c[0], c[1], c[2], c[3])
         val hex = String.format(Locale.ROOT, "#%02X%02X%02X", r, g, b)
         val full = if (a < 255) hex + String.format(Locale.ROOT, "%02X", a) else hex
@@ -152,7 +152,7 @@ internal object ColourDetector {
         val comp = hslToRgb(h + 180.0, s / 100.0, l / 100.0)
         val compHex = String.format(Locale.ROOT, "#%02X%02X%02X", comp[0], comp[1], comp[2])
         rows.add("Complement" to compHex)
-        val name = ColourNames.nearest(r, g, b)
+        val name = nameOverride ?: ColourNames.nearest(r, g, b)
         name?.let { rows.add(0, "Name" to it) }
         val acc = hslToRgb(h.toDouble(), (if (s < 8) 0 else maxOf(s, 55)) / 100.0, (l.coerceIn(62, 74)) / 100.0)
         return InspectResult(
@@ -293,6 +293,7 @@ internal object TimeZoneDetector {
             cardText = "$original = $localTime $zoneName ($dayWord)",
             rows = rows,
             copyText = "$localTime $zoneName",
+            nums = listOf((p.hour * 60 + p.minute).toDouble(), (local.hour * 60 + local.minute).toDouble()),
             iconName = "ic_calendar_countdown",
             timeoutSeconds = 15
         )
@@ -661,6 +662,7 @@ internal object DateDetector {
             cardText = "$formatted · $relative",
             rows = rows,
             copyText = formatted,
+            nums = listOf(today.toEpochDay().toDouble(), d.toEpochDay().toDouble()),
             iconName = "ic_calendar_countdown",
             timeoutSeconds = 15
         )
