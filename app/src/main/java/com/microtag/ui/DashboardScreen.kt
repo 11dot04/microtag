@@ -78,7 +78,11 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.em
 import androidx.core.content.res.ResourcesCompat
 import kotlin.math.roundToInt
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.graphics.luminance
 import com.microtag.R
+import kotlinx.coroutines.delay
 import com.microtag.core.MicrotagPrefs
 import com.microtag.core.MicrotagReminder
 import com.microtag.listener.MicrotagLogActivity
@@ -114,10 +118,24 @@ private enum class DashSheet { Streaks, Calendar }
 // ==========================================================
 
 @Composable
-fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSettings: () -> Unit, onOpenStats: () -> Unit) {
+fun DashboardScreen(
+    prefs: MicrotagPrefs,
+    onOpenInspect: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenStats: () -> Unit,
+    onOpenLogs: () -> Unit,
+    onBackdropChange: (Boolean) -> Unit
+) {
     val context = LocalContext.current
     val settings = remember { TagSettings(context) }
     var count by remember { mutableIntStateOf(prefs.interceptCount) }
+    // Pick up interceptions as they happen, so the numeral rolls and the dot field ripples live.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1500)
+            count = prefs.interceptCount
+        }
+    }
 
     val discord = rememberToggle(prefs, MicrotagPrefs.KEY_DISCORD)
     val strava = rememberToggle(prefs, MicrotagPrefs.KEY_STRAVA)
@@ -155,49 +173,49 @@ fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSetti
     }
 
     val perms = rememberPermissions()
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(TagColors.Black)
-            .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
-    ) {
-      Column(Modifier.padding(horizontal = 20.dp)) {
-        Header(onSettings = onOpenSettings)
-        AnimatedVisibility(
-            visible = !perms.hasListener || !perms.hasNotif,
-            enter = expandVertically(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
-        ) {
-            Column {
-                Spacer(Modifier.height(20.dp))
-                PermissionBanner(perms)
-            }
+    val scroll = rememberScrollState()
+    val hourly = remember(count) { todayHourCounts() }
+    val togglePause: () -> Unit = {
+        paused = !paused
+        settings.paused = paused
+        // Coming back on posts the same Live Update the old simulate button did.
+        if (!paused) {
+            MicrotagReminder.showCapsule(
+                context = context,
+                pillText = "TAG on",
+                title = "TAG is back",
+                content = "Interceptions resumed",
+                notificationId = 9999,
+                timeoutSeconds = 10,
+                iconName = "ic_capsule_bolt"
+            )
         }
-        Spacer(Modifier.height(28.dp))
-        Hero(
+    }
+
+    BoxWithConstraints(Modifier.fillMaxSize().background(TagColors.Black)) {
+        // The poster fills the screen except for a strip of tiles that peeks out below it.
+        val posterH = (maxHeight - 150.dp).coerceAtLeast(520.dp)
+        val posterPx = with(LocalDensity.current) { posterH.toPx() }
+
+        // The status bar icons need to be dark over the lime poster and light everywhere else.
+        val lightBackdrop by remember(paused) {
+            derivedStateOf { !paused && TagColors.Lime.luminance() > 0.5f && scroll.value < posterPx * 0.3f }
+        }
+        LaunchedEffect(lightBackdrop) { onBackdropChange(lightBackdrop) }
+
+      Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
+        MonolithPoster(
+            height = posterH,
             count = count,
+            hourly = hourly,
             paused = paused,
-            onTogglePause = {
-                paused = !paused
-                settings.paused = paused
-                // Coming back on posts the same Live Update the old simulate button did.
-                if (!paused) {
-                    MicrotagReminder.showCapsule(
-                        context = context,
-                        pillText = "TAG on",
-                        title = "TAG is back",
-                        content = "Interceptions resumed",
-                        notificationId = 9999,
-                        timeoutSeconds = 10,
-                        iconName = "ic_capsule_bolt"
-                    )
-                }
-            },
-            onLogs = { context.startActivity(Intent(context, MicrotagLogActivity::class.java)) },
-            onStats = onOpenStats
+            perms = perms,
+            onTogglePause = togglePause,
+            onStats = onOpenStats,
+            onLogs = onOpenLogs
         )
-        Spacer(Modifier.height(36.dp))
+        Column(Modifier.padding(horizontal = 20.dp)) {
+        Spacer(Modifier.height(20.dp))
 
         // p glides 0 -> 1 as Weather opens. Everything below it follows the same number,
         // so the whole column moves as one piece instead of snapping.
@@ -273,8 +291,19 @@ fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSetti
             BigTile(Modifier.cell(2f, b3, 2f, 2f), R.drawable.ic_vpn, "ProtonVPN", "SESSIONS", proton)
         }
         Spacer(Modifier.height(40.dp))
-      }
+        }
         EasterEgg()
+      }
+
+      MonolithOverlay(
+          count = count,
+          paused = paused,
+          scroll = scroll,
+          posterHeight = posterH,
+          onStats = onOpenStats,
+          onSettings = onOpenSettings,
+          onTogglePause = togglePause
+      )
     }
 
     when (sheet) {
@@ -288,156 +317,9 @@ fun DashboardScreen(prefs: MicrotagPrefs, onOpenInspect: () -> Unit, onOpenSetti
 // HEADER + HERO
 // ==========================================================
 
-@Composable
-private fun Header(onSettings: () -> Unit) {
-    val view = LocalView.current
-    Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Image(
-            painter = painterResource(R.drawable.ic_tag_wordmark),
-            contentDescription = "TAG",
-            colorFilter = ColorFilter.tint(TagColors.Lime),
-            modifier = Modifier.height(40.dp).aspectRatio(778f / 293f)
-        )
-        Spacer(Modifier.weight(1f))
-        Box(
-            Modifier.size(48.dp).clip(CircleShape).clickable { view.tick(Tick.Press); onSettings() },
-            contentAlignment = Alignment.Center
-        ) { TagIcon(R.drawable.ic_settings, TagColors.White, size = 32.dp) }
-    }
-}
-
-private const val HERO_LS = -0.02f
-
-/** Ink bounds of `text` at 100px in Montserrat Black, so edges can be aligned to the pixel. */
-private fun inkBounds(typeface: Typeface?, text: String): Rect {
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        this.typeface = typeface
-        textSize = 100f
-        letterSpacing = HERO_LS
-    }
-    return Rect().also { paint.getTextBounds(text, 0, text.length, it) }
-}
-
-/**
- * INTERCEPTIONS is sized so its ink runs exactly margin to margin. The count lines up on the
- * left, SO FAR lines up on the right, and the whole block reads as one justified slab.
- */
-@Composable
-private fun Hero(count: Int, paused: Boolean, onTogglePause: () -> Unit, onLogs: () -> Unit, onStats: () -> Unit) {
-    val view = LocalView.current
-    val context = LocalContext.current
-    val density = LocalDensity.current
-    val typeface = remember { ResourcesCompat.getFont(context, R.font.montserrat_black) }
-
-    Column(Modifier.fillMaxWidth()) {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val wPx = constraints.maxWidth.toFloat()
-            val big = remember(wPx) { inkBounds(typeface, "INTERCEPTIONS") }
-            val scale = wPx / (big.right - big.left).coerceAtLeast(1)
-            val sizeSp = with(density) { (100f * scale).toSp() }
-            val countInk = remember(count) { inkBounds(typeface, count.toString()) }
-            val soFarInk = remember { inkBounds(typeface, "SO FAR") }
-            val strokePx = with(density) { 2.5.dp.toPx() }
-
-            fun style(color: Color) = TextStyle(
-                fontFamily = Montserrat,
-                fontWeight = FontWeight.Black,
-                fontSize = sizeSp,
-                lineHeight = sizeSp * 1.04f,
-                letterSpacing = HERO_LS.em,
-                color = color
-            )
-
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                        view.tick(Tick.Press)
-                        onStats()
-                    }
-            ) {
-                Box(Modifier.offset { IntOffset((-countInk.left * scale).roundToInt(), 0) }) {
-                    RollingNumber(count, style(TagColors.White))
-                }
-                Text(
-                    "INTERCEPTIONS",
-                    style = style(TagColors.White),
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Visible,
-                    modifier = Modifier.offset { IntOffset((-big.left * scale).roundToInt(), 0) }
-                )
-                Box(Modifier.fillMaxWidth()) {
-                    Text(
-                        "SO FAR",
-                        style = style(TagColors.Outline).copy(drawStyle = Stroke(width = strokePx)),
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Visible,
-                        modifier = Modifier.offset {
-                            IntOffset((wPx - soFarInk.right * scale - strokePx / 2f).roundToInt(), 0)
-                        }
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(24.dp))
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            if (paused) {
-                Text(
-                    "PAUSED",
-                    style = TextStyle(
-                        fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-                        letterSpacing = 1.2.sp, color = TagColors.Lime
-                    )
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            // Master switch: pause icon while running, accent play icon while paused.
-            SplitButton(TagShapes.JoinLeft, onTogglePause, 22.dp, if (paused) TagColors.Lime else TagColors.Steel) {
-                TagIcon(
-                    if (paused) R.drawable.ic_play else R.drawable.ic_pause,
-                    if (paused) TagColors.OnLime else TagColors.Black, size = 26.dp
-                )
-            }
-            SplitButton(RoundedCornerShape(6.dp), onStats, 22.dp) { TagIcon(R.drawable.ic_stats, TagColors.Black, size = 26.dp) }
-            SplitButton(TagShapes.JoinRight, onLogs, 26.dp) {
-                Text(
-                    "Logs",
-                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 20.sp, color = TagColors.Black)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SplitButton(
-    shape: androidx.compose.ui.graphics.Shape,
-    onClick: () -> Unit,
-    padH: androidx.compose.ui.unit.Dp,
-    container: Color = TagColors.Steel,
-    content: @Composable () -> Unit
-) {
-    val view = LocalView.current
-    Box(
-        Modifier
-            .height(54.dp)
-            .clip(shape)
-            .background(container)
-            .clickable { view.tick(Tick.Press); onClick() }
-            .padding(horizontal = padH),
-        contentAlignment = Alignment.Center
-    ) { content() }
-}
-
 /** Shown while the listener or notification permission is off, because TAG does nothing without them. */
 @Composable
-private fun PermissionBanner(perms: Permissions) {
+internal fun PermissionBanner(perms: Permissions) {
     val noListener = !perms.hasListener
     val title = if (noListener) "I can’t see a thing" else "I can’t speak up"
     val sub = if (noListener) "Notification access is off. Tap to turn it on." else "Allow notifications so my chips can show."
@@ -683,27 +565,6 @@ private fun RingerSelector(modifier: Modifier, enabled: Boolean, modes: Set<Stri
                     if (on) TagIcon(icon, TagColors.Lime, size = 28.dp)
                     else Box(Modifier.size(10.dp).clip(CircleShape).background(fg))
                 }
-            }
-        }
-    }
-}
-
-/** Digits roll upward like an odometer when the number changes. */
-@Composable
-private fun RollingNumber(value: Int, style: TextStyle) {
-    val text = value.toString()
-    Row {
-        text.forEachIndexed { i, ch ->
-            // Keyed by place from the right, so a new leading digit doesn't re-roll the rest.
-            androidx.compose.runtime.key(text.length - i) {
-                AnimatedContent(
-                    targetState = ch,
-                    transitionSpec = {
-                        (slideInVertically(spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMediumLow)) { it } + fadeIn(tween(120))) togetherWith
-                            (slideOutVertically(tween(180)) { -it } + fadeOut(tween(120)))
-                    },
-                    label = "digit"
-                ) { c -> Text(c.toString(), style = style, maxLines = 1) }
             }
         }
     }
