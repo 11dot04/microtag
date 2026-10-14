@@ -21,7 +21,7 @@ internal object EntityDetector {
         return listOf(Candidate("entity", 0.3, slow = true) { lookup(t) })
     }
 
-    internal class Summary(val type: String, val title: String, val description: String, val extract: String, val url: String)
+    internal class Summary(val type: String, val title: String, val description: String, val extract: String, val url: String, val image: String = "")
 
     internal fun parse(body: String): Summary? = try {
         val o = JSONObject(body)
@@ -31,7 +31,8 @@ internal object EntityDetector {
             title,
             o.optString("description", ""),
             o.optString("extract", ""),
-            o.optJSONObject("content_urls")?.optJSONObject("desktop")?.optString("page", "") ?: ""
+            o.optJSONObject("content_urls")?.optJSONObject("desktop")?.optString("page", "") ?: "",
+            o.optJSONObject("thumbnail")?.optString("source", "") ?: ""
         )
     } catch (_: Exception) {
         null
@@ -79,6 +80,7 @@ internal object EntityDetector {
             body = body,
             copyText = s.title,
             openUrl = link,
+            imageUrl = s.image,
             timeoutSeconds = 25
         )
     }
