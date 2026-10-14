@@ -10,9 +10,10 @@ import kotlin.math.sqrt
  */
 object ColourNames {
 
-    private class Entry(val name: String, val l: Double, val a: Double, val b: Double)
+    private class Entry(val name: String, val rgb: Int, val l: Double, val a: Double, val b: Double)
 
     @Volatile private var entries: List<Entry> = emptyList()
+    @Volatile private var byName: Map<String, Int> = emptyMap()
 
     val isLoaded: Boolean get() = entries.isNotEmpty()
 
@@ -25,10 +26,17 @@ object ColourNames {
             if (line.length < 8 || line[6] != ' ') continue
             val rgb = line.substring(0, 6).toIntOrNull(16) ?: continue
             val lab = lab((rgb shr 16) and 255, (rgb shr 8) and 255, rgb and 255)
-            out.add(Entry(line.substring(7).trim(), lab[0], lab[1], lab[2]))
+            out.add(Entry(line.substring(7).trim(), rgb, lab[0], lab[1], lab[2]))
         }
         entries = out
+        byName = out.associate { normalise(it.name) to it.rgb }
     }
+
+    internal fun normalise(s: String): String =
+        s.lowercase(java.util.Locale.ROOT).replace(Regex("[^a-z0-9]+"), " ").trim()
+
+    /** The colour (0xRRGGBB) for an exact name from the list, or null. */
+    fun find(name: String): Int? = byName[normalise(name)]
 
     /** The closest name, or null when the list is not loaded. */
     fun nearest(r: Int, g: Int, b: Int): String? {
