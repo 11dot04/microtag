@@ -22,6 +22,8 @@ object Detectors {
         all += IfscDetector.candidates(t, source)
         all += PinCodeDetector.candidates(t, source)
         all += NumberDetector.candidates(t, source, env)
+        all += NumberFromWordsDetector.candidates(t, source, env)
+        all += ColourNameDetector.candidates(t, source)
         all += DefineDetector.candidates(t, source, env)
         all += EntityDetector.candidates(t, source)
         all += ReadingDetector.candidates(t, source)
