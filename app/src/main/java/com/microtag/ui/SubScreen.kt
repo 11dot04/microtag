@@ -26,6 +26,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,12 +61,11 @@ import kotlinx.coroutines.CancellationException
  *  - Predictive back: the whole screen shrinks and rounds off while the back gesture is held.
  */
 @Composable
-fun SubScreen(
+private fun SubFrame(
     onBack: () -> Unit,
-    modifier: Modifier = Modifier,
-    spacing: Dp = 14.dp,
-    action: (@Composable () -> Unit)? = null,
-    content: @Composable ColumnScope.() -> Unit
+    modifier: Modifier,
+    action: (@Composable () -> Unit)?,
+    body: @Composable () -> Unit
 ) {
     var gesture by remember { mutableFloatStateOf(0f) }
     var fromRight by remember { mutableStateOf(false) }
@@ -93,19 +97,7 @@ fun SubScreen(
             }
             .background(TagColors.Black)
     ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(spacing)
-        ) {
-            // Insets live inside the scroll, so content can slide under the bars instead of being cut.
-            Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
-            content()
-            Spacer(Modifier.height(96.dp))
-            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
-        }
+        body()
 
         // Fade under the status bar.
         val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -126,6 +118,55 @@ fun SubScreen(
         if (action != null) {
             Box(Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = bottom + 16.dp)) { action() }
         }
+    }
+}
+
+/** A plain scrolling screen. */
+@Composable
+fun SubScreen(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    spacing: Dp = 14.dp,
+    action: (@Composable () -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    SubFrame(onBack, modifier, action) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(spacing)
+        ) {
+            // Insets live inside the scroll, so content can slide under the bars instead of being cut.
+            Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+            content()
+            Spacer(Modifier.height(96.dp))
+            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+        }
+    }
+}
+
+/** The same frame around a LazyColumn, for long lists. The first item starts below the status bar. */
+@Composable
+fun SubScreenLazy(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    spacing: Dp = 10.dp,
+    action: (@Composable () -> Unit)? = null,
+    listState: LazyListState = rememberLazyListState(),
+    content: LazyListScope.() -> Unit
+) {
+    SubFrame(onBack, modifier, action) {
+        val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            state = listState,
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top, bottom = bottom + 96.dp),
+            verticalArrangement = Arrangement.spacedBy(spacing),
+            content = content
+        )
     }
 }
 
