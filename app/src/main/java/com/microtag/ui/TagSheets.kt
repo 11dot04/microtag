@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -169,6 +170,7 @@ private fun TagSheet(
                     }
                     Column(
                         Modifier
+                            .weight(1f, fill = false)
                             .padding(horizontal = 24.dp)
                             .navigationBarsPadding()
                             .padding(bottom = 16.dp)
@@ -245,7 +247,11 @@ fun StreaksSheet(settings: TagSettings, onDismiss: () -> Unit) {
                 style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Light, fontSize = 15.sp, color = TagColors.Outline)
             )
         }
-        LazyColumn(Modifier.heightIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        LazyColumn(
+            Modifier.weight(1f, fill = false),
+            contentPadding = PaddingValues(bottom = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             items(apps, key = { it.pkg }) { app ->
                 val on = app.pkg in selected
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -335,7 +341,11 @@ fun CalendarSheet(settings: TagSettings, onDismiss: () -> Unit) {
                 TagLabel("Allow calendar access", color = TagColors.OnLime, size = 15.sp)
             }
         } else {
-            LazyColumn(Modifier.heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(
+                Modifier.weight(1f, fill = false),
+                contentPadding = PaddingValues(bottom = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 items(calendars, key = { it.id }) { cal ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(14.dp).clip(CircleShape).background(Color(cal.color)))
