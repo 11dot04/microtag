@@ -438,35 +438,67 @@ object CapsuleParser {
 
     /** Pulls the code out of an SMS/chat/mail notification, or null if it does not read like one. */
     internal fun extractOtp(haystack: String): String? {
-        if (!otpKeyword.containsMatchIn(haystack)) return null
+        val lowerHaystack = haystack.lowercase()
+        
+        // 1. Broadly check if the message is OTP-related anywhere in the text
+        val isOtpMessage = listOf(
+            "otp", "code", "pin", "passcode", "password", 
+            "verification", "verify", "token", "2fa"
+        ).any { lowerHaystack.contains(it) }
+
+        if (!isOtpMessage) return null
+
         var best: String? = null
         var bestScore = 0
+
+        // 2. Find all 4 to 8 digit sequences (ignoring typical years if not explicitly identified as a code)
         for (m in otpCandidate.findAll(haystack)) {
             val digits = m.groupValues[1].filter { it.isDigit() }
             if (digits.length !in 4..8) continue
-            val before = haystack.substring(maxOf(0, m.range.first - 28), m.range.first)
-            val after = haystack.substring(m.range.last + 1, minOf(haystack.length, m.range.last + 1 + 40))
-            if (notCodeBefore.containsMatchIn(before)) continue
-            if (after.trimStart().startsWith("/-")) continue
 
-            val nearKeyword = Regex("""(?i)(?:otp|code|pin|passcode|password|verification|token)[^\d]{0,25}$""").containsMatchIn(before)
-            val saidIsCode = validIsAfter.containsMatchIn(after)
-            // A bare year is only believed when the wording points straight at it.
+            val before = haystack.substring(0, m.range.first).trim()
+            val after = haystack.substring(m.range.last + 1).trim()
+
+            // Disqualify if immediately preceded by currency or account markers
+            val immediateBefore = before.takeLast(15)
+            if (notCodeBefore.containsMatchIn(immediateBefore)) continue
+            
+            // Disqualify if it looks like a currency amount (e.g., ends in "/-")
+            if (after.startsWith("/-")) continue
+
             val looksLikeYear = digits.length == 4 && (digits.startsWith("19") || digits.startsWith("20"))
-            if (looksLikeYear && !nearKeyword && !saidIsCode) continue
-
+            
             var score = 1
-            if (nearKeyword) score += 3
-            if (saidIsCode) score += 2
-            if (isJustBefore.containsMatchIn(before)) score += 2
+            
+            // Boost score if common prefix/suffix patterns are directly adjacent
+            if (isJustBefore.containsMatchIn(immediateBefore)) score += 3 // e.g. "is 4875"
+            if (validIsAfter.containsMatchIn(after.take(20))) score += 3 // e.g. "832332 is your"
+            
+            // If it's a year-like number, it MUST have strong adjacent context to be considered
+            if (looksLikeYear && score < 4) continue
+
             if (score > bestScore) {
                 bestScore = score
                 best = digits
             }
         }
-        // Without any wording tying the number to a code, a lone number is not enough.
-        return if (bestScore >= 3) best else null
+
+        // 3. Fallback: If it's definitively an OTP message but no adjacent markers boosted the score,
+        // just grab the first valid 4-8 digit number that wasn't disqualified.
+        if (best == null && isOtpMessage) {
+             val fallbackMatch = otpCandidate.find(haystack)
+             if (fallbackMatch != null) {
+                 val digits = fallbackMatch.groupValues[1].filter { it.isDigit() }
+                 val before = haystack.substring(0, fallbackMatch.range.first).takeLast(15)
+                 if (digits.length in 4..8 && !notCodeBefore.containsMatchIn(before)) {
+                     best = digits
+                 }
+             }
+        }
+
+        return best
     }
+
 
     private fun parseOtp(combined: String, title: String, text: String): ParsedCapsule? {
         val code = extractOtp(combined) ?: return null
