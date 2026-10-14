@@ -31,9 +31,15 @@ data class InspectPayload(
     /** Site name the CHECK button looks up. */
     val checkHost: String = "",
     /** Shortened link the RESOLVE button expands. */
-    val resolveUrl: String = ""
+    val resolveUrl: String = "",
+    val big: String = "",
+    val imageUrl: String = "",
+    val nums: List<Double> = emptyList(),
+    val unit: String = "",
+    val eventId: Long = 0L
 ) : Serializable {
 
+    val bigText: String get() = big.ifBlank { heroText }
     val heroText: String get() = title.ifBlank { primaryText }
     val subText: String get() = subtitle.ifBlank { secondaryText }
     val copyValue: String get() = copyText.ifBlank { copyContent }.ifBlank { fullContent }
@@ -44,6 +50,6 @@ data class InspectPayload(
             copyText.isBlank() && fullContent.isBlank() && rows.isEmpty()
 
     companion object {
-        private const val serialVersionUID = 4L
+        private const val serialVersionUID = 5L
     }
 }
