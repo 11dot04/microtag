@@ -152,11 +152,14 @@ internal object ColourDetector {
         val comp = hslToRgb(h + 180.0, s / 100.0, l / 100.0)
         val compHex = String.format(Locale.ROOT, "#%02X%02X%02X", comp[0], comp[1], comp[2])
         rows.add("Complement" to compHex)
+        val name = ColourNames.nearest(r, g, b)
+        name?.let { rows.add(0, "Name" to it) }
         val acc = hslToRgb(h.toDouble(), (if (s < 8) 0 else maxOf(s, 55)) / 100.0, (l.coerceIn(62, 74)) / 100.0)
         return InspectResult(
             domain = "COLOUR",
             pill = hex,
-            title = hex,
+            title = name ?: hex,
+            big = hex,
             subtitle = "rgb($r, $g, $b)",
             cardTitle = "Colour",
             cardText = "rgb($r, $g, $b) · hsl($h, $s%, $l%)",
