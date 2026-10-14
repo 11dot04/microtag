@@ -62,6 +62,15 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.text.drawText
 import androidx.compose.runtime.rememberCoroutineScope
 import com.microtag.R
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import com.microtag.core.MicrotagLog
 import com.microtag.core.MicrotagPrefs
 import kotlinx.coroutines.launch
@@ -75,9 +84,11 @@ import kotlin.math.min
 // promotion (repeats collapse into it), so this is a recent-activity view rather than lifetime stats.
 // ==========================================================
 
+private class Session(val timeMs: Long, val pkg: String, val path: String, val day: Int, val hour: Int, val epochDay: Long)
+
 private class StatsData(
-    val grid: Array<IntArray>,                 // [day Mon..Sun][hour 0..23]
-    val perPackage: Map<String, IntArray>      // package -> counts per day
+    val sessions: List<Session>,
+    val entries: List<MicrotagLog.Entry>       // everything, for the promote rate
 )
 
 /** Updates to the same notification within this window belong to the same session. */
@@ -88,31 +99,39 @@ private fun dayIndexOf(ms: Long): Int {
     return (c.get(Calendar.DAY_OF_WEEK) + 5) % 7   // Monday = 0 ... Sunday = 6
 }
 
+private fun epochDayOf(ms: Long): Long = (ms + TimeZone.getDefault().getOffset(ms)) / 86_400_000L
+
 /**
  * The log has an entry for every promoted update, so an ongoing notification (a VPN session, a workout)
  * shows up dozens of times. Entries are folded by notification key: a new interception starts only when a key
  * is first seen, or comes back after a long silence. The hour is the hour the session started.
  */
 private fun loadStats(): StatsData {
-    val grid = Array(7) { IntArray(24) }
-    val perPackage = HashMap<String, IntArray>()
+    val all = MicrotagLog.snapshot()
     val lastSeen = HashMap<String, Long>()
     val c = Calendar.getInstance()
-    MicrotagLog.snapshot()
-        .filter { it.decision == MicrotagLog.Decision.PROMOTED }
+    val sessions = ArrayList<Session>()
+    all.filter { it.decision == MicrotagLog.Decision.PROMOTED }
         .sortedBy { it.timeMs }
         .forEach { e ->
             val previous = lastSeen[e.key]
             lastSeen[e.key] = e.timeMs
-            val isNewSession = previous == null || e.timeMs - previous > SESSION_GAP_MS
-            if (isNewSession) {
+            if (previous == null || e.timeMs - previous > SESSION_GAP_MS) {
                 c.timeInMillis = e.timeMs
-                val day = (c.get(Calendar.DAY_OF_WEEK) + 5) % 7
-                grid[day][c.get(Calendar.HOUR_OF_DAY)]++
-                perPackage.getOrPut(e.pkg) { IntArray(7) }[day]++
+                sessions.add(
+                    Session(e.timeMs, e.pkg, e.path, (c.get(Calendar.DAY_OF_WEEK) + 5) % 7, c.get(Calendar.HOUR_OF_DAY), epochDayOf(e.timeMs))
+                )
             }
         }
-    return StatsData(grid, perPackage)
+    return StatsData(sessions, all)
+}
+
+/** Today's sessions per hour, for the dashboard's dot matrix. */
+fun todayHourCounts(): IntArray {
+    val out = IntArray(24)
+    val today = epochDayOf(System.currentTimeMillis())
+    loadStats().sessions.filter { it.epochDay == today }.forEach { out[it.hour]++ }
+    return out
 }
 
 private val DayLabels = listOf("MO", "TU", "WE", "TH", "FR", "SA", "SU")
@@ -123,20 +142,47 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val data = remember { loadStats() }
     val today = remember { dayIndexOf(System.currentTimeMillis()) }
+    val todayEpoch = remember { epochDayOf(System.currentTimeMillis()) }
     val nowHour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
     var selected by remember { mutableStateOf(setOf(today)) }
+    var apps by remember { mutableStateOf(emptySet<String>()) }
 
-    val values = remember(selected) { IntArray(24) { h -> selected.sumOf { d -> data.grid[d][h] } } }
-    val total = values.sum()
+    // Everything below follows the two filters: weekdays and apps.
+    val byApp = remember(apps) { data.sessions.filter { apps.isEmpty() || it.pkg in apps } }
+    val scoped = remember(selected, apps) { byApp.filter { it.day in selected } }
+    val values = remember(scoped) { IntArray(24).also { v -> scoped.forEach { v[it.hour]++ } } }
+    val total = scoped.size
     val peakHour = values.indices.maxByOrNull { values[it] }?.takeIf { values[it] > 0 }
+    val heat = remember(byApp) { Array(7) { IntArray(24) }.also { g -> byApp.forEach { g[it.day][it.hour]++ } } }
+
+    val rate = remember(selected, apps) {
+        val rows = data.entries.filter { e ->
+            (apps.isEmpty() || e.pkg in apps) && dayIndexOf(e.timeMs) in selected &&
+                (e.decision == MicrotagLog.Decision.PROMOTED || e.decision == MicrotagLog.Decision.SKIPPED)
+        }
+        val promoted = rows.count { it.decision == MicrotagLog.Decision.PROMOTED }
+        if (rows.isEmpty()) null else promoted * 100 / rows.size
+    }
+    val daysActive = remember(byApp) { byApp.map { it.epochDay }.toSet() }
+    val streak = remember(daysActive) {
+        var d = if (todayEpoch in daysActive) todayEpoch else todayEpoch - 1
+        var n = 0
+        while (d in daysActive) { n++; d-- }
+        n
+    }
+    val best = remember(byApp) {
+        byApp.groupingBy { it.epochDay }.eachCount().maxByOrNull { it.value }
+    }
+    val allPkgs = remember { data.sessions.map { it.pkg }.distinct() }
+    val meta by rememberAppMeta(allPkgs)
+    val topApps = remember { data.sessions.groupingBy { it.pkg }.eachCount().toList().sortedByDescending { it.second }.take(8) }
 
     SubScreen(
         onBack = onBack,
         action = {
             FloatingButton(filled = false, onClick = {
-                val sources = topSources(context, data, selected)
                 val days = selected.sorted().joinToString(" ") { DayLabels[it] }
-                scope.launch { StatsCard.share(context, days, total, values, peakHour, sources) }
+                scope.launch { StatsCard.share(context, days, total, values, peakHour, sourcesOf(context, scoped)) }
             }) { tint -> TagIcon(R.drawable.ic_share, tint, size = 26.dp) }
         }
     ) {
@@ -155,6 +201,19 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             selected = if (day in selected) (if (selected.size > 1) selected - day else selected) else selected + day
         }
 
+        // App filter: every figure and graph on this page follows it.
+        if (topApps.isNotEmpty()) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip("All apps", apps.isEmpty()) { apps = emptySet() }
+                topApps.forEach { (pkg, n) ->
+                    val m = meta[pkg]
+                    FilterChip("${m?.label ?: pkg.substringAfterLast('.')}  $n", pkg in apps, icon = m?.icon) {
+                        apps = if (pkg in apps) apps - pkg else apps + pkg
+                    }
+                }
+            }
+        }
+
         HourChart(
             values = values,
             nowHour = if (today in selected) nowHour else null,
@@ -167,17 +226,29 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             StatTile("PEAK HOUR", peakHour?.let { "%02d:00".format(it) } ?: "--", Modifier.weight(1f))
             StatTile("ALL TIME", prefs.interceptCount.toString(), Modifier.weight(1f))
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatTile("PROMOTED", rate?.let { "$it%" } ?: "--", Modifier.weight(1f))
+            StatTile("STREAK", if (streak > 0) "$streak d" else "--", Modifier.weight(1f))
+            StatTile("BEST DAY", best?.let { "${it.value}" } ?: "--", Modifier.weight(1f), caption2 = best?.let {
+                SimpleDateFormat("d MMM", Locale.getDefault()).format(Date(it.key * 86_400_000L)).uppercase()
+            })
+        }
 
-        Sources(data, selected)
+        SectionLabel("WEEK AT A GLANCE")
+        Heatmap(heat, selected, Modifier.fillMaxWidth())
+
+        SectionLabel("TIME OF DAY")
+        TimeOfDay(values)
+
+        ByType(scoped)
+        Sources(sourcesOf(context, scoped))
     }
 }
 
-/** Top five sources for the selected days, as (label, count). */
-private fun topSources(context: android.content.Context, data: StatsData, selected: Set<Int>): List<Pair<String, Int>> {
+/** Top five sources for a set of sessions, as (label, count). */
+private fun sourcesOf(context: android.content.Context, sessions: List<Session>): List<Pair<String, Int>> {
     val pm = context.packageManager
-    return data.perPackage
-        .map { (pkg, days) -> pkg to selected.sumOf { days[it] } }
-        .filter { it.second > 0 }
+    return sessions.groupingBy { it.pkg }.eachCount().toList()
         .sortedByDescending { it.second }
         .take(5)
         .map { (pkg, n) ->
@@ -379,7 +450,7 @@ private fun HourChart(values: IntArray, nowHour: Int?, dashFuture: Boolean, modi
 // ==========================================================
 
 @Composable
-private fun StatTile(caption: String, value: String, modifier: Modifier) {
+private fun StatTile(caption: String, value: String, modifier: Modifier, caption2: String? = null) {
     Column(
         modifier
             .clip(TagShapes.Rect)
@@ -398,13 +469,150 @@ private fun StatTile(caption: String, value: String, modifier: Modifier) {
             AnnotatedString(value),
             TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 26.sp, color = TagColors.White)
         )
+        if (caption2 != null) {
+            Text(
+                caption2,
+                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 10.sp, letterSpacing = 0.8.sp, color = TagColors.Lime)
+            )
+        }
     }
 }
 
 @Composable
-private fun Sources(data: StatsData, selected: Set<Int>) {
-    val context = LocalContext.current
-    val rows = remember(selected) { topSources(context, data, selected) }
+private fun SectionLabel(text: String) {
+    Text(
+        text,
+        modifier = Modifier.padding(top = 8.dp),
+        style = TextStyle(
+            fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+            letterSpacing = 1.2.sp, color = TagColors.Lime
+        )
+    )
+}
+
+/** Seven days by 24 hours. Selected weekdays are bright, the others recede. */
+@Composable
+private fun Heatmap(grid: Array<IntArray>, selected: Set<Int>, modifier: Modifier) {
+    val measurer = rememberTextMeasurer()
+    val maxV = max(1, grid.maxOf { row -> row.max() })
+    BoxWithConstraints(modifier) {
+        val gap = 3.dp
+        val labelW = 26.dp
+        val cell = (maxWidth - labelW - gap * 23) / 24
+        val height = (cell + gap) * 7 + 22.dp
+        Canvas(Modifier.fillMaxWidth().height(height)) {
+            val g = gap.toPx()
+            val lw = labelW.toPx()
+            val c = cell.toPx()
+            val accent = TagColors.Lime
+            val label = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 10.sp, color = TagColors.Outline)
+            for (r in 0 until 7) {
+                val y = r * (c + g)
+                val t = measurer.measure(DayLabels[r], label)
+                drawText(t, topLeft = Offset(0f, y + (c - t.size.height) / 2f))
+                for (h in 0 until 24) {
+                    val v = grid[r][h]
+                    val intensity = if (v == 0) 0f else (v / maxV.toFloat()).coerceIn(0f, 1f)
+                    val base = 0.09f + 0.91f * Math.pow(intensity.toDouble(), 0.7).toFloat()
+                    val alpha = if (r in selected) base else base * 0.4f
+                    drawRoundRect(
+                        color = if (v == 0) TagColors.White.copy(alpha = if (r in selected) 0.10f else 0.05f) else accent.copy(alpha = alpha),
+                        topLeft = Offset(lw + h * (c + g), y),
+                        size = androidx.compose.ui.geometry.Size(c, c),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
+                    )
+                }
+            }
+            for (h in listOf(0, 6, 12, 18)) {
+                val t = measurer.measure("%02d".format(h), label)
+                drawText(t, topLeft = Offset(lw + h * (c + g), 7 * (c + g) + 4.dp.toPx()))
+            }
+        }
+    }
+}
+
+/** Night, morning, afternoon, evening: one interlocked bar. */
+@Composable
+private fun TimeOfDay(values: IntArray) {
+    val buckets = listOf("NIGHT" to 0..5, "MORNING" to 6..11, "AFTERNOON" to 12..17, "EVENING" to 18..23)
+    val counts = buckets.map { (_, range) -> range.sumOf { values[it] } }
+    val total = counts.sum()
+    if (total == 0) {
+        Text(
+            "No activity on these days yet.",
+            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = TagColors.Outline)
+        )
+        return
+    }
+    val alphas = listOf(0.35f, 0.6f, 1f, 0.8f)
+    val visible = counts.indices.filter { counts[it] > 0 }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().height(38.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            visible.forEachIndexed { i, idx ->
+                val big = CornerSize(14.dp)
+                val small = CornerSize(4.dp)
+                val shape = RoundedCornerShape(
+                    topStart = if (i == 0) big else small, bottomStart = if (i == 0) big else small,
+                    topEnd = if (i == visible.lastIndex) big else small, bottomEnd = if (i == visible.lastIndex) big else small
+                )
+                Box(
+                    Modifier
+                        .weight(counts[idx].toFloat())
+                        .fillMaxHeight()
+                        .clip(shape)
+                        .background(TagColors.Lime.copy(alpha = alphas[idx]))
+                )
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            buckets.forEachIndexed { i, (name, _) ->
+                Column {
+                    Text(
+                        name,
+                        style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.8.sp, color = TagColors.Outline)
+                    )
+                    Text(
+                        "${counts[i] * 100 / total}%",
+                        style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 18.sp, color = TagColors.White)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Which kind of rule fired, using the log's path field. */
+@Composable
+private fun ByType(sessions: List<Session>) {
+    val rows = remember(sessions) {
+        sessions.groupingBy { it.path }.eachCount().toList().sortedByDescending { it.second }.take(5)
+    }
+    if (rows.isEmpty()) return
+    val maxN = rows.maxOf { it.second }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SectionLabel("BY TYPE")
+        rows.forEach { (path, n) ->
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        path.replace('_', ' ').replace('-', ' ').replaceFirstChar { it.uppercase() },
+                        maxLines = 1, modifier = Modifier.weight(1f),
+                        style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 15.sp, color = TagColors.White)
+                    )
+                    Text(
+                        n.toString(),
+                        style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TagColors.White)
+                    )
+                }
+                Spacer(Modifier.height(5.dp))
+                Box(Modifier.fillMaxWidth(n / maxN.toFloat()).height(4.dp).clip(CircleShape).background(TagColors.White))
+            }
+        }
+    }
+}
+
+@Composable
+private fun Sources(rows: List<Pair<String, Int>>) {
     if (rows.isEmpty()) {
         Text(
             "Nothing logged on these days yet. Promotions show up here as they happen.",
@@ -417,13 +625,7 @@ private fun Sources(data: StatsData, selected: Set<Int>) {
     }
     val maxN = rows.maxOf { it.second }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            "TOP SOURCES",
-            style = TextStyle(
-                fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-                letterSpacing = 1.2.sp, color = TagColors.Lime
-            )
-        )
+        SectionLabel("TOP SOURCES")
         Text(
             "One notification is one interception, however many times it updates.",
             style = TextStyle(
@@ -444,13 +646,7 @@ private fun Sources(data: StatsData, selected: Set<Int>) {
                     )
                 }
                 Spacer(Modifier.height(5.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth(n / maxN.toFloat())
-                        .height(4.dp)
-                        .clip(CircleShape)
-                        .background(TagColors.Lime)
-                )
+                Box(Modifier.fillMaxWidth(n / maxN.toFloat()).height(4.dp).clip(CircleShape).background(TagColors.Lime))
             }
         }
     }
