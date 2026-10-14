@@ -1,61 +1,120 @@
 package com.microtag.inspect
 
-import android.animation.ValueAnimator
-import android.app.Activity
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.RectF
-import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.view.Gravity
-import android.view.HapticFeedbackConstants
-import android.view.MotionEvent
-import android.view.View
-import android.view.ViewGroup
+import android.provider.CalendarContract
 import android.view.WindowManager
-import android.view.animation.DecelerateInterpolator
-import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.microtag.R
 import com.microtag.core.CapsuleCopyReceiver
 import com.microtag.core.MicrotagReminder
+import com.microtag.ui.FitText
+import com.microtag.ui.Montserrat
+import com.microtag.ui.TagColors
+import com.microtag.ui.TagMotion
+import com.microtag.ui.TagSettings
+import com.microtag.ui.TagTheme
+import com.microtag.ui.Tick
+import com.microtag.ui.tick
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+
+/** Drop Display.ttf into res/font (lowercase: display.ttf) and this resolves. Swap the file to swap the typeface. */
+val DisplayFont = FontFamily(Font(R.font.display))
 
 /**
- * The card shown when an Inspect pill is tapped. It runs in its own task (see the manifest), so it
- * opens over whatever screen the user is on and closing it returns there instead of to Microtag.
+ * The expanded card. Opens in its own task over a blurred backdrop.
  *
- * Look: a floating glass card (translucent, tinted by the result's accent) over a blurred screen.
- * Each kind of result has its own accent; a colour result uses its own hue. Drag the handle down to dismiss.
+ *  - The big value at the bottom and every detail row copy their text when tapped.
+ *  - Drag the card down to dismiss; tapping outside it dismisses too. There is no close button.
+ *  - Each kind of card has its own outline (CardShapes) and drawing (CardArt).
+ *  - The arrow in the corner is a quiet redirect: it opens the link or the calendar event, if there is one.
  */
-class InspectDetailActivity : Activity() {
+class InspectDetailActivity : ComponentActivity() {
 
-    private val lime = Color.parseColor("#CCFF00")
-    private val warn = Color.parseColor("#FFB74D")
-    private val danger = Color.parseColor("#FF5A5A")
-    private val grey = Color.parseColor("#9A9AA2")
-    private val base = Color.parseColor("#0E0F12")
-
-    private var card: View? = null
+    private var payload by mutableStateOf<InspectPayload?>(null)
+    private var busy by mutableStateOf("")
+    private var firstShow = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // This activity can start without MainActivity ever running, so it applies the look-and-feel itself.
+        val settings = TagSettings(applicationContext)
+        TagColors.useMaterialYou(applicationContext, settings.materialYou)
+        TagMotion.enabled = !settings.reducedMotion
+        TagMotion.haptics = settings.haptics
         applyBlur()
-        render(intent, animate = true)
+        accept(intent)
+        setContent {
+            TagTheme {
+                val p = payload
+                if (p != null) CardRoot(p)
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        render(intent, animate = false)
+        accept(intent)
     }
 
     private fun applyBlur() {
@@ -73,7 +132,7 @@ class InspectDetailActivity : Activity() {
         }
         // No blur available (battery saver or an OEM setting): darken more so the card still reads.
         if (!blurred) scrim = 0x99
-        window.setBackgroundDrawable(ColorDrawable(Color.argb(scrim, 0, 0, 0)))
+        window.setBackgroundDrawable(ColorDrawable(android.graphics.Color.argb(scrim, 0, 0, 0)))
     }
 
     @Suppress("DEPRECATION")
@@ -84,319 +143,430 @@ class InspectDetailActivity : Activity() {
             i.getSerializableExtra(EXTRA_PAYLOAD) as? InspectPayload
         }
 
-    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
-
-    private fun accentFor(p: InspectPayload): Int {
-        if (p.status == "ERROR") return danger
-        if (p.status == "WARN") return warn
-        if (p.accent != 0) return p.accent
-        return when (p.domain) {
-            "CALC" -> Color.parseColor("#F9E800")
-            "CONV" -> Color.parseColor("#4DD0E1")
-            "MONEY" -> Color.parseColor("#69F0AE")
-            "TIME" -> Color.parseColor("#8C9EFF")
-            "DATE" -> Color.parseColor("#FFAB40")
-            "URL" -> Color.parseColor("#6C97FF")
-            else -> lime
-        }
-    }
-
-    /** [fg] laid over [bg] at the given 0..255 strength. */
-    private fun over(bg: Int, fg: Int, alpha: Int): Int {
-        val a = alpha / 255f
-        return Color.rgb(
-            (Color.red(bg) * (1 - a) + Color.red(fg) * a).toInt(),
-            (Color.green(bg) * (1 - a) + Color.green(fg) * a).toInt(),
-            (Color.blue(bg) * (1 - a) + Color.blue(fg) * a).toInt()
-        )
-    }
-
-    private fun render(i: Intent, animate: Boolean) {
-        val payload = payloadFrom(i)
+    private fun accept(i: Intent) {
+        val p = payloadFrom(i)
         val notifId = i.getIntExtra(EXTRA_NOTIFICATION_ID, -1)
-        if (payload == null) {
+        if (p == null) {
             finish()
             return
         }
         // The pill has done its job once the card is open.
         if (notifId != -1) MicrotagReminder.cancelCapsule(applicationContext, notifId)
-        show(payload, animate)
+        firstShow = payload == null
+        payload = p
     }
 
-    private fun show(payload: InspectPayload, animate: Boolean) {
-        val accent = accentFor(payload)
-        val root = FrameLayout(this).apply { setOnClickListener { finish() } }
+    // ------------------------------------------------------ actions
 
-        val cardView = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(8), dp(22), dp(18))
-            // Glass: mostly dark, a little see-through, with a wash of the accent at the top and a hairline edge.
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(
-                    Color.argb(0xE0, Color.red(over(base, accent, 46)), Color.green(over(base, accent, 46)), Color.blue(over(base, accent, 46))),
-                    Color.argb(0xD6, Color.red(base), Color.green(base), Color.blue(base))
+    private fun isWeb(url: String) = url.startsWith("https://") || url.startsWith("http://")
+
+    private fun openUrl(url: String) {
+        if (!isWeb(url)) return
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Exception) {
+        }
+        finish()
+    }
+
+    private fun openEvent(id: Long) {
+        try {
+            val uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id)
+            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Exception) {
+        }
+        finish()
+    }
+
+    private fun share(text: String) {
+        try {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Exception) {
+        }
+        finish()
+    }
+
+    private fun runResolve(p: InspectPayload) {
+        if (busy.isNotEmpty()) return
+        busy = "RESOLVE"
+        Thread {
+            val r = LinkCheck.resolveShort(p.resolveUrl)
+            val expanded = r.finalUrl?.let { UrlInspector.analyze(it) }
+            runOnUiThread {
+                busy = ""
+                if (isFinishing) return@runOnUiThread
+                payload = if (expanded == null) {
+                    p.copy(resolveUrl = "", rows = p.rows + ("Resolve" to "Couldn't expand it: ${r.problem ?: "unknown"}"))
+                } else {
+                    val res = expanded.toResult().toPayload()
+                    res.copy(rows = listOf("Expanded from" to p.title) + res.rows)
+                }
+            }
+        }.start()
+    }
+
+    private fun runCheck(p: InspectPayload) {
+        if (busy.isNotEmpty()) return
+        busy = "CHECK"
+        Thread {
+            val out = LinkCheck.check(p.checkHost)
+            runOnUiThread {
+                busy = ""
+                if (isFinishing) return@runOnUiThread
+                val status = when {
+                    out.status == Status.ERROR || p.status == "ERROR" -> "ERROR"
+                    out.status == Status.WARN || p.status == "WARN" -> "WARN"
+                    else -> p.status
+                }
+                payload = p.copy(checkHost = "", status = status, rows = p.rows + out.rows)
+            }
+        }.start()
+    }
+
+    // ------------------------------------------------------ the card
+
+    @Composable
+    private fun CardRoot(p: InspectPayload) {
+        val accent = accentFor(p)
+        val view = LocalView.current
+        val scope = rememberCoroutineScope()
+        val animate = remember { TagMotion.enabled && firstShow }
+        val off = remember { Animatable(if (animate) 900f else 0f) }
+        var flash by remember { mutableStateOf("") }
+
+        LaunchedEffect(Unit) {
+            if (off.value != 0f) off.animateTo(0f, spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow))
+        }
+        LaunchedEffect(flash) {
+            if (flash.isNotEmpty()) {
+                delay(900)
+                flash = ""
+            }
+        }
+
+        val dismiss: () -> Unit = {
+            scope.launch {
+                off.animateTo(2400f, tween(if (TagMotion.enabled) 170 else 1))
+                finish()
+            }
+        }
+        val onCopy: (String) -> Unit = { t ->
+            if (t.isNotBlank()) {
+                CapsuleCopyReceiver.copy(this@InspectDetailActivity, t)
+                view.tick(Tick.Confirm)
+                flash = t
+            }
+        }
+
+        val shape = remember(p.domain) { CardShapes.shapeFor(p.domain) }
+        val isColour = p.domain == "COLOUR"
+        val big = p.bigText
+        val copyValue = p.copyValue.ifBlank { big }
+        val hero = if (isColour) p.heroText else p.subText
+        val openTarget: (() -> Unit)? = when {
+            p.eventId > 0L -> ({ openEvent(p.eventId) })
+            isWeb(p.url) && p.domain != "DIMS" -> ({ openUrl(p.url) })
+            else -> null
+        }
+
+        Box(Modifier.fillMaxSize().plainClick(dismiss)) {
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 14.dp)
+                    .padding(bottom = 24.dp)
+                    .offset { IntOffset(0, off.value.roundToInt()) }
+                    .widthIn(max = 520.dp)
+                    .clip(shape)
+                    .background(TagColors.Black.copy(alpha = 0.97f))
+                    .border(1.dp, accent.copy(alpha = 0.28f), shape)
+                    // Taps on the card are the card's own; they must not fall through to the dismiss layer.
+                    .pointerInput(Unit) { detectTapGestures { } }
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                scope.launch {
+                                    if (off.value > 140.dp.toPx()) {
+                                        off.animateTo(2400f, tween(150))
+                                        finish()
+                                    } else {
+                                        off.animateTo(0f, spring(dampingRatio = 0.8f))
+                                    }
+                                }
+                            },
+                            onDragCancel = { scope.launch { off.animateTo(0f, spring(dampingRatio = 0.8f)) } },
+                            onVerticalDrag = { change, dy ->
+                                change.consume()
+                                scope.launch { off.snapTo((off.value + dy).coerceAtLeast(0f)) }
+                            }
+                        )
+                    }
+                    .padding(start = 26.dp, end = 26.dp, top = 22.dp, bottom = 22.dp)
+            ) {
+                // Label and the quiet arrow.
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    LabelPill(labelFor(p), accent)
+                    Spacer(Modifier.weight(1f))
+                    ArrowGlyph(active = openTarget != null, onClick = { openTarget?.invoke() })
+                }
+                Spacer(Modifier.height(14.dp))
+
+                if (hero.isNotBlank() && hero != big) {
+                    FitText(
+                        AnnotatedString(hero),
+                        style = TextStyle(
+                            fontFamily = Montserrat,
+                            fontWeight = if (isColour) FontWeight.Black else FontWeight.Medium,
+                            fontSize = if (isColour) 38.sp else 17.sp,
+                            lineHeight = if (isColour) 42.sp else 22.sp,
+                            color = if (isColour) TagColors.White else TagColors.White.copy(alpha = 0.72f)
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        minSize = if (isColour) 22.sp else 12.sp
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+                CardArt(p, accent, onCopy)
+                Spacer(Modifier.height(10.dp))
+
+                // Detail rows. For a colour, the name, hex and complement live elsewhere on the card.
+                val hidden = if (isColour) setOf("HEX", "Name", "Complement", "Readable with") else emptySet()
+                p.rows.filter { it.first !in hidden }.take(7).forEach { (k, v) ->
+                    DetailRow(k, v, flash == v, accent, onCopy)
+                }
+                if (isColour) {
+                    p.rows.firstOrNull { it.first == "Readable with" }?.let { row ->
+                        Spacer(Modifier.height(10.dp))
+                        ReadableChip(row.second, p.palette.firstOrNull()?.let { Color(it) } ?: accent, onCopy)
+                    }
+                }
+                if (p.fullContent.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    androidx.compose.material3.Text(
+                        p.fullContent.take(420),
+                        style = TextStyle(
+                            fontFamily = Montserrat, fontWeight = FontWeight.Light, fontSize = 13.sp, lineHeight = 19.sp,
+                            color = TagColors.White.copy(alpha = 0.82f)
+                        ),
+                        maxLines = 7,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.plainClick { onCopy(p.fullContent) }
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+                Actions(p, accent, copyValue)
+
+                // The big value: tap to copy.
+                Spacer(Modifier.height(4.dp))
+                FitText(
+                    AnnotatedString(big),
+                    style = TextStyle(
+                        fontFamily = DisplayFont, fontSize = 84.sp, lineHeight = 88.sp,
+                        color = if (flash == copyValue) accent else TagColors.White
+                    ),
+                    modifier = Modifier.fillMaxWidth().plainClick { onCopy(copyValue) },
+                    minSize = 24.sp
                 )
-            ).apply {
-                cornerRadius = dp(30).toFloat()
-                setStroke(dp(1), Color.argb(0x26, 255, 255, 255))
             }
-            isClickable = true
         }
-        card = cardView
+    }
 
-        // Drag handle: pull the card down to dismiss.
-        val handleZone = FrameLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(26))
-        }
-        handleZone.addView(View(this).apply {
-            background = GradientDrawable().apply {
-                setColor(Color.argb(0x55, 255, 255, 255))
-                cornerRadius = dp(2).toFloat()
-            }
-        }, FrameLayout.LayoutParams(dp(38), dp(4), Gravity.CENTER))
-        attachDrag(handleZone, cardView)
-        cardView.addView(handleZone)
+    @Composable
+    private fun Actions(p: InspectPayload, accent: Color, copyValue: String) {
+        val list = ArrayList<ActionSpec>()
+        if (p.resolveUrl.isNotBlank()) list.add(ActionSpec(if (busy == "RESOLVE") "…" else "RESOLVE") { runResolve(p) })
+        if (p.checkHost.isNotBlank()) list.add(ActionSpec(if (busy == "CHECK") "…" else "CHECK") { runCheck(p) })
+        if (p.eventId > 0L) list.add(ActionSpec("EVENT") { openEvent(p.eventId) })
+        if (isWeb(p.url) && p.domain != "DIMS") list.add(ActionSpec("OPEN") { openUrl(p.url) })
+        list.add(ActionSpec("SHARE") { share(copyValue) })
 
-        if (payload.domain.isNotBlank()) {
-            cardView.addView(TextView(this).apply {
-                text = payload.domain
-                textSize = 11f
-                letterSpacing = 0.16f
-                setTextColor(accent)
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            })
-        }
-
-        if (payload.palette.size >= 2) {
-            cardView.addView(
-                SwatchStrip(this, payload.palette),
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64)).apply { topMargin = dp(10) }
+        val view = LocalView.current
+        val heights = listOf(40.dp, 34.dp, 44.dp, 36.dp, 38.dp)
+        val padX = listOf(18.dp, 14.dp, 22.dp, 14.dp, 16.dp)
+        val ys = listOf(0.dp, 9.dp, 2.dp, 11.dp, 4.dp)
+        val shapes = remember {
+            listOf<Shape>(
+                CutCornerShape(topStart = 14.dp, bottomEnd = 14.dp),
+                RoundedCornerShape(50),
+                TicketShape(
+                    TicketSpec(notches = listOf(Notch(Edge.Left, 0.5f, 14f, 5f, Bite.Semi), Notch(Edge.Right, 0.5f, 14f, 5f, Bite.Semi)))
+                ),
+                RoundedCornerShape(topStart = 18.dp, bottomEnd = 18.dp, topEnd = 4.dp, bottomStart = 4.dp),
+                CutCornerShape(topEnd = 12.dp, bottomStart = 12.dp)
             )
         }
-
-        cardView.addView(TextView(this).apply {
-            text = payload.heroText
-            textSize = 30f
-            setTextColor(Color.WHITE)
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
-            setPadding(0, dp(6), 0, 0)
-            setTextIsSelectable(true)
-        })
-        if (payload.subText.isNotBlank()) {
-            cardView.addView(TextView(this).apply {
-                text = payload.subText
-                textSize = 14f
-                setTextColor(grey)
-                setPadding(0, dp(2), 0, 0)
-            })
-        }
-
-        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false }
-        val column = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(14), 0, dp(6))
-        }
-        payload.rows.forEach { (label, value) ->
-            val valueColor = when (label) {
-                "Warning" -> danger
-                "Note" -> warn
-                else -> Color.WHITE
-            }
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(0, dp(5), 0, dp(5))
-            }
-            row.addView(TextView(this).apply {
-                text = label
-                textSize = 13f
-                setTextColor(grey)
-                layoutParams = LinearLayout.LayoutParams(dp(92), ViewGroup.LayoutParams.WRAP_CONTENT)
-            })
-            row.addView(TextView(this).apply {
-                text = value
-                textSize = 14f
-                setTextColor(valueColor)
-                setLineSpacing(0f, 1.15f)
-                setTextIsSelectable(true)
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            column.addView(row)
-        }
-        if (payload.fullContent.isNotBlank()) {
-            column.addView(TextView(this).apply {
-                text = payload.fullContent
-                textSize = 14f
-                setTextColor(Color.parseColor("#E0E0E0"))
-                setLineSpacing(0f, 1.3f)
-                setTextIsSelectable(true)
-            })
-        }
-        scroll.addView(column)
-        cardView.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-
-        val buttons = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-            setPadding(0, dp(10), 0, 0)
-        }
-        val copyValue = payload.copyValue
-        if (copyValue.isNotBlank()) {
-            buttons.addView(pill("COPY", accent, Color.BLACK) {
-                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                CapsuleCopyReceiver.copy(this, copyValue)
-                finish()
-            })
-        }
-        val url = payload.url
-        if (url.startsWith("https://") || url.startsWith("http://")) {
-            buttons.addView(pill("OPEN", Color.argb(0x40, 255, 255, 255), Color.WHITE) {
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                } catch (_: Exception) {
-                }
-                finish()
-            })
-        }
-        if (payload.resolveUrl.isNotBlank()) {
-            buttons.addView(pill("RESOLVE", Color.argb(0x40, 255, 255, 255), Color.WHITE) { v ->
-                (v as TextView).text = "…"
-                v.isEnabled = false
-                Thread {
-                    val r = LinkCheck.resolveShort(payload.resolveUrl)
-                    val expanded = r.finalUrl?.let { UrlInspector.analyze(it) }
-                    runOnUiThread {
-                        if (isFinishing) return@runOnUiThread
-                        if (expanded == null) {
-                            show(payload.copy(resolveUrl = "", rows = payload.rows + ("Resolve" to "Couldn't expand it: ${r.problem ?: "unknown"}")), false)
-                        } else {
-                            val res = expanded.toResult().toPayload()
-                            show(res.copy(rows = listOf("Expanded from" to payload.title) + res.rows), false)
+        val onAccent = if (accent.luminance() > 0.4f) Color.Black else Color.White
+        Row(Modifier.fillMaxWidth().height(58.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            list.forEachIndexed { i, a ->
+                val k = i % heights.size
+                val primary = i == 0
+                Box(
+                    Modifier
+                        .offset(y = ys[k])
+                        .height(heights[k])
+                        .clip(shapes[k])
+                        .then(
+                            if (primary) Modifier.background(accent)
+                            else Modifier.border(1.dp, accent.copy(alpha = 0.7f), shapes[k])
+                        )
+                        .plainClick {
+                            view.tick(Tick.Press)
+                            a.onClick()
                         }
-                    }
-                }.start()
-            })
-        }
-        if (payload.checkHost.isNotBlank()) {
-            buttons.addView(pill("CHECK", Color.argb(0x40, 255, 255, 255), Color.WHITE) { v ->
-                (v as TextView).text = "…"
-                v.isEnabled = false
-                Thread {
-                    val out = LinkCheck.check(payload.checkHost)
-                    runOnUiThread {
-                        if (isFinishing) return@runOnUiThread
-                        val status = when {
-                            out.status == Status.ERROR || payload.status == "ERROR" -> "ERROR"
-                            out.status == Status.WARN || payload.status == "WARN" -> "WARN"
-                            else -> payload.status
-                        }
-                        show(payload.copy(checkHost = "", status = status, rows = payload.rows + out.rows), false)
-                    }
-                }.start()
-            })
-        }
-        buttons.addView(pill("DISMISS", Color.argb(0x26, 255, 255, 255), Color.parseColor("#D0D0D6")) { finish() })
-        cardView.addView(buttons)
-
-        root.addView(
-            cardView,
-            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.BOTTOM
-                setMargins(dp(14), (resources.displayMetrics.heightPixels * 0.12f).toInt(), dp(14), dp(24))
-            }
-        )
-        setContentView(root)
-
-        if (animate) {
-            cardView.alpha = 0f
-            cardView.translationY = dp(56).toFloat()
-            cardView.animate().alpha(1f).translationY(0f).setDuration(260)
-                .setInterpolator(DecelerateInterpolator(1.6f)).start()
-        }
-    }
-
-    private fun attachDrag(handle: View, card: View) {
-        var downY = 0f
-        handle.setOnTouchListener { v, e ->
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { downY = e.rawY; true }
-                MotionEvent.ACTION_MOVE -> { card.translationY = maxOf(0f, e.rawY - downY); true }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val dy = card.translationY
-                    if (e.actionMasked == MotionEvent.ACTION_UP && dy > dp(110)) {
-                        card.animate().translationY(card.height + dp(48).toFloat()).alpha(0f).setDuration(160)
-                            .withEndAction { finishNoAnim() }.start()
-                    } else {
-                        ValueAnimator.ofFloat(dy, 0f).apply {
-                            duration = 180
-                            interpolator = DecelerateInterpolator()
-                            addUpdateListener { card.translationY = it.animatedValue as Float }
-                        }.start()
-                    }
-                    v.performClick()
-                    true
+                        .padding(horizontal = padX[k]),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.material3.Text(
+                        a.label,
+                        style = TextStyle(
+                            fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.3.sp,
+                            color = if (primary) onAccent else accent
+                        )
+                    )
                 }
-                else -> false
             }
         }
     }
 
-    private fun pill(label: String, bg: Int, fg: Int, onClick: (View) -> Unit): TextView = TextView(this).apply {
-        text = label
-        textSize = 11f
-        letterSpacing = 0.08f
-        gravity = Gravity.CENTER
-        setTextColor(fg)
-        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        background = GradientDrawable().apply {
-            setColor(bg)
-            cornerRadius = dp(19).toFloat()
+    private class ActionSpec(val label: String, val onClick: () -> Unit)
+
+    // ------------------------------------------------------ pieces
+
+    @Composable
+    private fun LabelPill(text: String, accent: Color) {
+        Box(Modifier.border(1.dp, accent, RoundedCornerShape(50)).padding(horizontal = 13.dp, vertical = 5.dp)) {
+            androidx.compose.material3.Text(
+                text,
+                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.8.sp, color = accent)
+            )
         }
-        setPadding(dp(18), 0, dp(18), 0)
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)).apply { marginStart = dp(8) }
-        setOnClickListener(onClick)
     }
 
-    /** A colour and its complement side by side, each labelled with its hex in a readable ink. */
-    private class SwatchStrip(context: Context, private val colors: List<Int>) : View(context) {
-        private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textSize = 13f * resources.displayMetrics.scaledDensity
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        }
-        private val clip = Path()
-        private val rect = RectF()
-
-        override fun onDraw(canvas: Canvas) {
-            val radius = 16f * resources.displayMetrics.density
-            rect.set(0f, 0f, width.toFloat(), height.toFloat())
-            clip.reset()
-            clip.addRoundRect(rect, radius, radius, Path.Direction.CW)
-            canvas.save()
-            canvas.clipPath(clip)
-            // The colour gets three parts, its complement one.
-            val weights = if (colors.size == 2) floatArrayOf(3f, 1f) else FloatArray(colors.size) { 1f }
-            val total = weights.sum()
-            var x = 0f
-            colors.forEachIndexed { index, c ->
-                val w = width * weights[index] / total
-                fill.color = c
-                canvas.drawRect(x, 0f, x + w, height.toFloat(), fill)
-                val lum = (0.299 * Color.red(c) + 0.587 * Color.green(c) + 0.114 * Color.blue(c)) / 255.0
-                ink.color = if (lum > 0.6) Color.argb(0xCC, 0, 0, 0) else Color.argb(0xE6, 255, 255, 255)
-                val label = String.format("#%06X", c and 0xFFFFFF)
-                if (ink.measureText(label) < w - 16f) {
-                    canvas.drawText(label, x + 14f * resources.displayMetrics.density, height - 12f * resources.displayMetrics.density, ink)
+    /** A heavy, square-capped north-west arrow with a faint offset shadow. Deliberately quiet: not white on black. */
+    @Composable
+    private fun ArrowGlyph(active: Boolean, onClick: () -> Unit) {
+        Box(
+            Modifier.size(44.dp).then(if (active) Modifier.plainClick(onClick) else Modifier),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(Modifier.size(24.dp)) {
+                val sw = 3.2.dp.toPx()
+                val c = Color(0xFFC3C9D4)
+                val a = if (active) 0.55f else 0.34f
+                fun glyph(dx: Float, dy: Float, color: Color) {
+                    val t = 3.dp.toPx() + dx
+                    val u = 3.dp.toPx() + dy
+                    val e = 14.dp.toPx()
+                    val f = 21.dp.toPx()
+                    drawLine(color, Offset(t, u), Offset(t + e, u), strokeWidth = sw, cap = StrokeCap.Square)
+                    drawLine(color, Offset(t, u), Offset(t, u + e), strokeWidth = sw, cap = StrokeCap.Square)
+                    drawLine(color, Offset(t, u), Offset(t + f - 3.dp.toPx(), u + f - 3.dp.toPx()), strokeWidth = sw, cap = StrokeCap.Square)
                 }
-                x += w
+                glyph(2.dp.toPx(), 2.dp.toPx(), c.copy(alpha = 0.12f))
+                glyph(0f, 0f, c.copy(alpha = a))
             }
-            canvas.restore()
         }
     }
 
-    private fun finishNoAnim() {
-        super.finish()
-        overridePendingTransition(0, 0)
+    @Composable
+    private fun DetailRow(label: String, value: String, flashing: Boolean, accent: Color, onCopy: (String) -> Unit) {
+        Column(Modifier.fillMaxWidth().plainClick { onCopy(value) }) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.Top) {
+                androidx.compose.material3.Text(
+                    label.uppercase(),
+                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.2.sp, color = Color(0xFF6E737C)),
+                    modifier = Modifier.padding(top = 3.dp).widthIn(min = 92.dp, max = 92.dp)
+                )
+                androidx.compose.material3.Text(
+                    value,
+                    style = TextStyle(
+                        fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 19.sp,
+                        color = if (flashing) accent else TagColors.White
+                    ),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
+        }
+    }
+
+    /** "Black text, 17.9:1", filled with the colour itself. */
+    @Composable
+    private fun ReadableChip(text: String, fill: Color, onCopy: (String) -> Unit) {
+        val on = if (fill.luminance() > 0.4f) Color.Black else Color.White
+        Box(
+            Modifier
+                .clip(CutCornerShape(topEnd = 12.dp, bottomStart = 12.dp))
+                .background(fill)
+                .plainClick { onCopy(text) }
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            androidx.compose.material3.Text(
+                text,
+                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 0.4.sp, color = on)
+            )
+        }
+    }
+
+    @Composable
+    private fun Modifier.plainClick(onClick: () -> Unit): Modifier =
+        this.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+
+    // ------------------------------------------------------ look
+
+    private fun accentFor(p: InspectPayload): Color {
+        if (p.status == "ERROR") return Color(0xFFFF5A5A)
+        if (p.status == "WARN") return Color(0xFFFFB74D)
+        if (p.accent != 0) return Color(p.accent)
+        return when (p.domain) {
+            "CALC" -> Color(0xFFF9E800)
+            "CONV" -> Color(0xFF4DD0E1)
+            "MONEY" -> Color(0xFF69F0AE)
+            "TIME" -> Color(0xFF8C9EFF)
+            "DATE" -> Color(0xFFFFAB40)
+            "URL" -> Color(0xFF6C97FF)
+            "UPI" -> Color(0xFFB388FF)
+            "IFSC" -> Color(0xFFFFD54F)
+            "PIN" -> Color(0xFFFF8A65)
+            "NUM" -> Color(0xFF80DEEA)
+            "DEFINE" -> Color(0xFFF48FB1)
+            "WIKI" -> Color(0xFFE8E8E8)
+            "DIMS" -> Color(0xFF7AA2FF)
+            else -> TagColors.Lime
+        }
+    }
+
+    private fun labelFor(p: InspectPayload): String {
+        val base = when (p.domain) {
+            "COLOUR" -> "COLOUR"
+            "CALC" -> "CALC"
+            "CONV" -> "CONVERT"
+            "MONEY" -> "MONEY"
+            "TIME" -> "TIME"
+            "DATE" -> "DATE"
+            "URL" -> "LINK"
+            "UPI" -> "UPI"
+            "IFSC" -> "BANK"
+            "PIN" -> "POST"
+            "NUM" -> "NUMBER"
+            "DEFINE" -> "DEFINE"
+            "WIKI" -> "WIKI"
+            "DIMS" -> "DIMENSIONS"
+            else -> "TEXT"
+        }
+        return when (p.status) {
+            "WARN" -> "$base · CAUTION"
+            "ERROR" -> "$base · ERROR"
+            else -> base
+        }
     }
 
     override fun finish() {
