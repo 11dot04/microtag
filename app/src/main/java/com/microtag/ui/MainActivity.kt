@@ -28,7 +28,7 @@ import com.microtag.core.MicrotagPrefs
 import com.microtag.rules.RuleEngine
 import com.microtag.shizuku.ShizukuBridge
 
-private enum class Screen { Onboarding, Dashboard, Inspect, Settings, Stats }
+private enum class Screen { Onboarding, Dashboard, Inspect, Settings, Stats, Logs }
 
 class MainActivity : ComponentActivity() {
 
@@ -52,8 +52,13 @@ class MainActivity : ComponentActivity() {
                         mutableStateOf(if (prefs.hasCompletedOnboarding) Screen.Dashboard else Screen.Onboarding)
                     }
 
-                    // Onboarding sits on the accent colour; everything else is black.
-                    val lightBackdrop = screen == Screen.Onboarding && TagColors.Lime.luminance() > 0.5f
+                    // Onboarding sits on the accent colour, and so does the top of the dashboard until you scroll.
+                    var dashboardLight by remember { mutableStateOf(false) }
+                    val lightBackdrop = when (screen) {
+                        Screen.Onboarding -> TagColors.Lime.luminance() > 0.5f
+                        Screen.Dashboard -> dashboardLight
+                        else -> false
+                    }
                     LaunchedEffect(lightBackdrop) {
                         val clear = AndroidColor.TRANSPARENT
                         val style = if (lightBackdrop) SystemBarStyle.light(clear, clear) else SystemBarStyle.dark(clear)
@@ -79,10 +84,13 @@ class MainActivity : ComponentActivity() {
                                 prefs = prefs,
                                 onOpenInspect = { screen = Screen.Inspect },
                                 onOpenSettings = { screen = Screen.Settings },
-                                onOpenStats = { screen = Screen.Stats }
+                                onOpenStats = { screen = Screen.Stats },
+                                onOpenLogs = { screen = Screen.Logs },
+                                onBackdropChange = { dashboardLight = it }
                             )
                             Screen.Inspect -> InspectScreen(onBack = { screen = Screen.Dashboard })
                             Screen.Stats -> StatsScreen(prefs = prefs, onBack = { screen = Screen.Dashboard })
+                            Screen.Logs -> LogsScreen(onBack = { screen = Screen.Dashboard })
                             Screen.Settings -> SettingsScreen(
                                 onBack = { screen = Screen.Dashboard },
                                 // Replaying the intro never clears the saved "done" flag.
