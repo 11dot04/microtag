@@ -141,7 +141,7 @@ internal object CurrencyDetector {
         val srcRate = table.perUsd[p.code] ?: return null
 
         val local = localCode(env.locale)
-        val targets = listOf(local, "USD", "EUR", "GBP")
+        val targets = listOf(local, "USD")
             .filter { it != p.code && table.perUsd.containsKey(it) }
             .distinct()
             .take(4)
@@ -157,7 +157,7 @@ internal object CurrencyDetector {
         if (primaryValue.isNaN()) return null
         val pill = Fmt.money(primaryValue, primary, env.locale)
 
-        val rows = mutableListOf("Input" to inputText)
+        val rows = mutableListOf<Pair<String, String>>()
         targets.forEach { t ->
             val v = convert(t)
             if (!v.isNaN()) rows.add("In $t" to Fmt.money(v, t, env.locale))
