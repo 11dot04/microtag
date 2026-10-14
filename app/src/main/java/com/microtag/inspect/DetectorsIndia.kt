@@ -43,8 +43,8 @@ internal object UpiDetector {
     }
 
     private fun build(id: String, user: String, handle: String, provider: String?): InspectResult {
-        val rows = mutableListOf("Name part" to user, "Handle" to "@$handle")
-        rows.add("Provider" to (provider ?: "Not a handle I recognise"))
+        val rows = mutableListOf<Pair<String, String>>()
+        if (provider == null) rows.add("Note" to "Not a handle I recognise, so check it before paying")
         return InspectResult(
             domain = "UPI",
             pill = provider?.substringBefore(" · ")?.take(14) ?: "UPI ID",
@@ -54,6 +54,8 @@ internal object UpiDetector {
             cardText = id,
             rows = rows,
             copyText = id,
+            // The standard UPI payment link: a QR of it opens the pay screen in any UPI app, and so does the PAY button.
+            openUrl = "upi://pay?pa=$id&cu=INR",
             iconName = "ic_upi_rupee",
             timeoutSeconds = 20,
             status = if (provider == null) Status.WARN else Status.OK
