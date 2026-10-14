@@ -77,7 +77,16 @@ data class InspectResult(
     /** Site name the card's CHECK button may look up (DNS filtering, domain age). Blank = no button. */
     val checkHost: String = "",
     /** A shortened link the card's RESOLVE button may expand. Blank = no button. */
-    val resolveUrl: String = ""
+    val resolveUrl: String = "",
+    /** The large, tap-to-copy value on the card (the hex for a colour). Blank = the title. */
+    val big: String = "",
+    /** Picture shown on the card (Wikipedia thumbnail). */
+    val imageUrl: String = "",
+    /** Numbers a card graphic draws (dimensions: w, h, d). Meaning depends on the domain. */
+    val nums: List<Double> = emptyList(),
+    val unit: String = "",
+    /** Calendar event to open when the card's arrow is tapped (0 = none). */
+    val eventId: Long = 0L
 ) {
     fun toPayload(): InspectPayload = InspectPayload(
         domain = domain,
@@ -91,7 +100,12 @@ data class InspectResult(
         accent = accent ?: 0,
         palette = palette,
         checkHost = checkHost,
-        resolveUrl = resolveUrl
+        resolveUrl = resolveUrl,
+        big = big,
+        imageUrl = imageUrl,
+        nums = nums,
+        unit = unit,
+        eventId = eventId
     )
 }
 
