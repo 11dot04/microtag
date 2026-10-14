@@ -23,6 +23,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +40,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.microtag.R
+import com.microtag.inspect.InspectCard
+import com.microtag.inspect.InspectPayload
+import com.microtag.inspect.InspectSamples
 
 /** Back arrow row shared by the secondary screens. */
 @Composable
@@ -57,29 +64,71 @@ private class InspectTip(
     val output: String,
     val chipIcon: Int? = null,
     val glyph: String? = null,
-    val swatch: Color? = null
+    val swatch: Color? = null,
+    /** The expanded card this tip opens, shown for real so the showcase does the cards justice. */
+    val sample: (() -> InspectPayload)? = null
 )
 
 private val Tips = listOf(
     InspectTip(
         R.drawable.ic_inspect_calc, "Calculations", "Select a sum and the answer lands in the status bar.",
-        input = "345*73", output = "25185", glyph = "="
+        input = "345*73", output = "25185", glyph = "=", sample = InspectSamples::calc
     ),
     InspectTip(
-        R.drawable.ic_inspect_calc, "Timespan", "Select a date and see how far away it is.",
-        input = "09 November.", output = "in 29d", chipIcon = R.drawable.ic_calendar_countdown
+        R.drawable.ic_inspect_calc, "Timespan", "Select a date and see how far away it is. The card draws the months in between.",
+        input = "09 November.", output = "in 29d", chipIcon = R.drawable.ic_calendar_countdown, sample = InspectSamples::timespan
     ),
     InspectTip(
-        R.drawable.ic_inspect_convert, "Conversions", "Select an amount and see it in your own currency or unit.",
-        input = "\$38", output = "3681", glyph = "₹"
+        R.drawable.ic_calendar_countdown, "Time zones", "Select a time in any zone and see it on your clock, with the gap drawn out.",
+        input = "5 PM GMT", output = "10:30 pm", chipIcon = R.drawable.ic_calendar_countdown, sample = InspectSamples::time
     ),
     InspectTip(
-        R.drawable.ic_inspect_colour, "Colour swatch", "Select a colour code and preview the colour right in the chip.",
-        input = "#CCFF00", output = "#CCFF00", swatch = Color(0xFFCCFF00)
+        R.drawable.ic_inspect_convert, "Units", "Select a measurement and see it in the other system.",
+        input = "51 lb", output = "23.13 kg", glyph = "⇄", sample = InspectSamples::convert
     ),
     InspectTip(
-        R.drawable.ic_inspect_define, "Definitions", "Select a word. Tap the chip for the full entry.",
-        input = "dream", output = "sweven", chipIcon = R.drawable.ic_inspect_define
+        R.drawable.ic_inspect_convert, "Currency", "Select an amount and see it in your own currency.",
+        input = "\$38", output = "3681", glyph = "₹", sample = InspectSamples::money
+    ),
+    InspectTip(
+        R.drawable.ic_inspect_colour, "Colour swatch", "Select a colour code and see the colour, its name and its complement.",
+        input = "#CCFF00", output = "#CCFF00", swatch = Color(0xFFCCFF00), sample = InspectSamples::colour
+    ),
+    InspectTip(
+        R.drawable.ic_inspect_colour, "Colour names", "Works backwards too: select a colour name and get its hex code.",
+        input = "teal", output = "#008080", swatch = Color(0xFF008080), sample = InspectSamples::colour
+    ),
+    InspectTip(
+        R.drawable.ic_inspect_define, "Definitions", "Select a word. Tap the chip for the full entry, with every meaning.",
+        input = "raster", output = "scan lines", chipIcon = R.drawable.ic_inspect_define, sample = InspectSamples::define
+    ),
+    InspectTip(
+        R.drawable.ic_inspect_define, "Wikipedia", "Select a person, place or thing and get the summary, with a photo when there is one.",
+        input = "Alan Turing", output = "Alan", chipIcon = R.drawable.ic_inspect_define, sample = InspectSamples::wiki
+    ),
+    InspectTip(
+        R.drawable.ic_inspect_convert, "Links", "Copy or select a link. Trackers are stripped, shortened links can be unrolled, and a check looks at the site.",
+        input = "bit.ly/3xYzAb", output = "Short link", glyph = "!", sample = InspectSamples::link
+    ),
+    InspectTip(
+        R.drawable.ic_upi_rupee, "UPI IDs", "Copy a UPI ID to see which app it belongs to, scan it as a QR, or jump straight to paying.",
+        input = "ryan@oksbi", output = "Google Pay", glyph = "₹", sample = InspectSamples::upi
+    ),
+    InspectTip(
+        R.drawable.ic_upi_rupee, "Bank codes", "Select an IFSC code for the bank, branch and what it supports.",
+        input = "SBIN0001234", output = "SBI", glyph = "#", sample = InspectSamples::bank
+    ),
+    InspectTip(
+        R.drawable.ic_inspect_convert, "PIN codes", "Select a six-digit PIN for the place it covers.",
+        input = "400001", output = "Mumbai", glyph = "#", sample = InspectSamples::post
+    ),
+    InspectTip(
+        R.drawable.ic_equals, "Numbers", "Select a big number for its words, or the words for the number: \"three lakh fifty thousand\".",
+        input = "345464000", output = "34.5 cr", glyph = "=", sample = InspectSamples::number
+    ),
+    InspectTip(
+        R.drawable.ic_inspect_convert, "Dimensions", "Select sizes like 120 x 80 cm or 1920x1080 for area, volume, ratio, and a blueprint.",
+        input = "120 x 80 x 40 cm", output = "384 L", glyph = "×", sample = InspectSamples::dimensions
     )
 )
 
@@ -110,7 +159,7 @@ fun InspectScreen(onBack: () -> Unit) {
                 Modifier.fillMaxWidth()
             )
             Text(
-                "Select text anywhere. The answer shows up in the status bar.",
+                "Select text anywhere. The answer shows up in the status bar. Tap it for the full card.",
                 style = TextStyle(
                     fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 16.sp,
                     lineHeight = 22.sp, color = TagColors.Outline
@@ -139,6 +188,8 @@ fun InspectScreen(onBack: () -> Unit) {
 
 @Composable
 private fun TipCard(tip: InspectTip) {
+    var open by remember { mutableStateOf(false) }
+    val view = LocalView.current
     Column(
         Modifier
             .fillMaxWidth()
@@ -183,6 +234,28 @@ private fun TipCard(tip: InspectTip) {
             }
             TagIcon(R.drawable.ic_chevron_right, TagColors.Outline, size = 20.dp)
             ChipPreview(tip)
+        }
+        if (tip.sample != null) {
+            // The same card the chip opens, so Define, Wikipedia and the rest can be seen properly.
+            Box(
+                Modifier
+                    .clip(CircleShape)
+                    .border(1.5.dp, TagColors.Lime, CircleShape)
+                    .clickable { view.tick(Tick.Press); open = !open }
+                    .padding(horizontal = 14.dp, vertical = 7.dp)
+            ) {
+                Text(
+                    if (open) "HIDE CARD" else "SHOW CARD",
+                    style = TextStyle(
+                        fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 11.sp,
+                        letterSpacing = 1.4.sp, color = TagColors.Lime
+                    )
+                )
+            }
+            if (open) {
+                val sample = remember(tip) { tip.sample.invoke() }
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { InspectCard(sample) }
+            }
         }
     }
 }
