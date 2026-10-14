@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
+import com.microtag.R
 import com.microtag.core.MicrotagLog
 import com.microtag.core.MicrotagLog.Decision
 import com.microtag.core.MicrotagPrefs
@@ -59,10 +60,20 @@ object InspectEngine {
         }
     }
 
+    /** The colour-name list is a raw resource; load it once, on the worker thread. */
+    private fun loadColourNames(app: Context) {
+        if (ColourNames.isLoaded) return
+        try {
+            app.resources.openRawResource(R.raw.colour_names).bufferedReader().useLines { ColourNames.load(it) }
+        } catch (_: Exception) {
+        }
+    }
+
     fun inspect(context: Context, rawText: String, source: Source) {
         val app = context.applicationContext
         pool.execute {
             try {
+                loadColourNames(app)
                 run(app, rawText, source)
             } catch (t: Throwable) {
                 Log.w(TAG, "inspect failed: ${t.message}", t)
