@@ -132,7 +132,88 @@ internal object NumberDetector {
             cardTitle = "Number",
             cardText = words,
             rows = rows,
-            copyText = words,
+            copyText = Fmt.plain(value),
+            iconName = "ic_equals",
+            timeoutSeconds = 15
+        )
+    }
+}
+
+/** The reverse of the number card: "three lakh fifty thousand", "two hundred and five", "1.5 million" give digits. */
+internal object NumberFromWordsDetector {
+    private val small = listOf(
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
+        "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"
+    ).withIndex().associate { it.value to it.index.toLong() }
+    private val tens = mapOf(
+        "twenty" to 20L, "thirty" to 30L, "forty" to 40L, "fourty" to 40L, "fifty" to 50L,
+        "sixty" to 60L, "seventy" to 70L, "eighty" to 80L, "ninety" to 90L
+    )
+    private val scales = mapOf(
+        "thousand" to 1_000L, "lakh" to 100_000L, "lakhs" to 100_000L, "lac" to 100_000L, "lacs" to 100_000L,
+        "crore" to 10_000_000L, "crores" to 10_000_000L, "million" to 1_000_000L, "billion" to 1_000_000_000L,
+        "trillion" to 1_000_000_000_000L
+    )
+    private val digitScale = Regex("""^(\d+(?:\.\d+)?)\s*(thousand|lakh|lakhs|lac|lacs|crore|crores|million|billion|trillion)$""", RegexOption.IGNORE_CASE)
+
+    fun candidates(text: String, source: Source, env: Env): List<Candidate> {
+        if (source != Source.SELECTION) return emptyList()
+        val t = text.trim().trimEnd('.')
+        if (t.isEmpty() || t.length > 90) return emptyList()
+        digitScale.matchEntire(t)?.let { m ->
+            val n = m.groupValues[1].toDoubleOrNull() ?: return emptyList()
+            val v = n * (scales[m.groupValues[2].lowercase(Locale.ROOT)] ?: return emptyList())
+            if (v >= 1e15) return emptyList()
+            return listOf(Candidate("number-words", 0.6) { build(t, Math.round(v), env) })
+        }
+        val parsed = parse(t) ?: return emptyList()
+        val tokens = t.split(Regex("""[\s\-,]+""")).filter { it.isNotEmpty() && !it.equals("and", true) }
+        val score = if (tokens.size >= 2) 0.65 else 0.35
+        return listOf(Candidate("number-words", score) { build(t, parsed, env) })
+    }
+
+    /** Words to a number, or null if anything in the text is not a number word. */
+    internal fun parse(text: String): Long? {
+        val tokens = text.lowercase(Locale.ROOT).split(Regex("""[\s\-,]+""")).filter { it.isNotEmpty() && it != "and" }
+        if (tokens.isEmpty()) return null
+        var total = 0L
+        var current = 0L
+        var seen = false
+        for (tok in tokens) {
+            val s = small[tok]
+            val tn = tens[tok]
+            val sc = scales[tok]
+            when {
+                s != null -> { current += s; seen = true }
+                tn != null -> { current += tn; seen = true }
+                tok == "hundred" -> { current = (if (current == 0L) 1 else current) * 100; seen = true }
+                sc != null -> { total += (if (current == 0L) 1 else current) * sc; current = 0; seen = true }
+                else -> return null
+            }
+        }
+        val v = total + current
+        return if (seen && v < 1_000_000_000_000_000L) v else null
+    }
+
+    private fun build(original: String, value: Long, env: Env): InspectResult {
+        val indian = Fmt.grouped(value.toDouble(), Locale("en", "IN"), 0)
+        val intl = Fmt.grouped(value.toDouble(), Locale.US, 0)
+        val local = Fmt.grouped(value.toDouble(), env.locale, 0)
+        val rows = mutableListOf("Digits" to value.toString())
+        if (indian != intl) {
+            rows.add("Indian" to indian)
+            rows.add("International" to intl)
+        }
+        rows.add("Compact" to NumberWords.compactInternational(value.toDouble()))
+        return InspectResult(
+            domain = "NUM",
+            pill = local,
+            title = local,
+            subtitle = original.replaceFirstChar { it.uppercase(Locale.ROOT) },
+            cardTitle = "Number",
+            cardText = "$original = $local",
+            rows = rows,
+            copyText = value.toString(),
             iconName = "ic_equals",
             timeoutSeconds = 15
         )
