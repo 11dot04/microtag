@@ -11,6 +11,7 @@ object Detectors {
         val all = ArrayList<Candidate>()
         // Order matters only for ties: earlier wins (units before money, for example).
         all += ColourDetector.candidates(t, source)
+        all += DimensionDetector.candidates(t, source)
         all += UnitDetector.candidates(t, source)
         all += CurrencyDetector.candidates(t, source, env)
         all += MathDetector.candidates(t, source, env)
