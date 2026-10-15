@@ -44,18 +44,6 @@ import com.microtag.inspect.InspectCard
 import com.microtag.inspect.InspectPayload
 import com.microtag.inspect.InspectSamples
 
-/** Back arrow row shared by the secondary screens. */
-@Composable
-fun BackBar(onBack: () -> Unit) {
-    val view = LocalView.current
-    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier.size(48.dp).clip(CircleShape).clickable { view.tick(Tick.Press); onBack() },
-            contentAlignment = Alignment.Center
-        ) { TagIcon(R.drawable.ic_chevron_right, TagColors.White, Modifier.rotate(180f), 28.dp) }
-    }
-}
-
 private class InspectTip(
     val icon: Int,
     val title: String,
@@ -134,55 +122,38 @@ private val Tips = listOf(
 
 @Composable
 fun InspectScreen(onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(TagColors.Black)
-            .statusBarsPadding()
-    ) {
-        BackBar(onBack)
-        Column(
+    SubScreen(onBack) {
+        Spacer(Modifier.height(12.dp))
+        FitText(
+            AnnotatedString("Inspect"),
+            TextStyle(
+                fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 56.sp,
+                lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White
+            ),
+            Modifier.fillMaxWidth()
+        )
+        Text(
+            "Select text anywhere. The answer shows up in the status bar. Tap it for the full card.",
+            style = TextStyle(
+                fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 16.sp,
+                lineHeight = 22.sp, color = TagColors.Outline
+            )
+        )
+        Box(
             Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .clip(CircleShape)
+                .border(2.dp, TagColors.Lime, CircleShape)
+                .padding(horizontal = 14.dp, vertical = 6.dp)
         ) {
-            FitText(
-                AnnotatedString("Inspect"),
-                TextStyle(
-                    fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 56.sp,
-                    lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White
-                ),
-                Modifier.fillMaxWidth()
-            )
             Text(
-                "Select text anywhere. The answer shows up in the status bar. Tap it for the full card.",
+                "ALWAYS ON",
                 style = TextStyle(
-                    fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 16.sp,
-                    lineHeight = 22.sp, color = TagColors.Outline
+                    fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                    letterSpacing = 1.sp, color = TagColors.Lime
                 )
             )
-            Box(
-                Modifier
-                    .clip(CircleShape)
-                    .border(2.dp, TagColors.Lime, CircleShape)
-                    .padding(horizontal = 14.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    "ALWAYS ON",
-                    style = TextStyle(
-                        fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-                        letterSpacing = 1.sp, color = TagColors.Lime
-                    )
-                )
-            }
-            Spacer(Modifier.height(4.dp))
-            Tips.forEach { TipCard(it) }
-            Spacer(Modifier.height(32.dp))
         }
+        Tips.forEach { TipCard(it) }
     }
 }
 
