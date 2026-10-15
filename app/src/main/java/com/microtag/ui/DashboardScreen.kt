@@ -81,6 +81,10 @@ import kotlin.math.roundToInt
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import com.microtag.R
 import kotlinx.coroutines.delay
 import com.microtag.core.MicrotagPrefs
@@ -155,8 +159,9 @@ fun DashboardScreen(
     val proton = rememberToggle(prefs, MicrotagPrefs.KEY_PROTON)
 
     var paused by remember { mutableStateOf(settings.paused) }
-    val gridAlpha by animateFloatAsState(
-        if (paused) 0.38f else 1f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), label = "pausedDim"
+    // Pausing dims the tile section with a scrim that runs edge to edge, so the group frames in the gutter dim too.
+    val dimAlpha by animateFloatAsState(
+        if (paused) 0.62f else 0f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), label = "pausedDim"
     )
     var weatherOpen by remember { mutableStateOf(false) }
     var stravaOpen by remember { mutableStateOf(false) }
@@ -195,7 +200,29 @@ fun DashboardScreen(
     BoxWithConstraints(Modifier.fillMaxSize().background(TagColors.Black)) {
         // The poster fills the screen except for a strip of tiles that peeks out below it.
         val posterH = (maxHeight - 150.dp).coerceAtLeast(520.dp)
-        val posterPx = with(LocalDensity.current) { posterH.toPx() }
+        val density = LocalDensity.current
+        val view = LocalView.current
+        val posterPx = with(density) { posterH.toPx() }
+        // The poster is fully collapsed when its bottom edge sits exactly under the dock bar.
+        val dockBarPx = with(density) { (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp).toPx() }
+        val collapse = (posterPx - dockBarPx).coerceAtLeast(1f)
+
+        // Detent: never rest half-collapsed. Past 40% it settles collapsed, before that it bounces back open.
+        LaunchedEffect(collapse) {
+            snapshotFlow { scroll.isScrollInProgress }.collect { scrolling ->
+                if (!scrolling) {
+                    val v = scroll.value
+                    val end = collapse.toInt()
+                    if (v in 1 until end) {
+                        view.tick(Tick.Detent)
+                        scroll.animateScrollTo(
+                            if (v < collapse * 0.4f) 0 else end,
+                            spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)
+                        )
+                    }
+                }
+            }
+        }
 
         // The status bar icons need to be dark over the lime poster and light everywhere else.
         val lightBackdrop by remember(paused) {
@@ -214,6 +241,7 @@ fun DashboardScreen(
             onStats = onOpenStats,
             onLogs = onOpenLogs
         )
+        Box {
         Column(Modifier.padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(20.dp))
 
@@ -230,7 +258,7 @@ fun DashboardScreen(
         val b2 = b + 3f      // earbuds / sound mode
         val b3 = b2 + 2f     // music / VPN
 
-        TagGrid(Modifier.graphicsLayer { alpha = gridAlpha }) {
+        TagGrid {
             // ---- rows 0-1: Discord + Inspect
             TagFrame("Inspect", TagColors.Lime, Modifier.cell(2, 0, 2, 2, outset = 6.dp))
             BigTile(Modifier.cell(0, 0, 2, 2), R.drawable.ic_discord, "Discord", "CALLS", discord)
@@ -292,6 +320,9 @@ fun DashboardScreen(
         }
         Spacer(Modifier.height(40.dp))
         }
+        // Pause scrim: matches the whole section, margins and gutters included.
+        Box(Modifier.matchParentSize().graphicsLayer { alpha = dimAlpha }.background(TagColors.Black))
+        }
         EasterEgg()
       }
 
@@ -300,6 +331,7 @@ fun DashboardScreen(
           paused = paused,
           scroll = scroll,
           posterHeight = posterH,
+          collapseDistance = collapse,
           onStats = onOpenStats,
           onSettings = onOpenSettings,
           onTogglePause = togglePause
