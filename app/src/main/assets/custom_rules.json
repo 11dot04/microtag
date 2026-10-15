@@ -1,17 +1,17 @@
 [
   {
     "package_name": "com.google.android.apps.nbu.paisa.user",
-    "regex": "(?i)(?:received|credited with|sent you)\\D*₹?\\s*([\\d,]+(?:\\.\\d{2})?)",
-    "pill_text": "₹$1",
-    "icon_name": "ic_upi_rupee",
+    "regex": "(?i)(?:received|credited with|sent you|paid)\\D*(e?₹)?\\s*([\\d,]+(?:\\.\\d{2})?)",
+    "pill_text": "$1$2",
+    "icon_name": "ic_incoming",
     "timeout_seconds": 15,
     "tile": "upi"
   },
   {
     "package_name": "com.phonepe.app",
-    "regex": "(?i)(?:credited by|received)\\D*₹?\\s*([\\d,]+(?:\\.\\d{2})?)",
-    "pill_text": "₹$1",
-    "icon_name": "ic_upi_rupee",
+    "regex": "(?i)(?:credited by|received|paid)\\D*(e?₹)?\\s*([\\d,]+(?:\\.\\d{2})?)",
+    "pill_text": "$1$2",
+    "icon_name": "ic_incoming",
     "timeout_seconds": 15,
     "tile": "upi"
   },
