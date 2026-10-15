@@ -285,6 +285,7 @@ fun MonolithOverlay(
     paused: Boolean,
     scroll: ScrollState,
     posterHeight: Dp,
+    collapseDistance: Float,
     onStats: () -> Unit,
     onSettings: () -> Unit,
     onTogglePause: () -> Unit
@@ -304,7 +305,7 @@ fun MonolithOverlay(
         val bottomMargin = with(density) { 28.dp.toPx() }
         val statusTop = with(density) { topDp.toPx() }
         val dockInk = with(density) { 30.dp.toPx() }
-        val dockDist = posterPx * 0.75f
+        val dockDist = collapseDistance
 
         // The numeral's ink box at 100px, then sized so it fills the width (and a little more) or 56% of the poster.
         val ink = remember(digits, typeface) { numeralInk(typeface, digits) }
@@ -340,13 +341,13 @@ fun MonolithOverlay(
         val onPoster = posterFg.toArgb()
         val white = TagColors.White.toArgb()
 
-        // dock bar background
+        // Dock bar: solid, so nothing of the poster shows through once it has collapsed beneath it.
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(topDp + 70.dp)
-                .graphicsLayer { alpha = smooth(((scroll.value / dockDist - 0.55f) / 0.45f).coerceIn(0f, 1f)) }
-                .background(Brush.verticalGradient(listOf(TagColors.Black, TagColors.Black.copy(alpha = 0.94f), Color.Transparent)))
+                .height(topDp + 64.dp)
+                .graphicsLayer { alpha = smooth(((scroll.value / dockDist - 0.45f) / 0.55f).coerceIn(0f, 1f)) }
+                .background(TagColors.Black)
         )
 
         // the numeral
