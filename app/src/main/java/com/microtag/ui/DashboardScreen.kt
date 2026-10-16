@@ -204,8 +204,9 @@ fun DashboardScreen(
         val view = LocalView.current
         val posterPx = with(density) { posterH.toPx() }
         // The poster is fully collapsed when its bottom edge sits exactly under the dock bar.
-        val dockBarPx = with(density) { (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp).toPx() }
+        val dockBarPx = with(density) { (WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 48.dp).toPx() }
         val collapse = (posterPx - dockBarPx).coerceAtLeast(1f)
+        val posterVisible by remember { derivedStateOf { scroll.value < posterPx } }
 
         // Detent: never rest half-collapsed. Past 40% it settles collapsed, before that it bounces back open.
         LaunchedEffect(collapse) {
@@ -239,7 +240,8 @@ fun DashboardScreen(
             perms = perms,
             onTogglePause = togglePause,
             onStats = onOpenStats,
-            onLogs = onOpenLogs
+            onLogs = onOpenLogs,
+            active = posterVisible
         )
         Box {
         Column(Modifier.padding(horizontal = 20.dp)) {
@@ -358,7 +360,7 @@ internal fun PermissionBanner(perms: Permissions) {
     TagTile(
         Modifier.fillMaxWidth().height(84.dp),
         TagShapes.Rect,
-        TileState.Static,
+        TileState.Signal,
         onClick = { if (noListener) perms.openListenerSettings() else perms.requestNotifications() }
     ) { fg ->
         Row(
