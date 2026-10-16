@@ -116,7 +116,8 @@ internal object NumberDetector {
         val indianFirst = env.locale.country.equals("IN", ignoreCase = true)
 
         val words = if (indianFirst) ind else intl
-        val pill = if (indianFirst) NumberWords.compactIndian(value) else NumberWords.compactInternational(value)
+        val pill = if (PillConfig.NUMBER == "GROUPED") Fmt.grouped(value, env.locale)
+            else if (indianFirst) NumberWords.compactIndian(value) else NumberWords.compactInternational(value)
         val rows = mutableListOf("In words" to words.replaceFirstChar { it.uppercase(Locale.ROOT) })
         if (ind != intl) {
             if (indianFirst) rows.add("International" to intl) else rows.add("Indian" to ind)
@@ -134,7 +135,8 @@ internal object NumberDetector {
             rows = rows,
             copyText = Fmt.plain(value),
             iconName = "ic_equals",
-            timeoutSeconds = 15
+            timeoutSeconds = 15,
+            fact = NumberFacts.find(value, env.locale).orEmpty()
         )
     }
 }
@@ -215,7 +217,8 @@ internal object NumberFromWordsDetector {
             rows = rows,
             copyText = value.toString(),
             iconName = "ic_equals",
-            timeoutSeconds = 15
+            timeoutSeconds = 15,
+            fact = NumberFacts.find(value.toDouble(), env.locale).orEmpty()
         )
     }
 }
