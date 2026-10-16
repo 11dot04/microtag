@@ -48,6 +48,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -110,6 +111,14 @@ private fun SubFrame(
         )
 
         val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        // Fade under the floating buttons, so content never collides with them.
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(bottom + 110.dp)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, TagColors.Black)))
+        )
         FloatingButton(
             Modifier.align(Alignment.BottomStart).padding(start = 20.dp, bottom = bottom + 16.dp),
             filled = true, onClick = onBack
@@ -176,6 +185,8 @@ fun FloatingButton(
     modifier: Modifier = Modifier,
     filled: Boolean,
     onClick: () -> Unit,
+    accent: Color = TagColors.Lime,
+    onAccent: Color = TagColors.OnLime,
     icon: @Composable (tint: Color) -> Unit
 ) {
     val view = LocalView.current
@@ -185,15 +196,22 @@ fun FloatingButton(
         if (pressed && TagMotion.enabled) 0.9f else 1f,
         spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMedium), label = "fab"
     )
-    val tint = if (filled) TagColors.OnLime else TagColors.Lime
+    val tint = if (filled) onAccent else accent
     Box(
         modifier
             .size(56.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(CircleShape)
-            .background(if (filled) TagColors.Lime else TagColors.Black)
-            .border(2.dp, TagColors.Lime, CircleShape)
+            .background(if (filled) accent else TagColors.Black)
+            .border(2.dp, accent, CircleShape)
             .clickable(interactionSource = source, indication = null) { view.tick(Tick.Press); onClick() },
         contentAlignment = Alignment.Center
     ) { icon(tint) }
+}
+
+/** Lets a horizontally scrolling row run edge to edge: its content starts at the margin and slides under the screen edges. */
+fun Modifier.bleed(h: Dp): Modifier = this.layout { measurable, constraints ->
+    val extra = h.roundToPx()
+    val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = constraints.maxWidth + extra * 2))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-extra, 0) }
 }
