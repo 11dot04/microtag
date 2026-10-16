@@ -11,7 +11,9 @@ import android.os.Bundle
 class ProcessTextActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+        // PROCESS_TEXT comes from the selection toolbar; SEND comes from the share sheet, which nearly every app has.
+        val text = (intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)
+            ?: intent.getCharSequenceExtra(Intent.EXTRA_TEXT))?.toString()
         if (!text.isNullOrBlank()) {
             InspectEngine.inspect(applicationContext, text, Source.SELECTION)
         }
