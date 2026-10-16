@@ -8,14 +8,21 @@ import org.json.JSONObject
 // ==========================================================
 
 internal object EntityDetector {
-    private val shape = Regex("""^[\p{L}][\p{L}\p{N} .,'’&-]{1,58}$""")
+    // No length cap: "Fear and Loathing in Las Vegas" is a perfectly good title. Sentences are filtered by shape instead.
+    private val shape = Regex("""^[\p{L}\p{N}][\p{L}\p{N} .,'’&:–—!?()/-]+$""")
+    private val small = setOf("and", "of", "in", "the", "a", "an", "for", "on", "to", "at", "de", "la", "le", "von", "van", "der", "du", "del", "vs", "with", "from", "by", "or", "as")
 
     fun candidates(text: String, source: Source): List<Candidate> {
         if (source != Source.SELECTION) return emptyList()
         val t = text.trim().replace(Regex("\\s+"), " ")
         if (t.length < 3 || !shape.matches(t)) return emptyList()
         val words = t.split(' ')
-        if (words.size > 5) return emptyList()
+        // Reads like a title, not a sentence: most of the meaningful words are capitalised.
+        if (words.size > 1) {
+            val meaningful = words.filter { it.lowercase() !in small }
+            if (meaningful.isEmpty() || meaningful.count { it[0].isUpperCase() || it[0].isDigit() } * 2 < meaningful.size) return emptyList()
+            if (words.size > 3 && t.endsWith(".")) return emptyList()
+        }
         // A lowercase phrase is ordinary speech, not a name. A single lowercase word may still be a proper noun.
         if (words.size > 1 && t == t.lowercase()) return emptyList()
         return listOf(Candidate("entity", 0.3, slow = true) { lookup(t) })
@@ -60,10 +67,12 @@ internal object EntityDetector {
     internal fun build(s: Summary): InspectResult {
         val link = if (s.url.startsWith("https://")) s.url else ""
         if (s.type == "disambiguation") {
+            val lines = s.extract.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
             return InspectResult(
                 domain = "WIKI", pill = "Many matches", title = s.title, subtitle = "Disambiguation",
                 cardTitle = s.title, cardText = "This name can mean several things.",
-                body = s.extract.take(300), copyText = s.title, openUrl = link,
+                body = lines.firstOrNull().orEmpty().take(300), parts = lines.drop(1).take(12),
+                copyText = s.title, openUrl = link,
                 status = Status.WARN, timeoutSeconds = 20
             )
         }
@@ -72,7 +81,7 @@ internal object EntityDetector {
         val body = sentences.take(2).joinToString(" ").take(380)
         return InspectResult(
             domain = "WIKI",
-            pill = fitWords(s.title, 14),
+            pill = WikiPill.pill(PillConfig.WIKI, s.title, s.description, ::fitWords),
             title = s.title,
             subtitle = s.description,
             cardTitle = s.title,
