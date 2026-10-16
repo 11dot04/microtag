@@ -14,6 +14,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -68,10 +70,30 @@ class MainActivity : ComponentActivity() {
                     AnimatedContent(
                         targetState = screen,
                         transitionSpec = {
-                            (fadeIn(tween(350)) + scaleIn(
-                                initialScale = 0.94f,
-                                animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow)
-                            )) togetherWith fadeOut(tween(200))
+                            // Each screen grows out of the thing that opened it, and shrinks back into it.
+                            fun origin(screen: Screen) = when (screen) {
+                                Screen.Stats -> TransformOrigin(0.15f, 0.78f)      // the numeral
+                                Screen.Settings -> TransformOrigin(0.93f, 0.05f)   // the gear
+                                Screen.Logs -> TransformOrigin(0.30f, 0.20f)       // the controls
+                                Screen.Inspect -> TransformOrigin(0.80f, 0.72f)    // the Inspect tiles
+                                else -> TransformOrigin.Center
+                            }
+                            if (targetState == Screen.Dashboard) {
+                                (fadeIn(tween(260)) + scaleIn(
+                                    initialScale = 0.94f,
+                                    animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)
+                                )) togetherWith (fadeOut(tween(160)) + scaleOut(
+                                    targetScale = 0.25f,
+                                    transformOrigin = origin(initialState),
+                                    animationSpec = tween(320, easing = TagEase.Reveal)
+                                ))
+                            } else {
+                                (fadeIn(tween(220)) + scaleIn(
+                                    initialScale = 0.25f,
+                                    transformOrigin = origin(targetState),
+                                    animationSpec = tween(380, easing = TagEase.Reveal)
+                                )) togetherWith fadeOut(tween(160))
+                            }
                         },
                         label = "ScreenSwitch"
                     ) { s ->
