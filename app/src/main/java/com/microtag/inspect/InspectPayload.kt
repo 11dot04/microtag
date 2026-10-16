@@ -36,7 +36,10 @@ data class InspectPayload(
     val imageUrl: String = "",
     val nums: List<Double> = emptyList(),
     val unit: String = "",
-    val eventId: Long = 0L
+    val eventId: Long = 0L,
+    val fact: String = "",
+    val caption: String = "",
+    val parts: List<String> = emptyList()
 ) : Serializable {
 
     val bigText: String get() = big.ifBlank { heroText }
@@ -50,6 +53,6 @@ data class InspectPayload(
             copyText.isBlank() && fullContent.isBlank() && rows.isEmpty()
 
     companion object {
-        private const val serialVersionUID = 5L
+        private const val serialVersionUID = 6L
     }
 }
