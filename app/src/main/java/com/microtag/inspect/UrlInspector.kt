@@ -81,6 +81,19 @@ internal object UrlInspector {
         val noteworthy: Boolean get() = strong.isNotEmpty() || mild.any { it.startsWith("Shortened") } || trackersRemoved > 0 || unwrapped
         val risky: Boolean get() = strong.isNotEmpty() || mild.size >= 2
 
+        /** A few words about where the link goes, from its path: "how to tie a tie", "Homepage", "Short link". */
+        private fun pageHint(url: String, short: Boolean): String {
+            if (short) return "Short link"
+            val path = url.substringAfter("://").substringAfter('/', "").substringBefore('?').substringBefore('#').trim('/')
+            if (path.isEmpty()) return "Homepage"
+            val last = path.substringAfterLast('/').substringBeforeLast('.').let {
+                try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { it }
+            }
+            val words = last.replace(Regex("[-_+]+"), " ").trim()
+            val readable = words.any { it.isLetter() } && words.length in 3..60 && !Regex("^[0-9a-fA-F]{12,}$").matches(words)
+            return if (readable) words else "Page · /" + path.substringBefore('/').take(24)
+        }
+
         fun toResult(): InspectResult {
             val displayHost = try {
                 IDN.toUnicode(host)
@@ -99,7 +112,7 @@ internal object UrlInspector {
                 domain = "URL",
                 pill = if (risky) "Check link" else displayHost,
                 title = displayHost,
-                subtitle = if (total == 0) "Link" else "Link · $total ${if (total == 1) "flag" else "flags"}",
+                subtitle = pageHint(cleaned, shortened) + if (total == 0) "" else " · $total ${if (total == 1) "flag" else "flags"}",
                 cardTitle = if (risky) "Check this link" else "Link",
                 cardText = if (risky) "${strong.firstOrNull() ?: mild.first()}" else cleaned,
                 rows = rows,
