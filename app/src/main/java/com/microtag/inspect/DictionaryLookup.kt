@@ -273,6 +273,8 @@ internal object DefineDetector {
         return listOf(Candidate("define", 0.4, slow = true) { build(dict.lookup(word)) })
     }
 
+    private fun firstSeen(senses: List<Sense>, pos: String): Int = senses.indexOfFirst { it.pos.equals(pos, ignoreCase = true) }
+
     private fun short(s: String, max: Int): String =
         if (s.length <= max) s else s.take(max - 1).trimEnd() + "…"
 
@@ -299,14 +301,14 @@ internal object DefineDetector {
         val first = r.senses.first()
         val rows = mutableListOf<Pair<String, String>>()
         var lastPos = "\u0000"
-        r.senses.take(4).forEach {
-            // The part of speech is named once per group instead of on every line.
+        // Senses are grouped by part of speech (named once), and each example follows its own sense.
+        val ordered = r.senses.withIndex().sortedWith(compareBy({ firstSeen(r.senses, it.value.pos) }, { it.index })).map { it.value }
+        ordered.take(12).forEach {
             val label = if (it.pos.equals(lastPos, ignoreCase = true)) "" else it.pos.ifBlank { "Meaning" }
             lastPos = it.pos
-            rows.add(label to short(it.definition, 190))
+            rows.add(label to short(it.definition, 220))
+            if (it.example.isNotBlank()) rows.add("Example" to "\u201c${short(it.example, 160)}\u201d")
         }
-        r.senses.firstOrNull { it.example.isNotBlank() }?.let { rows.add("Example" to "\u201c${it.example}\u201d") }
-        if (r.sources.isNotEmpty()) rows.add("Source" to r.sources.joinToString(", "))
         return InspectResult(
             domain = "DEFINE",
             pill = pillFor(PillStyle.valueOf(DEFINE_PILL_STYLE_DEFAULT), r, first.definition),
@@ -316,6 +318,7 @@ internal object DefineDetector {
             cardText = first.definition,
             rows = rows,
             copyText = "${r.word}: ${first.definition}",
+            caption = r.sources.joinToString(" · "),
             iconName = "ic_inspect_define",
             openUrl = "https://en.wiktionary.org/wiki/${Http.encode(r.word)}",
             timeoutSeconds = 25
@@ -326,7 +329,7 @@ internal object DefineDetector {
 /** What the collapsed pill shows for a definition. GLOSS = a one-to-three word head of the meaning. */
 internal enum class PillStyle { GLOSS, IPA, WORD }
 
-internal const val DEFINE_PILL_STYLE_DEFAULT = "IPA"
+internal const val DEFINE_PILL_STYLE_DEFAULT = "GLOSS"
 
 private val danglingWords = setOf("of", "a", "an", "the", "to", "in", "for", "and", "or", "with", "by", "on", "as", "at", "that", "is")
 
