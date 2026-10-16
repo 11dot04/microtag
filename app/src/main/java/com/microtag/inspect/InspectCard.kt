@@ -2,12 +2,11 @@ package com.microtag.inspect
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,9 +15,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -29,23 +25,18 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.microtag.R
-import com.microtag.ui.FitText
-import com.microtag.ui.Montserrat
 import com.microtag.ui.TagColors
-import com.microtag.ui.TagIcon
 import com.microtag.ui.Tick
 import com.microtag.ui.tick
 import kotlin.math.abs
@@ -55,30 +46,7 @@ import kotlin.math.abs
  */
 val DisplayFont = FontFamily(Font(R.font.display))
 
-/** Accent colour for a card. */
-fun cardAccent(p: InspectPayload): Color {
-    if (p.status == "ERROR") return Color(0xFFFF5A5A)
-    if (p.status == "WARN") return Color(0xFFFFB74D)
-    if (p.accent != 0) return Color(p.accent)
-    return when (p.domain) {
-        "CALC" -> Color(0xFFF9E800)
-        "CONV" -> Color(0xFF4DD0E1)
-        "MONEY" -> Color(0xFF69F0AE)
-        "TIME" -> Color(0xFF8C9EFF)
-        "DATE" -> Color(0xFFFFAB40)
-        "URL" -> Color(0xFF6C97FF)
-        "UPI" -> Color(0xFFB388FF)
-        "IFSC" -> Color(0xFFFFD54F)
-        "PIN" -> Color(0xFFFF8A65)
-        "NUM" -> Color(0xFF80DEEA)
-        "DEFINE" -> Color(0xFFF48FB1)
-        "WIKI" -> Color(0xFFE8E8E8)
-        "DIMS" -> Color(0xFF7AA2FF)
-        else -> TagColors.Lime
-    }
-}
-
-private fun labelFor(p: InspectPayload): String {
+internal fun labelFor(p: InspectPayload): String {
     val base = when (p.domain) {
         "COLOUR" -> "COLOUR"
         "CALC" -> "CALC"
@@ -107,7 +75,7 @@ private fun labelFor(p: InspectPayload): String {
 fun canOpen(p: InspectPayload): Boolean =
     p.domain != "DIMS" && (p.url.startsWith("https://") || p.url.startsWith("http://") || p.url.startsWith("upi://"))
 
-private fun openLabel(p: InspectPayload) = if (p.url.startsWith("upi://")) "PAY" else "OPEN"
+internal fun openLabel(p: InspectPayload) = if (p.url.startsWith("upi://")) "PAY" else "OPEN"
 
 /** Everything on the card as plain text, for the share arrow. */
 fun InspectPayload.shareText(): String {
@@ -115,10 +83,12 @@ fun InspectPayload.shareText(): String {
     val hero = if (domain == "COLOUR") heroText else subText
     if (hero.isNotBlank() && hero != bigText) sb.append(hero).append('\n')
     sb.append(bigText).append('\n')
+    parts.takeIf { domain == "CALC" }?.forEach { sb.append(it).append('\n') }
+    if (fact.isNotBlank()) sb.append(fact).append('\n')
     val seen = HashSet<String>()
     for ((k, v) in rows) {
         if (v.isBlank() || !seen.add("$k$v")) continue
-        sb.append(if (k.isBlank()) "• " else "$k: ").append(v).append('\n')
+        sb.append(if (k.isBlank()) "• " else if (k == "Example") "  " else "$k: ").append(v).append('\n')
     }
     if (fullContent.isNotBlank()) sb.append('\n').append(fullContent).append('\n')
     if (url.isNotBlank() && !url.startsWith("upi://")) sb.append('\n').append(url)
@@ -129,10 +99,95 @@ fun InspectPayload.shareText(): String {
 private fun hiddenLabels(domain: String): Set<String> = when (domain) {
     "COLOUR" -> setOf("HEX", "Name", "Complement", "Readable with", "RGB", "HSL")
     "CALC" -> setOf("Expression", "Result")
+    "TIME" -> setOf("From", "Local", "Day")
+    "DATE" -> setOf("Date", "Relative", "Breakdown", "Week", "Day of year")
     else -> emptySet()
 }
 
 private enum class ArrowSlot { Header, Hero, Actions }
+
+/** Everything a card body needs, so the bodies stay small. */
+internal class CardCtx(
+    val p: InspectPayload,
+    val accent: Color,
+    val busy: String,
+    val flash: String,
+    val onCopy: (String) -> Unit,
+    val onShare: () -> Unit,
+    val onOpen: () -> Unit,
+    val onCheck: () -> Unit,
+    val onResolve: () -> Unit,
+    val onEvent: () -> Unit,
+    val drag: Modifier
+) {
+    fun actions(): List<Pair<String, () -> Unit>> {
+        val out = ArrayList<Pair<String, () -> Unit>>()
+        if (p.resolveUrl.isNotBlank()) out.add((if (busy == "RESOLVE") "…" else "RESOLVE") to onResolve)
+        if (p.checkHost.isNotBlank()) out.add((if (busy == "CHECK") "…" else "CHECK") to onCheck)
+        if (p.eventId > 0L) out.add("EVENT" to onEvent)
+        return out
+    }
+}
+
+/** The header row: category pill, OPEN / PAY, and (when it lives here) the share arrow. */
+@Composable
+internal fun CardHeader(c: CardCtx, arrowHere: Boolean) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        LabelPill(labelFor(c.p), pillTint(c.p))
+        Spacer(Modifier.weight(1f))
+        if (canOpen(c.p)) {
+            OpenPill(openLabel(c.p), c.accent, c.onOpen)
+            Spacer(Modifier.size(14.dp))
+        }
+        if (arrowHere) ShareArrow(c.onShare)
+    }
+}
+
+/**
+ * The card's body: surface, outline, shape and the dashed tear line.
+ * [content] lays itself out inside; [padded] adds the usual card padding.
+ */
+@Composable
+internal fun CardFrame(
+    p: InspectPayload,
+    modifier: Modifier,
+    dragModifier: Modifier,
+    surface: Color,
+    maxWidth: Dp,
+    padded: Boolean = true,
+    swallowDrag: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val shape = remember(p.domain) { CardShapes.shapeFor(p.domain) }
+    val tear = CardShapes.hasTear(p.domain)
+    val maxH = (LocalConfiguration.current.screenHeightDp * 0.86f).dp
+    val grey = surface == Surface.Grey
+    val outline = if (grey) Color.Black.copy(alpha = 0.4f) else TagColors.Outline
+    Column(
+        modifier
+            .widthIn(max = maxWidth)
+            .fillMaxWidth()
+            .heightIn(max = maxH)
+            .clip(shape)
+            .background(surface)
+            .drawBehind {
+                if (tear) {
+                    // The perforation between the two side semicircles.
+                    val y = size.height - CardShapes.TEAR_FROM_BOTTOM.dp.toPx()
+                    drawLine(
+                        Color.White.copy(alpha = 0.26f), Offset(26.dp.toPx(), y), Offset(size.width - 26.dp.toPx(), y),
+                        strokeWidth = 1.2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 5.dp.toPx()))
+                    )
+                }
+            }
+            .then(if (CARD_OUTLINE_DP > 0f) Modifier.border(CARD_OUTLINE_DP.dp, outline, shape) else Modifier)
+            // Taps on the card are the card's own; they must not fall through to a dismiss layer behind it.
+            .pointerInput(Unit) { detectTapGestures { } }
+            .then(if (swallowDrag) dragModifier else Modifier)
+            .then(if (padded) Modifier.padding(start = 26.dp, end = 26.dp, top = 22.dp, bottom = 28.dp) else Modifier),
+        content = content
+    )
+}
 
 /**
  * The expanded card. Shape and graphic depend on [InspectPayload.domain]. Everything on it that holds a value
@@ -154,312 +209,143 @@ fun InspectCard(
     onEvent: () -> Unit = {},
     dragModifier: Modifier = Modifier
 ) {
-    val accent = cardAccent(p)
+    val c = CardCtx(p, cardAccent(p), busy, flash, onCopy, onShare, onOpen, onCheck, onResolve, onEvent, dragModifier)
+    when (p.domain) {
+        "COLOUR" -> ColourCard(c, modifier)
+        "WIKI" -> WikiCard(c, modifier)
+        "TIME" -> TimeCard(c, modifier)
+        "DATE" -> DateCard(c, modifier)
+        "DEFINE" -> DefineCard(c, modifier)
+        else -> StandardCard(c, modifier)
+    }
+}
+
+// ---------------------------------------------------------------- the standard card
+
+/** Hero type per card. URL and UPI are set in the sans face; the rest use the display font. */
+private fun heroStyle(p: InspectPayload, color: Color) = when (p.domain) {
+    "URL" -> sans(52f, FontWeight.Bold, color).copy(letterSpacing = (-1.2).sp)
+    "UPI" -> sans(46f, FontWeight.Bold, color).copy(letterSpacing = (-1.0).sp)
+    "IFSC" -> androidx.compose.ui.text.TextStyle(fontFamily = DisplayFont, fontSize = 84.sp, letterSpacing = 1.2.sp, color = color)
+    else -> androidx.compose.ui.text.TextStyle(fontFamily = DisplayFont, fontSize = 84.sp, color = color)
+}
+
+@Composable
+private fun StandardCard(c: CardCtx, modifier: Modifier) {
+    val p = c.p
     val view = LocalView.current
-    val shape = remember(p.domain) { CardShapes.shapeFor(p.domain) }
-    val isColour = p.domain == "COLOUR"
-    val isDefine = p.domain == "DEFINE"
+    val tear = CardShapes.hasTear(p.domain)
     val big = p.bigText
     val copyValue = p.copyValue.ifBlank { big }
     val bigDisplay = if (p.domain == "CALC") "= $big" else big
-    val hero = if (isColour) p.heroText else p.subText
+    val isReverseDims = p.domain == "DIMS" && p.rows.firstOrNull()?.first == "Standard"
+    val hero = when {
+        isReverseDims -> "${p.title} · ${p.subText}"
+        else -> p.subText
+    }
     val showHero = hero.isNotBlank() && hero != big
+    val actions = c.actions()
 
-    val actions = ArrayList<Pair<String, () -> Unit>>()
-    if (p.resolveUrl.isNotBlank()) actions.add((if (busy == "RESOLVE") "…" else "RESOLVE") to onResolve)
-    if (p.checkHost.isNotBlank()) actions.add((if (busy == "CHECK") "…" else "CHECK") to onCheck)
-    if (p.eventId > 0L) actions.add("EVENT" to onEvent)
-
-    // The share arrow lives somewhere different on different cards.
     val slots = ArrayList<ArrowSlot>().apply {
         add(ArrowSlot.Header)
         if (showHero) add(ArrowSlot.Hero)
         if (actions.isNotEmpty()) add(ArrowSlot.Actions)
     }
     val slot = slots[abs((p.domain + p.copyValue).hashCode()) % slots.size]
-    val arrow: @Composable () -> Unit = { ShareArrow(onShare) }
 
-    val maxH = (LocalConfiguration.current.screenHeightDp * 0.86f).dp
-    val tear = CardShapes.hasTear(p.domain)
-
-    val header: @Composable () -> Unit = {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            LabelPill(labelFor(p), accent)
-            Spacer(Modifier.weight(1f))
-            if (canOpen(p)) {
-                OpenPill(openLabel(p), accent, onOpen)
-                Spacer(Modifier.size(6.dp))
-            }
-            if (slot == ArrowSlot.Header) arrow()
-        }
-    }
-
-    Column(
-        modifier
-            .widthIn(max = if (isColour) 320.dp else 520.dp)
-            .fillMaxWidth()
-            .heightIn(max = maxH)
-            .clip(shape)
-            .background(TagColors.Black.copy(alpha = 0.97f))
-            .drawBehind {
-                if (tear) {
-                    // The perforation between the two side notches.
-                    val y = size.height - CardShapes.TEAR_FROM_BOTTOM.dp.toPx()
-                    drawLine(
-                        Color.White.copy(alpha = 0.22f), Offset(26.dp.toPx(), y), Offset(size.width - 26.dp.toPx(), y),
-                        strokeWidth = 1.2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 5.dp.toPx()))
-                    )
-                }
-            }
-            .border(1.dp, accent.copy(alpha = 0.28f), shape)
-            // Taps on the card are the card's own; they must not fall through to a dismiss layer behind it.
-            .pointerInput(Unit) { detectTapGestures { } }
-            .then(if (isDefine) Modifier else dragModifier)
-            .padding(start = 26.dp, end = 26.dp, top = 22.dp, bottom = 28.dp)
-    ) {
-        // Header. On the Define card only this strip drags, so the entries below can scroll.
-        Box(if (isDefine) dragModifier else Modifier) { header() }
+    CardFrame(p, modifier, c.drag, Surface.Black, if (p.domain == "UPI" || p.domain == "PIN") 400.dp else 520.dp) {
+        CardHeader(c, slot == ArrowSlot.Header)
         Spacer(Modifier.height(12.dp))
 
-        val body: @Composable () -> Unit = {
-            if (showHero) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    FitText(
-                        AnnotatedString(hero),
-                        style = TextStyle(
-                            fontFamily = Montserrat,
-                            fontWeight = if (isColour) FontWeight.Black else FontWeight.Medium,
-                            fontSize = if (isColour) 36.sp else 17.sp,
-                            lineHeight = if (isColour) 40.sp else 22.sp,
-                            color = if (isColour) TagColors.White else TagColors.White.copy(alpha = 0.72f)
-                        ),
-                        modifier = Modifier.weight(1f),
-                        minSize = if (isColour) 20.sp else 12.sp
-                    )
-                    if (slot == ArrowSlot.Hero) arrow()
-                }
-                Spacer(Modifier.height(10.dp))
-            }
-
-            if (hasArt(p.domain)) {
-                CardArt(p, accent, onCopy)
-                Spacer(Modifier.height(10.dp))
-            }
-
-            if (isColour) ColourDetails(p, flash, accent, onCopy)
-
-            val hidden = hiddenLabels(p.domain)
-            val rows = p.rows
-                .filter { it.first !in hidden }
-                .filter { !it.second.equals(hero, true) && !it.second.equals(big, true) }
-                .let { if (isDefine) it else it.take(7) }
-            rows.forEach { (k, v) -> DetailRow(k, v, flash == v, accent, onCopy) }
-
-            if (p.fullContent.isNotBlank()) {
-                Spacer(Modifier.height(10.dp))
+        if (showHero) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    p.fullContent.take(if (isDefine) 4000 else 420),
-                    style = TextStyle(
-                        fontFamily = Montserrat, fontWeight = FontWeight.Light, fontSize = 13.sp, lineHeight = 19.sp,
-                        color = TagColors.White.copy(alpha = 0.82f)
-                    ),
-                    maxLines = if (isDefine) Int.MAX_VALUE else 7,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.plainClick { onCopy(p.fullContent) }
+                    hero,
+                    style = sans(if (p.domain == "CALC") 20f else 17f, FontWeight.Medium, TagColors.White.copy(alpha = 0.78f)).copy(lineHeight = 24.sp),
+                    maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
                 )
+                if (slot == ArrowSlot.Hero) ShareArrow(c.onShare)
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+
+        if (hasArt(p.domain)) {
+            CardArt(p, c.accent, c.onCopy)
+            Spacer(Modifier.height(10.dp))
+        }
+
+        val hidden = hiddenLabels(p.domain)
+        val cap = if (p.domain == "CONV") 5 else 7
+        val rows = p.rows
+            .filter { it.first !in hidden }
+            .filter { !it.second.equals(hero, true) && !it.second.equals(big, true) }
+            .take(cap)
+        rows.forEachIndexed { i, (k, v) ->
+            // On tear cards the dashed line takes the place of the last separator.
+            DetailRow(k, v, c.flash == v, c.accent, separator = !(tear && i == rows.lastIndex), onCopy = c.onCopy)
+        }
+
+        if (p.fullContent.isNotBlank()) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                p.fullContent.take(420),
+                style = sans(13f, FontWeight.Light, TagColors.White.copy(alpha = 0.82f)).copy(lineHeight = 19.sp),
+                maxLines = 7, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.plainClick { c.onCopy(p.fullContent) }
+            )
+        }
+
+        if (p.domain == "CALC" && p.parts.isNotEmpty()) {
+            // The working, like a tape: each step on its own line above the result.
+            Spacer(Modifier.height(12.dp))
+            p.parts.forEach { line ->
+                Text(line, style = sans(15f, FontWeight.Medium, Paper.Ink.copy(alpha = 0.85f)).copy(lineHeight = 22.sp), maxLines = 1)
             }
         }
 
-        if (isDefine) {
-            // Entries can be many and long; scroll them rather than cut them.
-            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) { body() }
-        } else {
-            body()
-        }
-
-        Spacer(Modifier.height(12.dp))
         if (actions.isNotEmpty() || slot == ArrowSlot.Actions) {
+            Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 actions.forEachIndexed { i, a ->
-                    ActionPill(a.first, accent, filled = i == 0) {
-                        view.tick(Tick.Press)
-                        a.second()
-                    }
+                    ActionPill(a.first, c.accent, filled = i == 0) { view.tick(Tick.Press); a.second() }
                 }
                 Spacer(Modifier.weight(1f))
-                if (slot == ArrowSlot.Actions) arrow()
+                if (slot == ArrowSlot.Actions) ShareArrow(c.onShare)
             }
-            Spacer(Modifier.height(6.dp))
         }
 
-        // The big value: tap to copy. WIKI shows its name over the photo instead.
-        if (p.domain != "WIKI") {
-            FitText(
-                AnnotatedString(bigDisplay),
-                style = TextStyle(
-                    fontFamily = DisplayFont, fontSize = if (isColour) 70.sp else 84.sp, lineHeight = if (isColour) 74.sp else 88.sp,
-                    color = if (flash == copyValue) accent else TagColors.White
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(end = CardShapes.bigEndInset(p.domain).dp)
-                    .plainClick { onCopy(copyValue) },
-                minSize = 24.sp
-            )
-        } else if (slot == ArrowSlot.Actions || actions.isEmpty()) {
-            // Nothing below the photo's text; keep the card from ending abruptly.
-            Spacer(Modifier.height(2.dp))
-        }
-    }
-}
-
-// ---------------------------------------------------------------- pieces
-
-@Composable
-private fun Modifier.plainClick(onClick: () -> Unit): Modifier =
-    this.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
-
-@Composable
-private fun LabelPill(text: String, accent: Color) {
-    Box(Modifier.border(1.dp, accent, RoundedCornerShape(50)).padding(horizontal = 13.dp, vertical = 5.dp)) {
-        Text(
-            text,
-            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.8.sp, color = accent),
-            maxLines = 1
-        )
-    }
-}
-
-/** The OPEN / PAY pill, at the far end of the header from the label. */
-@Composable
-private fun OpenPill(text: String, accent: Color, onClick: () -> Unit) {
-    val view = LocalView.current
-    val on = if (accent.luminance() > 0.4f) Color.Black else Color.White
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(50))
-            .background(accent)
-            .plainClick { view.tick(Tick.Press); onClick() }
-            .padding(horizontal = 14.dp, vertical = 6.dp)
-    ) {
-        Text(
-            text,
-            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.6.sp, color = on),
-            maxLines = 1
-        )
-    }
-}
-
-@Composable
-private fun ActionPill(text: String, accent: Color, filled: Boolean, onClick: () -> Unit) {
-    val on = if (accent.luminance() > 0.4f) Color.Black else Color.White
-    val shape = RoundedCornerShape(50)
-    Box(
-        Modifier
-            .height(36.dp)
-            .clip(shape)
-            .then(if (filled) Modifier.background(accent) else Modifier.border(1.dp, accent.copy(alpha = 0.7f), shape))
-            .plainClick(onClick)
-            .padding(horizontal = 18.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text,
-            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.3.sp, color = if (filled) on else accent),
-            maxLines = 1
-        )
-    }
-}
-
-/**
- * The share arrow: a quiet, low-contrast glyph that shares the whole card as text.
- * The drawable is yours: res/drawable/ic_inspect_arrow.xml (a north-west arrow; it is tinted here).
- */
-@Composable
-private fun ShareArrow(onShare: () -> Unit) {
-    val view = LocalView.current
-    Box(
-        Modifier.size(44.dp).plainClick { view.tick(Tick.Press); onShare() },
-        contentAlignment = Alignment.Center
-    ) {
-        TagIcon(R.drawable.ic_inspect_arrow, Color(0xFFC3C9D4).copy(alpha = 0.6f), Modifier, 26.dp)
-    }
-}
-
-private val hyphenated = mapOf("international" to "Inter-\nnational")
-
-@Composable
-private fun DetailRow(label: String, value: String, flashing: Boolean, accent: Color, onCopy: (String) -> Unit) {
-    val shown = (hyphenated[label.lowercase()] ?: label).uppercase()
-    Column(Modifier.fillMaxWidth().plainClick { onCopy(value) }) {
-        Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.Top) {
-            Box(Modifier.widthIn(min = 100.dp, max = 100.dp).padding(top = 3.dp)) {
-                Text(
-                    shown,
-                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.sp, color = Color(0xFF6E737C)),
-                    softWrap = false
-                )
-            }
-            Text(
-                value,
-                style = TextStyle(
-                    fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 19.sp,
-                    color = if (flashing) accent else TagColors.White
-                ),
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+        val heroColour = if (c.flash == copyValue) c.accent else TagColors.White
+        val heroText: @Composable () -> Unit = {
+            HeroValue(
+                bigDisplay, heroStyle(p, heroColour),
+                minSize = 24f, splitSuffix = p.domain != "CALC" && p.domain != "URL" && p.domain != "UPI",
+                onClick = { c.onCopy(copyValue) }
             )
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
-    }
-}
 
-/** The colour card's loose pieces: an outlined box holding rgb and hsl, and the contrast chip filled with the colour. */
-@Composable
-private fun ColourDetails(p: InspectPayload, flash: String, accent: Color, onCopy: (String) -> Unit) {
-    val rgb = p.rows.firstOrNull { it.first == "RGB" }?.second.orEmpty()
-    val hsl = p.rows.firstOrNull { it.first == "HSL" }?.second.orEmpty()
-    val readable = p.rows.firstOrNull { it.first == "Readable with" }?.second.orEmpty()
-    val fill = p.palette.firstOrNull()?.let { Color(it) } ?: accent
-    // The chip says which text colour reads on it; use that colour, not a guess.
-    val on = if (readable.startsWith("Black", true)) Color.Black else Color.White
-    val lines = listOf(rgb, hsl).filter { it.isNotBlank() }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (lines.isNotEmpty()) {
-            Column(
-                Modifier
-                    .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                lines.forEach { line ->
-                    Text(
-                        line,
-                        style = TextStyle(
-                            fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 12.sp,
-                            color = if (flash == line) accent else TagColors.White
-                        ),
-                        maxLines = 1, softWrap = false,
-                        modifier = Modifier.plainClick { onCopy(line) }
-                    )
+        if (tear) {
+            // A fixed-height slot under the tear line, so the line is always the same distance above the value.
+            Spacer(Modifier.height(16.dp))
+            Box(Modifier.fillMaxWidth().height((CardShapes.TEAR_FROM_BOTTOM - 28f).dp)) {
+                Column(Modifier.fillMaxWidth().align(Alignment.BottomStart)) {
+                    if (p.caption.isNotBlank()) {
+                        Caption(p.caption, Modifier.padding(top = 10.dp, bottom = 4.dp))
+                        Spacer(Modifier.weight(1f, fill = false))
+                    }
+                    heroText()
                 }
             }
-        }
-        if (readable.isNotBlank()) {
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(fill)
-                    .plainClick { onCopy(readable) }
-                    .padding(horizontal = 12.dp, vertical = 9.dp)
-            ) {
-                Text(
-                    readable.replace(", ", "\n"),
-                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 11.sp, lineHeight = 14.sp, color = on)
-                )
+        } else {
+            Spacer(Modifier.height(10.dp))
+            heroText()
+            if (p.fact.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Floating(p.fact, c.accent, onClick = { c.onCopy(p.fact) })
+            }
+            if (p.caption.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Caption(p.caption)
             }
         }
     }
-    Spacer(Modifier.height(6.dp))
 }
