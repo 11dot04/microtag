@@ -120,6 +120,8 @@ object TagColors {
     val White = Color(0xFFF6F6F6)
     val Outline = Color(0xFFC3C9D4)
     val Steel = Color(0xFFC5CCD8)
+    /** A rare warning colour: the permission banner and the armed bin, nothing else. */
+    val Signal = Color(0xFFFF4A2B)
     val Dim = Color(0xFF6E737C)
 
     fun useMaterialYou(context: Context, enabled: Boolean) {
@@ -364,22 +366,27 @@ fun TagFrame(label: String, color: Color, modifier: Modifier = Modifier, labelBi
 // TILE
 // ==========================================================
 
-enum class TileState { Off, On, Static }
+enum class TileState { Off, On, Static, Signal }
 
 private fun fillOf(state: TileState): Color = when (state) {
     TileState.On -> TagColors.Lime
     TileState.Off -> TagColors.Black
     TileState.Static -> TagColors.White
+    TileState.Signal -> TagColors.Signal
 }
 
 private fun fgOf(state: TileState): Color = when (state) {
     TileState.Off -> TagColors.White
     TileState.On -> TagColors.OnLime
     TileState.Static -> TagColors.Black
+    TileState.Signal -> TagColors.White
 }
 
 private fun edgeOf(state: TileState): Color =
     if (state == TileState.Off) TagColors.Outline else fillOf(state)
+
+/** The one decelerating curve used for reveals and transitions. */
+object TagEase { val Reveal = CubicBezierEasing(0.2f, 0f, 0f, 1f) }
 
 private const val FLOOD_EDGE = 0.22f
 
@@ -540,18 +547,18 @@ fun TagTile(
             .then(
                 if (onClick != null) Modifier
                     .semantics {
-                        if (state != TileState.Static) toggleableState = ToggleableState(state == TileState.On)
+                        if (state == TileState.On || state == TileState.Off) toggleableState = ToggleableState(state == TileState.On)
                     }
                     .clickable(
                         interactionSource = source,
                         indication = null,
-                        role = if (state == TileState.Static) Role.Button else Role.Switch
+                        role = if (state == TileState.On || state == TileState.Off) Role.Switch else Role.Button
                     ) {
                         view.tick(
                             when (state) {
                                 TileState.Off -> Tick.On
                                 TileState.On -> Tick.Off
-                                TileState.Static -> Tick.Press
+                                TileState.Static, TileState.Signal -> Tick.Press
                             }
                         )
                         onClick()
