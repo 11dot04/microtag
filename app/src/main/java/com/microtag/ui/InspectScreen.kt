@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,11 +20,13 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,6 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -40,89 +45,112 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.microtag.R
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.microtag.inspect.InspectCard
 import com.microtag.inspect.InspectPayload
+import com.microtag.inspect.InspectResult
 import com.microtag.inspect.InspectSamples
+import com.microtag.inspect.Detectors
 
+/** Back arrow row shared by the secondary screens. */
+@Composable
+fun BackBar(onBack: () -> Unit) {
+    val view = LocalView.current
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier.size(48.dp).clip(CircleShape).clickable { view.tick(Tick.Press); onBack() },
+            contentAlignment = Alignment.Center
+        ) { TagIcon(R.drawable.ic_chevron_right, TagColors.White, Modifier.rotate(180f), 28.dp) }
+    }
+}
+
+/** What a tip shows. The pill preview and the card both come from the one [InspectResult] this produces. */
 private class InspectTip(
     val icon: Int,
     val title: String,
     val blurb: String,
-    val input: String,
-    val output: String,
-    val chipIcon: Int? = null,
-    val glyph: String? = null,
-    val swatch: Color? = null,
-    /** The expanded card this tip opens, shown for real so the showcase does the cards justice. */
-    val sample: (() -> InspectPayload)? = null
+    /** The sample key: the text that gets "selected" ([InspectSamples.input] turns a few keys into dated or local text). */
+    val key: String,
+    /** Set when the card also works the other way round; shown as a small label on the tip, not as a tip of its own. */
+    val backwards: String? = null,
+    val make: ((String) -> InspectResult?)? = null
 )
 
-private val Tips = listOf(
-    InspectTip(
-        R.drawable.ic_inspect_calc, "Calculations", "Select a sum and the answer lands in the status bar.",
-        input = "345*73", output = "25185", glyph = "=", sample = InspectSamples::calc
+private class TipBlockSpec(val label: String, val tips: List<InspectTip>)
+
+private val Blocks = listOf(
+    TipBlockSpec(
+        "Numbers",
+        listOf(
+            InspectTip(R.drawable.ic_inspect_calc, "Calculations", "Select a sum, percentages included. The card shows the working.", "567 + 15%"),
+            InspectTip(R.drawable.ic_inspect_convert, "Units", "Select a measurement and see it in the other system.", "51 lb"),
+            InspectTip(
+                R.drawable.ic_equals, "Numbers", "Select a big number for its words, and now and then a fact about it.", "3,100,000,000",
+                backwards = "Select the words (three lakh fifty thousand) to get the digits."
+            ),
+            InspectTip(
+                R.drawable.ic_inspect_convert, "Dimensions", "Select sizes like 21 x 29.7 cm or 1920x1080. Standard sizes are named.", "21 x 29.7 cm",
+                backwards = "Select a name (A3, us letter, 1080p, queen bed, credit card) to get its size."
+            )
+        )
     ),
-    InspectTip(
-        R.drawable.ic_inspect_calc, "Timespan", "Select a date and see how far away it is. The card draws the months in between.",
-        input = "09 November.", output = "in 29d", chipIcon = R.drawable.ic_calendar_countdown, sample = InspectSamples::timespan
+    TipBlockSpec(
+        "Money and India",
+        listOf(
+            InspectTip(R.drawable.ic_inspect_convert, "Currency", "Select an amount and see it in your own currency.", "money"),
+            InspectTip(R.drawable.ic_upi_rupee, "UPI IDs", "Copy a UPI ID to see which app it belongs to, scan it as a QR, or jump straight to paying.", "ryan@oksbi"),
+            InspectTip(R.drawable.ic_upi_rupee, "Bank codes", "Select an IFSC code for the bank, branch and what it supports.", "SBIN0001234", make = { InspectSamples.bank() }),
+            InspectTip(R.drawable.ic_inspect_convert, "PIN codes", "Select a six-digit PIN for the place it covers.", "400001", make = { InspectSamples.post() })
+        )
     ),
-    InspectTip(
-        R.drawable.ic_calendar_countdown, "Time zones", "Select a time in any zone and see it on your clock, with the gap drawn out.",
-        input = "5 PM GMT", output = "10:30 pm", chipIcon = R.drawable.ic_calendar_countdown, sample = InspectSamples::time
+    TipBlockSpec(
+        "Time",
+        listOf(
+            InspectTip(R.drawable.ic_calendar_countdown, "Time zones", "Select a time in any zone and see it on your clock, with the gap and the day change.", "3 PM EST"),
+            InspectTip(R.drawable.ic_calendar_countdown, "Dates", "Select a date and see how far away it is. The card draws the months in between.", "date")
+        )
     ),
-    InspectTip(
-        R.drawable.ic_inspect_convert, "Units", "Select a measurement and see it in the other system.",
-        input = "51 lb", output = "23.13 kg", glyph = "⇄", sample = InspectSamples::convert
+    TipBlockSpec(
+        "Words and web",
+        listOf(
+            InspectTip(R.drawable.ic_inspect_define, "Definitions", "Select a word. Tap the chip for the full entry, with every meaning.", "raster"),
+            InspectTip(
+                R.drawable.ic_inspect_define, "Wikipedia", "Select a person, place or thing, even a long title, for the summary and a photo when there is one.",
+                "Leonhard Euler", make = { InspectSamples.wiki() }
+            ),
+            InspectTip(
+                R.drawable.ic_inspect_define, "Reading time", "Select a longer passage for how long it takes to read or say aloud.",
+                "Select a passage like this one, a few sentences long, and the card will estimate how long it takes to read it out loud, and how many words it holds."
+            ),
+            InspectTip(R.drawable.ic_inspect_convert, "Links", "Copy or select a link. Trackers are stripped, shortened links can be unrolled, and a check looks at the site.", "https://bit.ly/3xYzAb")
+        )
     ),
-    InspectTip(
-        R.drawable.ic_inspect_convert, "Currency", "Select an amount and see it in your own currency.",
-        input = "\$38", output = "3681", glyph = "₹", sample = InspectSamples::money
-    ),
-    InspectTip(
-        R.drawable.ic_inspect_colour, "Colour swatch", "Select a colour code and see the colour, its name and its complement.",
-        input = "#CCFF00", output = "#CCFF00", swatch = Color(0xFFCCFF00), sample = InspectSamples::colour
-    ),
-    InspectTip(
-        R.drawable.ic_inspect_colour, "Colour names", "Works backwards too: select a colour name and get its hex code.",
-        input = "teal", output = "#008080", swatch = Color(0xFF008080), sample = InspectSamples::colour
-    ),
-    InspectTip(
-        R.drawable.ic_inspect_define, "Definitions", "Select a word. Tap the chip for the full entry, with every meaning.",
-        input = "raster", output = "scan lines", chipIcon = R.drawable.ic_inspect_define, sample = InspectSamples::define
-    ),
-    InspectTip(
-        R.drawable.ic_inspect_define, "Wikipedia", "Select a person, place or thing and get the summary, with a photo when there is one.",
-        input = "Alan Turing", output = "Alan", chipIcon = R.drawable.ic_inspect_define, sample = InspectSamples::wiki
-    ),
-    InspectTip(
-        R.drawable.ic_inspect_convert, "Links", "Copy or select a link. Trackers are stripped, shortened links can be unrolled, and a check looks at the site.",
-        input = "bit.ly/3xYzAb", output = "Short link", glyph = "!", sample = InspectSamples::link
-    ),
-    InspectTip(
-        R.drawable.ic_upi_rupee, "UPI IDs", "Copy a UPI ID to see which app it belongs to, scan it as a QR, or jump straight to paying.",
-        input = "ryan@oksbi", output = "Google Pay", glyph = "₹", sample = InspectSamples::upi
-    ),
-    InspectTip(
-        R.drawable.ic_upi_rupee, "Bank codes", "Select an IFSC code for the bank, branch and what it supports.",
-        input = "SBIN0001234", output = "SBI", glyph = "#", sample = InspectSamples::bank
-    ),
-    InspectTip(
-        R.drawable.ic_inspect_convert, "PIN codes", "Select a six-digit PIN for the place it covers.",
-        input = "400001", output = "Mumbai", glyph = "#", sample = InspectSamples::post
-    ),
-    InspectTip(
-        R.drawable.ic_equals, "Numbers", "Select a big number for its words, or the words for the number: \"three lakh fifty thousand\".",
-        input = "345464000", output = "34.5 cr", glyph = "=", sample = InspectSamples::number
-    ),
-    InspectTip(
-        R.drawable.ic_inspect_convert, "Dimensions", "Select sizes like 120 x 80 cm or 1920x1080 for area, volume, ratio, and a blueprint.",
-        input = "120 x 80 x 40 cm", output = "384 L", glyph = "×", sample = InspectSamples::dimensions
+    TipBlockSpec(
+        "Colour",
+        listOf(
+            InspectTip(
+                R.drawable.ic_inspect_colour, "Colours", "Select a colour code for the colour, its name and its complement.", "#CCFF00",
+                backwards = "Select a name (teal, forest green) to get the hex code."
+            )
+        )
     )
 )
 
+private val TipSurface = Color(0xFF15161A)
+
+/** Rows in a block interlock like the ones on the Settings screen: big radius outside, a tight 6dp where they meet. */
+private fun tipShape(index: Int, count: Int): Shape {
+    val big = CornerSize(22.dp)
+    val small = CornerSize(6.dp)
+    val top = if (index == 0) big else small
+    val bottom = if (index == count - 1) big else small
+    return RoundedCornerShape(topStart = top, topEnd = top, bottomEnd = bottom, bottomStart = bottom)
+}
+
 @Composable
 fun InspectScreen(onBack: () -> Unit) {
-    SubScreen(onBack) {
+    SubScreen(onBack, spacing = 10.dp) {
         Spacer(Modifier.height(12.dp))
         FitText(
             AnnotatedString("Inspect"),
@@ -153,32 +181,55 @@ fun InspectScreen(onBack: () -> Unit) {
                 )
             )
         }
-        Tips.forEach { TipCard(it) }
+        Spacer(Modifier.height(6.dp))
+        Blocks.forEach { TipBlock(it) }
+        Spacer(Modifier.height(24.dp))
     }
 }
 
 @Composable
-private fun TipCard(tip: InspectTip) {
+private fun TipBlock(block: TipBlockSpec) {
+    Text(
+        block.label.uppercase(),
+        modifier = Modifier.padding(start = 4.dp, top = 8.dp),
+        style = TextStyle(
+            fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+            letterSpacing = 1.2.sp, color = TagColors.Lime
+        )
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        block.tips.forEachIndexed { i, tip -> TipRow(tip, tipShape(i, block.tips.size)) }
+    }
+}
+
+@Composable
+private fun TipRow(tip: InspectTip, shape: Shape) {
     var open by remember { mutableStateOf(false) }
     val view = LocalView.current
+    val text = remember(tip) { InspectSamples.input(tip.key) }
+    // One result feeds both the chip and the card. Built off the main thread (Wikipedia tries the network).
+    val result by produceState<InspectResult?>(null, tip) {
+        value = withContext(Dispatchers.IO) { if (tip.make != null) tip.make.invoke(text) else InspectSamples.resolve(text) }
+    }
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(TagShapes.Rect)
-            .border(2.dp, TagColors.Outline, TagShapes.Rect)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .clip(shape)
+            .background(TipSurface)
+            .clickable { view.tick(Tick.Press); open = !open }
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(TagColors.White),
+                Modifier.size(40.dp).clip(RoundedCornerShape(13.dp)).background(TagColors.White),
                 contentAlignment = Alignment.Center
-            ) { TagIcon(tip.icon, TagColors.Black, size = 28.dp) }
+            ) { TagIcon(tip.icon, TagColors.Black, size = 22.dp) }
             Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).padding(end = 10.dp)) {
                 Text(
                     tip.title,
-                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TagColors.White)
+                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = TagColors.White)
                 )
                 Text(
                     tip.blurb,
@@ -188,6 +239,7 @@ private fun TipCard(tip: InspectTip) {
                     )
                 )
             }
+            TagIcon(R.drawable.ic_chevron_right, TagColors.White, Modifier.rotate(if (open) 90f else 0f), 24.dp)
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             // The selection, highlighted the way the system highlights selected text.
@@ -199,41 +251,51 @@ private fun TipCard(tip: InspectTip) {
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    tip.input, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 16.sp, color = TagColors.OnLime)
+                    text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 15.sp, color = TagColors.OnLime)
                 )
             }
             TagIcon(R.drawable.ic_chevron_right, TagColors.Outline, size = 20.dp)
-            ChipPreview(tip)
+            ChipPreview(result)
         }
-        if (tip.sample != null) {
-            // The same card the chip opens, so Define, Wikipedia and the rest can be seen properly.
-            Box(
-                Modifier
-                    .clip(CircleShape)
-                    .border(1.5.dp, TagColors.Lime, CircleShape)
-                    .clickable { view.tick(Tick.Press); open = !open }
-                    .padding(horizontal = 14.dp, vertical = 7.dp)
-            ) {
-                Text(
-                    if (open) "HIDE CARD" else "SHOW CARD",
-                    style = TextStyle(
-                        fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 11.sp,
-                        letterSpacing = 1.4.sp, color = TagColors.Lime
+        if (tip.backwards != null) {
+            // Works in reverse too: a small label on the tip rather than a tip of its own.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    Modifier
+                        .clip(CircleShape)
+                        .border(1.dp, TagColors.Outline, CircleShape)
+                        .padding(horizontal = 9.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        "↔ BACKWARDS",
+                        style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 9.sp, letterSpacing = 1.1.sp, color = TagColors.White)
                     )
+                }
+                Text(
+                    tip.backwards,
+                    modifier = Modifier.weight(1f),
+                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp, color = TagColors.Outline)
                 )
             }
-            if (open) {
-                val sample = remember(tip) { tip.sample.invoke() }
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { InspectCard(sample) }
+        }
+        AnimatedVisibility(visible = open) {
+            Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
+                val r = result
+                if (r != null) InspectCard(r.toPayload())
+                else Text(
+                    "Nothing to show offline.",
+                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = TagColors.Outline)
+                )
             }
         }
     }
 }
 
-/** A stand-in for the status bar chip: black pill, hairline outline, icon and text. */
+/** A stand-in for the status-bar chip, built from the same result as the card: its pill text, and its icon or colour swatch. */
 @Composable
-private fun ChipPreview(tip: InspectTip) {
+private fun ChipPreview(result: InspectResult?) {
+    val context = LocalContext.current
     Row(
         Modifier
             .clip(CircleShape)
@@ -242,17 +304,21 @@ private fun ChipPreview(tip: InspectTip) {
             .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (result == null) {
+            Text("…", style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TagColors.Outline))
+            return@Row
+        }
+        val icon = remember(result.iconName) {
+            result.iconName?.let { context.resources.getIdentifier(it, "drawable", context.packageName) } ?: 0
+        }
         when {
-            tip.swatch != null -> Box(Modifier.size(16.dp).clip(CircleShape).background(tip.swatch))
-            tip.chipIcon != null -> TagIcon(tip.chipIcon, TagColors.White, size = 18.dp)
-            tip.glyph != null -> Text(
-                tip.glyph,
-                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = TagColors.White)
-            )
+            result.swatch != null -> Box(Modifier.size(16.dp).clip(CircleShape).background(Color(result.swatch!!)))
+            icon != 0 -> TagIcon(icon, TagColors.White, size = 18.dp)
+            else -> Box(Modifier.size(8.dp).clip(CircleShape).background(TagColors.White))
         }
         Spacer(Modifier.width(8.dp))
         Text(
-            tip.output, maxLines = 1,
+            result.pill, maxLines = 1, overflow = TextOverflow.Ellipsis,
             style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TagColors.White)
         )
     }
