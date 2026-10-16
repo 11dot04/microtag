@@ -41,6 +41,12 @@ internal object DimensionDetector {
     )
 
     fun candidates(text: String, source: Source): List<Candidate> {
+        // Reverse: a standard's name ("A3", "us letter", "1080p", "queen bed") gives its dimensions.
+        if (source == Source.SELECTION) {
+            DimensionStandards.find(text)?.let { std ->
+                return listOf(Candidate("dimension-standard", 0.8) { buildStandard(std) })
+            }
+        }
         val m = re.matchEntire(text) ?: return emptyList()
         val g = m.groupValues
         val nums = listOf(g[1], g[3], g[5]).filter { it.isNotEmpty() }
@@ -58,6 +64,15 @@ internal object DimensionDetector {
         val px = unit == null || unit.pixels
         if (px && values.size != 2) return emptyList()
         return listOf(Candidate("dimensions", if (unit == null) 0.95 else 0.8) { build(values, unit ?: Unit("px", 1.0, true), px) })
+    }
+
+    private fun buildStandard(std: DimensionStandards.Std): InspectResult? {
+        val u = unitOf(std.unit) ?: return null
+        val r = build(std.dims, u, std.px, matchStandard = false)
+        val rows = mutableListOf("Standard" to std.label)
+        rows.addAll(r.rows.filter { it.first != "Known as" })
+        if (std.note.isNotBlank()) rows.add("Note" to std.note)
+        return r.copy(title = std.name, subtitle = std.group, cardTitle = std.name, rows = rows)
     }
 
     private fun gcd(a: Long, b: Long): Long = if (b == 0L) a else gcd(b, a % b)
@@ -78,7 +93,8 @@ internal object DimensionDetector {
         return if (r >= 1) "${Fmt.trimmed(r, 2)}:1" else "1:${Fmt.trimmed(1 / r, 2)}"
     }
 
-    private fun build(v: List<Double>, u: Unit, px: Boolean): InspectResult {
+    private fun build(v: List<Double>, u: Unit, px: Boolean, matchStandard: Boolean = true): InspectResult {
+        val std = if (matchStandard) DimensionStandards.match(v, u.label) else null
         val w = v[0]; val h = v[1]
         val d = v.getOrNull(2)
         val rows = mutableListOf<Pair<String, String>>()
@@ -87,7 +103,7 @@ internal object DimensionDetector {
         if (px) {
             big = "${Fmt.trimmed(w, 0)} × ${Fmt.trimmed(h, 0)}"
             val key = "${Fmt.trimmed(w, 0)}x${Fmt.trimmed(h, 0)}"
-            named[key]?.let { rows.add("Known as" to it); extra = it }
+            (std?.label ?: named[key])?.let { rows.add("Known as" to it); extra = it }
             rows.add("Aspect" to ratio(w, h))
             rows.add("Megapixels" to "${Fmt.trimmed(w * h / 1_000_000, 2)} MP")
             rows.add("Pixels" to Fmt.grouped(w * h, Locale.ROOT, 0))
@@ -96,6 +112,7 @@ internal object DimensionDetector {
         } else {
             val l = u.label
             big = v.joinToString(" × ") { Fmt.adaptive(it) } + " $l"
+            if (std != null) rows.add("Standard" to std.label)
             rows.add("Area" to "${Fmt.adaptive(w * h)} $l²")
             if (d != null) {
                 rows.add("Volume" to "${Fmt.adaptive(w * h * d)} $l³")
@@ -116,15 +133,26 @@ internal object DimensionDetector {
                 // nothing more
             }
         }
-        val pill = if (px) "${Fmt.trimmed(w, 0)}×${Fmt.trimmed(h, 0)}" else
+        val sizePill = if (px) "${Fmt.trimmed(w, 0)}×${Fmt.trimmed(h, 0)}" else
             v.joinToString("×") { Fmt.adaptive(it) } + u.label
+        val areaPill = if (px) sizePill else if (d != null) "${Fmt.adaptive(w * h * d)} ${u.label}³" else "${Fmt.adaptive(w * h)} ${u.label}²"
+        val pill = when (PillConfig.DIMS) {
+            "AREA" -> areaPill
+            "STANDARD" -> std?.name ?: sizePill
+            else -> sizePill
+        }
         return InspectResult(
             domain = "DIMS",
             pill = pill,
             title = if (px) (extra.ifBlank { ratio(w, h) }) else
                 if (d != null) "${Fmt.adaptive(w * h * d)} ${u.label}³" else "${Fmt.adaptive(w * h)} ${u.label}²",
             big = big,
-            subtitle = if (px) "${Fmt.trimmed(w * h / 1_000_000, 2)} MP · ${ratio(w, h)}" else if (d != null) "Volume" else "Area",
+            subtitle = when {
+                std != null && !px -> std.label
+                px -> (if (std != null) std.label + " · " else "") + "${Fmt.trimmed(w * h / 1_000_000, 2)} MP · ${ratio(w, h)}"
+                d != null -> "Volume"
+                else -> "Area"
+            },
             cardTitle = "Dimensions",
             cardText = big,
             rows = rows,
