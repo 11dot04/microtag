@@ -64,6 +64,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import com.microtag.R
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -203,7 +204,10 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
 
         // App filter: every figure and graph on this page follows it.
         if (topApps.isNotEmpty()) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.bleed(20.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 FilterChip("All apps", apps.isEmpty()) { apps = emptySet() }
                 topApps.forEach { (pkg, n) ->
                     val m = meta[pkg]
@@ -221,12 +225,12 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth().height(260.dp)
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatTile("SELECTED", total.toString(), Modifier.weight(1f))
             StatTile("PEAK HOUR", peakHour?.let { "%02d:00".format(it) } ?: "--", Modifier.weight(1f))
             StatTile("ALL TIME", prefs.interceptCount.toString(), Modifier.weight(1f))
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatTile("PROMOTED", rate?.let { "$it%" } ?: "--", Modifier.weight(1f))
             StatTile("STREAK", if (streak > 0) "$streak d" else "--", Modifier.weight(1f))
             StatTile("BEST DAY", best?.let { "${it.value}" } ?: "--", Modifier.weight(1f), caption2 = best?.let {
@@ -355,7 +359,7 @@ private fun HourChart(values: IntArray, nowHour: Int?, dashFuture: Boolean, modi
         val cw = size.width - padL - padR
         val ch = bottom - top
         val vals = FloatArray(24) { anim[it].value }
-        val maxV = max(1f, vals.max())
+        val maxV = max(5f, vals.max())   // a floor, so two events don't look like a spike
 
         fun px(h: Float) = padL + (h + 0.5f) / 24f * cw
         fun py(v: Float) = bottom - (v / maxV) * ch * 0.9f
@@ -453,6 +457,7 @@ private fun HourChart(values: IntArray, nowHour: Int?, dashFuture: Boolean, modi
 private fun StatTile(caption: String, value: String, modifier: Modifier, caption2: String? = null) {
     Column(
         modifier
+            .fillMaxHeight()
             .clip(TagShapes.Rect)
             .border(2.dp, TagColors.Outline, TagShapes.Rect)
             .padding(horizontal = 14.dp, vertical = 12.dp)
@@ -567,10 +572,14 @@ private fun TimeOfDay(values: IntArray) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             buckets.forEachIndexed { i, (name, _) ->
                 Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(TagColors.Lime.copy(alpha = alphas[i])))
+                        Spacer(Modifier.width(6.dp))
                     Text(
                         name,
                         style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.8.sp, color = TagColors.Outline)
                     )
+                    }
                     Text(
                         "${counts[i] * 100 / total}%",
                         style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 18.sp, color = TagColors.White)
