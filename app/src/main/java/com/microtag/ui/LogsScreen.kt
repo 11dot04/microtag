@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
@@ -107,7 +108,8 @@ fun LogsScreen(onBack: () -> Unit) {
     var entries by remember { mutableStateOf(MicrotagLog.snapshot()) }
     var recording by remember { mutableStateOf(MicrotagLog.enabled) }
     var query by remember { mutableStateOf("") }
-    var decisions by remember { mutableStateOf(emptySet<Decision>()) }
+    // Ignored and Unchanged drown the real entries, so they start hidden. "All" brings them back.
+    var decisions by remember { mutableStateOf(Decision.values().toSet() - setOf(Decision.IGNORED, Decision.UNCHANGED)) }
     var apps by remember { mutableStateOf(emptySet<String>()) }
     var expanded by remember { mutableStateOf(emptySet<Int>()) }
     var armed by remember { mutableStateOf(false) }
@@ -150,7 +152,7 @@ fun LogsScreen(onBack: () -> Unit) {
                 FloatingButton(filled = false, onClick = { share(context, MicrotagLog.asText(filtered)) }) { tint ->
                     TagIcon(R.drawable.ic_share, tint, size = 26.dp)
                 }
-                FloatingButton(filled = armed, onClick = {
+                FloatingButton(filled = armed, accent = if (armed) TagColors.Signal else TagColors.Lime, onAccent = TagColors.White, onClick = {
                     if (armed) { MicrotagLog.clear(); entries = MicrotagLog.snapshot(); armed = false } else armed = true
                 }) { tint -> TagIcon(R.drawable.ic_trash, tint, size = 26.dp) }
             }
@@ -169,10 +171,11 @@ fun LogsScreen(onBack: () -> Unit) {
         }
         item {
             Text(
-                if (armed) "Tap the bin again to clear everything." else "${filtered.size} of ${entries.size} entries",
+                if (armed) "Tap the bin again to clear everything."
+                else "${filtered.size} of ${entries.size} entries" + if (decisions.isNotEmpty() && Decision.IGNORED !in decisions) "  ·  noise hidden" else "",
                 style = TextStyle(
                     fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 14.sp,
-                    color = if (armed) TagColors.Lime else TagColors.Outline
+                    color = if (armed) TagColors.Signal else TagColors.Outline
                 )
             )
         }
@@ -201,7 +204,10 @@ fun LogsScreen(onBack: () -> Unit) {
         }
         item { SearchField(query) { query = it } }
         item {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.bleed(20.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 FilterChip("All", decisions.isEmpty()) { decisions = emptySet() }
                 Decision.values().forEach { d ->
                     FilterChip(d.name.lowercase().replaceFirstChar { it.uppercase() }, d in decisions) {
@@ -211,7 +217,10 @@ fun LogsScreen(onBack: () -> Unit) {
             }
         }
         item {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.bleed(20.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 FilterChip("All apps", apps.isEmpty()) { apps = emptySet() }
                 pkgCounts.take(12).forEach { (pkg, n) ->
                     val m = meta[pkg]
@@ -332,9 +341,16 @@ private fun LogCard(e: MicrotagLog.Entry, meta: AppMeta?, expanded: Boolean, onT
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
             .background(CardSurface)
+            .drawBehind {
+                // status stripe: accent for promoted, a faint grey for everything else
+                drawRect(
+                    if (e.decision == Decision.PROMOTED) TagColors.Lime else TagColors.Outline.copy(alpha = 0.35f),
+                    size = androidx.compose.ui.geometry.Size(4.dp.toPx(), size.height)
+                )
+            }
             .clickable(onClick = onToggle)
             .animateContentSize(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow))
-            .padding(14.dp)
+            .padding(start = 18.dp, top = 14.dp, end = 14.dp, bottom = 14.dp)
     ) {
         Row(verticalAlignment = Alignment.Top) {
             Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(TagColors.Black), contentAlignment = Alignment.Center) {
