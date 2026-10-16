@@ -102,7 +102,10 @@ import kotlin.math.roundToInt
 // ==========================================================
 
 private val PosterDark = Color(0xFF101114)
-private const val NUMERAL_LS = -0.04f   // em
+private const val NUMERAL_LS = -0.02f   // em; tune to taste for the hero font
+
+/** The hero numeral's typeface: res/font/style.ttf. Swap the file, never the name. */
+private fun heroTypeface(context: android.content.Context): Typeface? = ResourcesCompat.getFont(context, R.font.style)
 private val Mono = FontFamily.Monospace
 
 private fun numeralInk(typeface: Typeface?, text: String): Rect {
@@ -129,7 +132,8 @@ fun MonolithPoster(
     perms: Permissions,
     onTogglePause: () -> Unit,
     onStats: () -> Unit,
-    onLogs: () -> Unit
+    onLogs: () -> Unit,
+    active: Boolean = true
 ) {
     val context = LocalContext.current
     val bg by animateColorAsState(if (paused) PosterDark else TagColors.Lime, tween(500), label = "posterBg")
@@ -139,8 +143,18 @@ fun MonolithPoster(
     }
     val date = remember { SimpleDateFormat("dd.MM.yy", Locale.US).format(Date()) }
 
-    Box(Modifier.fillMaxWidth().height(height).background(bg)) {
-        DotField(count, hourly, paused, fg, Modifier.fillMaxSize())
+    BoxWithConstraints(Modifier.fillMaxWidth().height(height).background(bg)) {
+        // The lit columns stop where the numeral stops, which leaves the space above it calm.
+        val typeface = remember { heroTypeface(context) }
+        val wPx = constraints.maxWidth.toFloat()
+        val posterPx = constraints.maxHeight.toFloat()
+        val litCap = remember(count, wPx, posterPx, typeface) {
+            val ink = numeralInk(typeface, count.toString())
+            val iw = (ink.right - ink.left).toFloat().coerceAtLeast(1f)
+            val ih = (ink.bottom - ink.top).toFloat().coerceAtLeast(1f)
+            min(1.0f * wPx / iw * 100f, posterPx * 0.56f / ih * 100f) * ih / 100f
+        }
+        DotField(count, hourly, paused, fg, litCap, active, Modifier.fillMaxSize())
 
         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
             Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
@@ -179,12 +193,6 @@ fun MonolithPoster(
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
-            if (paused) {
-                Text("PAUSED", style = mono(12, TagColors.Lime, FontWeight.Bold, 1.5f))
-            }
-            Text("INTERCEPTIONS SO FAR", style = mono(11, fg, FontWeight.Bold, 1f))
-            Text("$date  —  V$versionName", style = mono(11, fg.copy(alpha = 0.6f), FontWeight.Medium, 0.5f))
         }
     }
 }
@@ -216,7 +224,7 @@ private fun ControlSegment(
 
 /** 24 columns, one per hour. Lit dots rise from the bottom in proportion to that hour's interceptions. */
 @Composable
-private fun DotField(count: Int, hourly: IntArray, paused: Boolean, fg: Color, modifier: Modifier) {
+private fun DotField(count: Int, hourly: IntArray, paused: Boolean, fg: Color, litCapPx: Float, active: Boolean, modifier: Modifier) {
     val ripple = remember { Animatable(1f) }
     var lastCount by remember { mutableIntStateOf(count) }
     LaunchedEffect(count) {
@@ -243,6 +251,8 @@ private fun DotField(count: Int, hourly: IntArray, paused: Boolean, fg: Color, m
         val step = (size.width - 2 * margin) / (cols - 1)
         val rows = ((size.height - bottomPad - 24.dp.toPx()) / step).toInt().coerceAtLeast(4)
         val maxHour = max(1, hourly.max())
+        val capRows = min(rows * 0.82f, max(2f, litCapPx / step))
+        val pulseNow = if (active) pulse else 1f
         val dot = 3.dp.toPx()
         val originX = margin + nowHour * step
         val originY = size.height - bottomPad
@@ -251,7 +261,7 @@ private fun DotField(count: Int, hourly: IntArray, paused: Boolean, fg: Color, m
         val lit = if (paused) TagColors.Lime else fg
 
         for (c in 0 until cols) {
-            val litRows = if (hourly[c] <= 0) 0 else max(1, (hourly[c] / maxHour.toFloat() * rows * 0.82f).roundToInt())
+            val litRows = if (hourly[c] <= 0) 0 else max(1, (hourly[c] / maxHour.toFloat() * capRows).roundToInt())
             val x = margin + c * step
             for (r in 0 until rows) {
                 val y = size.height - bottomPad - r * step
@@ -260,7 +270,7 @@ private fun DotField(count: Int, hourly: IntArray, paused: Boolean, fg: Color, m
                 if (r < litRows) { color = lit.copy(alpha = 0.95f); s = dot * 1.25f }
                 if (c == nowHour && r == max(litRows - 1, 0)) {
                     // the current hour's marker
-                    color = if (paused) TagColors.Lime.copy(alpha = pulse) else fg.copy(alpha = pulse)
+                    color = if (paused) TagColors.Lime.copy(alpha = pulseNow) else fg.copy(alpha = pulseNow)
                     s = dot * 1.7f
                 }
                 if (ripple.value < 1f) {
@@ -293,8 +303,31 @@ fun MonolithOverlay(
     val context = LocalContext.current
     val density = LocalDensity.current
     val view = LocalView.current
-    val typeface = remember { ResourcesCompat.getFont(context, R.font.montserrat_black) }
-    val digits = count.toString()
+    val typeface = remember { heroTypeface(context) }
+    val captionMeta = remember {
+        val v = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "dev"
+        SimpleDateFormat("dd.MM.yy", Locale.US).format(Date()) + "  —  V" + v
+    }
+
+    // On first show the numeral spins up from zero; after that it rolls digit by digit.
+    val spin = remember { Animatable(0f) }
+    var spun by remember { mutableStateOf(!TagMotion.enabled) }
+    LaunchedEffect(Unit) {
+        if (!spun) {
+            spin.animateTo(1f, tween(1100, easing = TagEase.Reveal))
+            spun = true
+        }
+    }
+    val digits = (if (spun) count else (count * spin.value).roundToInt()).toString()
+    val kick = remember { Animatable(1f) }
+    var lastCount by remember { mutableIntStateOf(count) }
+    LaunchedEffect(count) {
+        if (spun && count > lastCount && TagMotion.enabled) {
+            kick.snapTo(1.07f)
+            kick.animateTo(1f, spring(dampingRatio = 0.4f, stiffness = Spring.StiffnessMedium))
+        }
+        lastCount = count
+    }
     val topDp = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val posterFg = if (paused) TagColors.White else TagColors.OnLime
 
@@ -308,10 +341,12 @@ fun MonolithOverlay(
         val dockDist = collapseDistance
 
         // The numeral's ink box at 100px, then sized so it fills the width (and a little more) or 56% of the poster.
+        // Size from the final number so the numeral doesn't breathe while it spins up.
         val ink = remember(digits, typeface) { numeralInk(typeface, digits) }
-        val inkW100 = (ink.right - ink.left).toFloat().coerceAtLeast(1f)
-        val inkH100 = (ink.bottom - ink.top).toFloat().coerceAtLeast(1f)
-        val fitW = 1.06f * wPx / inkW100 * 100f
+        val inkSize = remember(count, typeface) { numeralInk(typeface, count.toString()) }
+        val inkW100 = (inkSize.right - inkSize.left).toFloat().coerceAtLeast(1f)
+        val inkH100 = (inkSize.bottom - inkSize.top).toFloat().coerceAtLeast(1f)
+        val fitW = 1.0f * wPx / inkW100 * 100f
         val fitH = posterPx * 0.56f / inkH100 * 100f
         val sizePx by animateFloatAsState(
             targetValue = min(fitW, fitH),
@@ -327,7 +362,7 @@ fun MonolithOverlay(
             if (digits != shown) {
                 previous = shown
                 shown = digits
-                if (TagMotion.enabled) {
+                if (spun && TagMotion.enabled) {
                     roll.snapTo(0f)
                     roll.animateTo(1f, spring(dampingRatio = 0.7f, stiffness = 180f))
                 } else roll.snapTo(1f)
@@ -337,17 +372,20 @@ fun MonolithOverlay(
         fun dockProgress(): Float = smooth((scroll.value / dockDist).coerceIn(0f, 1f))
 
         val paint = remember { Paint(Paint.ANTI_ALIAS_FLAG) }
+        val captionPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG) }
         val accent = TagColors.Lime.toArgb()
         val onPoster = posterFg.toArgb()
         val white = TagColors.White.toArgb()
 
-        // Dock bar: solid, so nothing of the poster shows through once it has collapsed beneath it.
+        // Dock bar: solid where the poster collapses beneath it, then a short fade.
+        val barH = topDp + 72.dp
+        val solid = ((topDp + 48.dp).value / barH.value).coerceIn(0f, 1f)
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(topDp + 64.dp)
+                .height(barH)
                 .graphicsLayer { alpha = smooth(((scroll.value / dockDist - 0.45f) / 0.55f).coerceIn(0f, 1f)) }
-                .background(TagColors.Black)
+                .background(Brush.verticalGradient(0f to TagColors.Black, solid to TagColors.Black, 1f to Color.Transparent))
         )
 
         // the numeral
@@ -357,11 +395,35 @@ fun MonolithOverlay(
             val inkH = inkH100 * s0 / 100f
             val inkLeft = ink.left * s0 / 100f
             val sEnd = dockInk / inkH
-            val sc = 1f + (sEnd - 1f) * p
+            val sc = (1f + (sEnd - 1f) * p) * (1f + (kick.value - 1f) * (1f - p))
             val baseline = (posterPx - bottomMargin) + ((statusTop + 12.dp.toPx() + dockInk) - (posterPx - bottomMargin)) * p
 
             drawIntoCanvas { canvas ->
                 val n = canvas.nativeCanvas
+
+                // The caption sits directly on the numeral and fades as the numeral docks.
+                val capAlpha = (1f - p * 3f).coerceIn(0f, 1f)
+                if (capAlpha > 0f) {
+                    val top = baseline - inkH * sc
+                    val sz = 11.sp.toPx()
+                    val gap = 14.dp.toPx()
+                    captionPaint.textSize = sz
+                    captionPaint.letterSpacing = 0.08f
+                    captionPaint.style = Paint.Style.FILL
+                    captionPaint.color = if (paused) white else onPoster
+                    captionPaint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                    captionPaint.alpha = (255 * capAlpha).toInt()
+                    n.drawText("INTERCEPTIONS SO FAR", margin, top - gap, captionPaint)
+                    captionPaint.typeface = Typeface.MONOSPACE
+                    captionPaint.alpha = (150 * capAlpha).toInt()
+                    n.drawText(captionMeta, margin, top - gap - sz * 1.5f, captionPaint)
+                    if (paused) {
+                        captionPaint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                        captionPaint.color = accent
+                        captionPaint.alpha = (255 * capAlpha).toInt()
+                        n.drawText("PAUSED", margin, top - gap - sz * 3f, captionPaint)
+                    }
+                }
                 paint.typeface = typeface
                 paint.textSize = s0
                 paint.letterSpacing = NUMERAL_LS
