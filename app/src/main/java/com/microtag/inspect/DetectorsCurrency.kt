@@ -165,7 +165,6 @@ internal object CurrencyDetector {
         val unitRate = (table.perUsd[primary] ?: 1.0) / srcRate
         rows.add("Rate" to "1 ${p.code} = ${Fmt.adaptive(unitRate)} $primary")
         val ageMs = env.clock.millis() - table.fetchedAtMillis
-        rows.add("Updated" to age(ageMs) + if (table.offlineCopy) " (offline copy)" else "")
         when (p.symbol) {
             "$" -> rows.add("Note" to "\$ read as US dollars")
             "¥" -> rows.add("Note" to "¥ read as Japanese yen (the yuan uses ¥ too)")
@@ -173,8 +172,9 @@ internal object CurrencyDetector {
 
         return InspectResult(
             domain = "MONEY",
-            pill = pill,
+            pill = if (PillConfig.MONEY == "BOTH") "$inputText = $pill" else pill,
             title = pill,
+            caption = "updated " + age(ageMs) + if (table.offlineCopy) " (offline copy)" else "",
             subtitle = inputText,
             cardTitle = "Currency",
             cardText = "$inputText = $pill",
