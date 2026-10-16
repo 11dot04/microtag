@@ -121,13 +121,39 @@ internal object IfscDetector {
         return build(code, info)
     }
 
+    private val keepUpper = setOf(
+        "NR", "RD", "ST", "PO", "PS", "SBI", "HDFC", "ICICI", "LTD", "PVT", "NO", "NH", "MG", "BR", "SEC", "GF", "FF", "SF",
+        "UP", "MP", "AP", "HP", "JK", "WB", "TN", "KA", "KL", "UK", "CG", "PB", "HR", "GJ", "MH", "DL", "TS", "OD", "BKC", "IT", "II", "III", "IV", "VI", "VII", "VIII", "IX", "XI", "XII"
+    )
+    private val lowerWords = setOf("of", "and", "the", "in", "near", "at", "on", "opp", "by", "to")
+
+    /** "NEAR M G ROAD, SECTOR XII" -> "Near M G Road, Sector XII". Roman numerals and short abbreviations stay capital. */
+    internal fun titleCase(raw: String): String {
+        if (raw.isBlank()) return raw
+        val roman = Regex("^[IVXLC]{1,4}$")
+        var firstWord = true
+        return Regex("""[\p{L}\p{N}']+|[^\p{L}\p{N}']+""").replace(raw.trim()) { m ->
+            val w = m.value
+            if (!w[0].isLetter()) return@replace w
+            val up = w.uppercase()
+            val out = when {
+                w != up && w != w.lowercase() -> w                          // already mixed case: leave it
+                up in keepUpper || roman.matches(up) && up.length > 1 -> up
+                up.length <= 3 && up.none { it in "AEIOUY" } -> up
+                !firstWord && w.lowercase() in lowerWords -> w.lowercase()
+                else -> up.first() + w.substring(1).lowercase()
+            }
+            firstWord = false
+            out
+        }
+    }
+
     internal fun build(code: String, info: Map<String, String>): InspectResult {
         val bank = info["BANK"] ?: banks[code.take(4)] ?: "Unknown bank"
         val rows = mutableListOf<Pair<String, String>>("Bank" to bank)
-        info["BRANCH"]?.let { rows.add("Branch" to it) }
-        val place = listOfNotNull(info["CITY"], info["STATE"]).distinct().joinToString(", ")
-        if (place.isNotBlank()) rows.add("Place" to place)
-        info["ADDRESS"]?.let { rows.add("Address" to it.replace(Regex("\\s+"), " ")) }
+        // Branch and city are already the subtitle, so only the state is added.
+        info["STATE"]?.let { rows.add("State" to titleCase(it)) }
+        info["ADDRESS"]?.let { rows.add("Address" to titleCase(it.replace(Regex("\\s+"), " "))) }
         info["MICR"]?.let { rows.add("MICR" to it) }
         info["SWIFT"]?.let { rows.add("SWIFT" to it) }
         info["CONTACT"]?.let { rows.add("Phone" to it) }
@@ -135,9 +161,13 @@ internal object IfscDetector {
         if (rails.isNotEmpty()) rows.add("Supports" to rails.joinToString(", "))
         return InspectResult(
             domain = "IFSC",
-            pill = bank.take(14),
+            pill = when (PillConfig.IFSC) {
+                "CODE" -> code
+                "BRANCH" -> titleCase(info["BRANCH"] ?: info["CITY"] ?: bank).take(14)
+                else -> bank.take(14)
+            },
             title = code,
-            subtitle = listOfNotNull(info["BRANCH"], info["CITY"]).joinToString(", ").ifBlank { bank },
+            subtitle = titleCase(listOfNotNull(info["BRANCH"], info["CITY"]).joinToString(", ")).ifBlank { bank },
             cardTitle = "IFSC",
             cardText = "$code, $bank" + (info["BRANCH"]?.let { ", $it" } ?: ""),
             rows = rows,
