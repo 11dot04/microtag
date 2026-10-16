@@ -215,7 +215,7 @@ internal object TimeZoneDetector {
         return listOf(Candidate("timezone", 0.95) { build(text.trim(), parsed, env) })
     }
 
-    private class Parsed(val hour: Int, val minute: Int, val offsetMinutes: Int, val label: String, val note: String?)
+    private class Parsed(val hour: Int, val minute: Int, val offsetMinutes: Int, val label: String, val note: String?, val twelve: Boolean = false, val abbr: String? = null)
 
     private fun parse(m: MatchResult): Parsed? {
         var hour = m.groupValues[1].toIntOrNull() ?: return null
@@ -235,11 +235,11 @@ internal object TimeZoneDetector {
             val om = m.groupValues[7].toIntOrNull() ?: 0
             if (oh > 14 || om > 59) return null
             val total = sign * (oh * 60 + om)
-            return Parsed(hour, minute, total, utcWord.uppercase(Locale.ROOT) + offsetText(total).removePrefix("UTC"), null)
+            return Parsed(hour, minute, total, utcWord.uppercase(Locale.ROOT) + offsetText(total).removePrefix("UTC"), null, ampm.isNotEmpty())
         }
         val abbr = m.groupValues[8].uppercase(Locale.ROOT)
         val off = offsets[abbr] ?: return null
-        return Parsed(hour, minute, off, abbr, notes[abbr])
+        return Parsed(hour, minute, off, abbr, notes[abbr], ampm.isNotEmpty(), abbr)
     }
 
     private fun offsetText(minutes: Int): String {
@@ -249,6 +249,45 @@ internal object TimeZoneDetector {
         val mm = a % 60
         return if (mm == 0) "UTC$sign$hh" else "UTC$sign$hh:${mm.toString().padStart(2, '0')}"
     }
+
+    /** Popular zones get the abbreviation people actually say ("IST", not "GMT+05:30"). Standard, then daylight. */
+    private val zoneNames: Map<String, Pair<String, String>> = mapOf(
+        "Asia/Kolkata" to ("IST" to "IST"), "Asia/Calcutta" to ("IST" to "IST"),
+        "Asia/Dubai" to ("GST" to "GST"), "Asia/Karachi" to ("PKT" to "PKT"), "Asia/Dhaka" to ("BDT" to "BDT"),
+        "Asia/Kathmandu" to ("NPT" to "NPT"), "Asia/Bangkok" to ("ICT" to "ICT"), "Asia/Jakarta" to ("WIB" to "WIB"),
+        "Asia/Singapore" to ("SGT" to "SGT"), "Asia/Hong_Kong" to ("HKT" to "HKT"), "Asia/Manila" to ("PHT" to "PHT"),
+        "Asia/Shanghai" to ("CST" to "CST"), "Asia/Tokyo" to ("JST" to "JST"), "Asia/Seoul" to ("KST" to "KST"),
+        "Europe/London" to ("GMT" to "BST"), "Europe/Dublin" to ("GMT" to "IST"), "Europe/Lisbon" to ("WET" to "WEST"),
+        "Europe/Paris" to ("CET" to "CEST"), "Europe/Berlin" to ("CET" to "CEST"), "Europe/Madrid" to ("CET" to "CEST"),
+        "Europe/Rome" to ("CET" to "CEST"), "Europe/Amsterdam" to ("CET" to "CEST"), "Europe/Zurich" to ("CET" to "CEST"),
+        "Europe/Athens" to ("EET" to "EEST"), "Europe/Helsinki" to ("EET" to "EEST"), "Europe/Istanbul" to ("TRT" to "TRT"),
+        "Europe/Moscow" to ("MSK" to "MSK"), "Africa/Cairo" to ("EET" to "EEST"), "Africa/Johannesburg" to ("SAST" to "SAST"),
+        "Africa/Lagos" to ("WAT" to "WAT"), "Africa/Nairobi" to ("EAT" to "EAT"),
+        "America/New_York" to ("EST" to "EDT"), "America/Toronto" to ("EST" to "EDT"), "America/Chicago" to ("CST" to "CDT"),
+        "America/Denver" to ("MST" to "MDT"), "America/Phoenix" to ("MST" to "MST"), "America/Los_Angeles" to ("PST" to "PDT"),
+        "America/Vancouver" to ("PST" to "PDT"), "America/Anchorage" to ("AKST" to "AKDT"), "Pacific/Honolulu" to ("HST" to "HST"),
+        "America/Sao_Paulo" to ("BRT" to "BRT"), "America/Mexico_City" to ("CST" to "CST"),
+        "Australia/Sydney" to ("AEST" to "AEDT"), "Australia/Melbourne" to ("AEST" to "AEDT"), "Australia/Brisbane" to ("AEST" to "AEST"),
+        "Australia/Perth" to ("AWST" to "AWST"), "Australia/Adelaide" to ("ACST" to "ACDT"), "Pacific/Auckland" to ("NZST" to "NZDT"),
+        "UTC" to ("UTC" to "UTC"), "Etc/UTC" to ("UTC" to "UTC"), "GMT" to ("GMT" to "GMT")
+    )
+
+    /** The zone's short name: the table above, then Java's own if it is letters, otherwise "UTC+5:30". */
+    internal fun zoneLabel(zone: java.time.ZoneId, at: Instant): String {
+        val dst = zone.rules.isDaylightSavings(at)
+        zoneNames[zone.id]?.let { return if (dst) it.second else it.first }
+        val z = at.atZone(zone)
+        val java = DateTimeFormatter.ofPattern("zzz", Locale.ENGLISH).format(z)
+        if (java.length in 2..5 && java.all { it.isLetter() }) return java
+        val off = z.offset.totalSeconds / 60
+        return offsetText(off).replace(":00", "")
+    }
+
+    /** US standard abbreviations and the zone they belong to, for the "that zone is on daylight time now" note. */
+    private val usStandard = mapOf(
+        "EST" to ("Eastern" to "America/New_York"), "CST" to ("Central" to "America/Chicago"),
+        "MST" to ("Mountain" to "America/Denver"), "PST" to ("Pacific" to "America/Los_Angeles")
+    )
 
     private fun build(original: String, p: Parsed, env: Env): InspectResult {
         val srcOffset = ZoneOffset.ofTotalSeconds(p.offsetMinutes * 60)
@@ -261,9 +300,13 @@ internal object TimeZoneDetector {
         val today = now.atZone(zone).toLocalDate()
         val dayShift = ChronoUnit.DAYS.between(today, local.toLocalDate()).toInt()
 
-        val time = DateTimeFormatter.ofPattern("h:mm a", env.locale)
-        val zoneName = DateTimeFormatter.ofPattern("zzz", Locale.ENGLISH).format(local)
-        val localTime = time.format(local)
+        // 24-hour unless the user typed am/pm.
+        val fmt = DateTimeFormatter.ofPattern(if (p.twelve) "h:mm a" else "HH:mm", env.locale)
+        val localTime = fmt.format(local)
+        val srcTime = fmt.format(src)
+        val zoneName = zoneLabel(zone, src.toInstant())
+        val srcDay = DateTimeFormatter.ofPattern("EEE d MMM", env.locale).format(srcDate)
+        val localDay = DateTimeFormatter.ofPattern("EEE d MMM", env.locale).format(local)
         val dayWord = when (dayShift) {
             0 -> "today"
             1 -> "tomorrow"
@@ -275,25 +318,56 @@ internal object TimeZoneDetector {
             dayShift < 0 -> " ${dayShift}d"
             else -> ""
         }
+        val dayNote = when {
+            dayShift == 0 -> "SAME DAY"
+            dayShift > 0 -> "+$dayShift DAY" + if (dayShift > 1) "S" else ""
+            else -> "−${-dayShift} DAY" + if (dayShift < -1) "S" else ""
+        }
+        val localOffsetMin = local.offset.totalSeconds / 60
+        val gap = localOffsetMin - p.offsetMinutes
 
         val rows = mutableListOf(
             "From" to "$original (${offsetText(p.offsetMinutes)})",
-            "Local" to "${DateTimeFormatter.ofPattern("EEE, d MMM", env.locale).format(local)} · $localTime $zoneName",
+            "Local" to localDay,
             "Day" to dayWord.replaceFirstChar { it.uppercase(Locale.ROOT) },
             "That is" to untilText(Duration.between(now, src.toInstant()))
         )
-        p.note?.let { rows.add("Note" to it) }
+        // "3 PM EST" while New York is on daylight time: say what EST means and what EDT would give.
+        var note = p.note
+        val us = p.abbr?.let { usStandard[it] }
+        if (us != null) {
+            val rules = java.time.ZoneId.of(us.second).rules
+            if (rules.isDaylightSavings(src.toInstant())) {
+                val dstOffset = ZoneOffset.ofTotalSeconds((p.offsetMinutes + 60) * 60)
+                val alt = OffsetDateTime.of(srcDate, LocalTime.of(p.hour, p.minute), dstOffset).atZoneSameInstant(zone)
+                val altText = DateTimeFormatter.ofPattern("h:mm a", env.locale).format(alt).lowercase(Locale.ROOT)
+                val sign = if (p.offsetMinutes < 0) "-" else "+"
+                val dstName = us.first.first() + "DT"
+                val dstShown = offsetText(p.offsetMinutes + 60)
+                note = "${p.abbr} is ${offsetText(p.offsetMinutes).replace("UTC$sign", "UTC$sign")}. ${us.first} time is on $dstName now ($dstShown): that would be $altText."
+            }
+        }
+        note?.let { rows.add("Note" to it) }
 
+        val pill = when (PillConfig.TIME) {
+            "TIME_ZONE" -> "$localTime $zoneName"
+            "DAY" -> dayWord
+            else -> localTime + shiftTag
+        }
         return InspectResult(
             domain = "TIME",
-            pill = localTime + shiftTag,
+            pill = pill,
             title = "$localTime $zoneName",
             subtitle = "From $original",
             cardTitle = "Time conversion",
             cardText = "$original = $localTime $zoneName ($dayWord)",
             rows = rows,
             copyText = "$localTime $zoneName",
-            nums = listOf((p.hour * 60 + p.minute).toDouble(), (local.hour * 60 + local.minute).toDouble()),
+            nums = listOf(
+                (p.hour * 60 + p.minute).toDouble(), (local.hour * 60 + local.minute).toDouble(), dayShift.toDouble(),
+                Duration.between(now, src.toInstant()).toMinutes().toDouble(), p.offsetMinutes.toDouble(), localOffsetMin.toDouble()
+            ),
+            parts = listOf(srcTime, p.label, srcDay, localTime, zoneName, localDay, Timespan.gapText(gap), dayNote),
             iconName = "ic_calendar_countdown",
             timeoutSeconds = 15
         )
@@ -372,9 +446,11 @@ internal object MathDetector {
         }
         val plain = Fmt.plain(value)
         val hero = if (abs(value) < 1e15) Fmt.grouped(value, locale, 10) else plain
+        val tape = tapeFor(original, locale)
         return InspectResult(
             domain = "CALC",
-            pill = plain,
+            parts = tape,
+            pill = if (PillConfig.CALC == "EQUATION") original.replace(" ", "") + "=" + plain else plain,
             title = hero,
             subtitle = original,
             cardTitle = "Calculation",
@@ -384,6 +460,27 @@ internal object MathDetector {
             iconName = "ic_equals",
             timeoutSeconds = 15
         )
+    }
+
+    private val pctAdd = Regex("""^\s*([\d.,]+)\s*([+\-−–])\s*([\d.,]+)\s*%\s*$""")
+    private val pctOf = Regex("""(?i)^\s*([\d.,]+)\s*%\s*of\s*([\d.,]+)\s*$""")
+
+    /** The working for percentage sums: "567 + 15%" shows 567 × 15% = 85.05, then 567 + 85.05. */
+    internal fun tapeFor(original: String, locale: Locale): List<String> {
+        fun g(v: Double) = Fmt.grouped(v, locale, 6)
+        pctAdd.find(original)?.let { m ->
+            val base = Fmt.parseNumber(m.groupValues[1]) ?: return emptyList()
+            val pct = Fmt.parseNumber(m.groupValues[3]) ?: return emptyList()
+            val op = if (m.groupValues[2] == "+") "+" else "−"
+            val part = base * pct / 100.0
+            return listOf("${g(base)} × ${Fmt.plain(pct)}% = ${g(part)}", "${g(base)} $op ${g(part)}")
+        }
+        pctOf.find(original)?.let { m ->
+            val pct = Fmt.parseNumber(m.groupValues[1]) ?: return emptyList()
+            val base = Fmt.parseNumber(m.groupValues[2]) ?: return emptyList()
+            return listOf("${g(base)} × ${Fmt.plain(pct)}% = ${g(base * pct / 100.0)}")
+        }
+        return emptyList()
     }
 
     private class ParseEx : Exception()
@@ -647,6 +744,14 @@ internal object DateDetector {
             parts.joinToString(", ")
         }
 
+        val first = if (d.isBefore(today)) d else today
+        val second = if (d.isBefore(today)) today else d
+        fun wd(x: LocalDate) = DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH).format(x).uppercase(Locale.ROOT)
+        val parts = listOf(
+            first.monthValue.toString(), first.dayOfMonth.toString(), wd(first),
+            second.monthValue.toString(), second.dayOfMonth.toString(), wd(second),
+            breakdown.orEmpty(), if (second.year != first.year || second.year != today.year) second.year.toString() else ""
+        )
         val rows = mutableListOf("Date" to formatted, "Relative" to relative)
         breakdown?.let { rows.add("Breakdown" to it) }
         rows.add("Week" to "Week ${d.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR)} of ${d.get(IsoFields.WEEK_BASED_YEAR)}")
@@ -655,9 +760,11 @@ internal object DateDetector {
 
         return InspectResult(
             domain = "DATE",
-            pill = pill,
+            pill = if (PillConfig.DATE == "DATE") DateTimeFormatter.ofPattern("d MMM", locale).format(d) else pill,
             title = relative.replaceFirstChar { it.uppercase(Locale.ROOT) },
             subtitle = formatted,
+            parts = parts,
+            caption = "WEEK ${d.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR)} · DAY ${d.dayOfYear}",
             cardTitle = "Date",
             cardText = "$formatted · $relative",
             rows = rows,
@@ -695,17 +802,16 @@ internal object ReadingDetector {
         val pill = if (readSecs < 60) "${readSecs}s read" else "~${(readSecs / 60.0).roundToInt().coerceAtLeast(1)}m read"
         return InspectResult(
             domain = "TEXT",
-            pill = pill,
+            pill = if (PillConfig.TEXT == "WORDS") "$words words" else pill,
             title = clock(readSecs) + " read",
             subtitle = "$words words",
             cardTitle = "Reading estimate",
             cardText = "$words words · ${text.length} characters · ${clock(readSecs)} to read",
             rows = listOf(
-                "Words" to words.toString(),
                 "Characters" to text.length.toString(),
                 "Sentences" to sentences.toString(),
-                "Reading time" to "${clock(readSecs)} at 230 wpm",
-                "Speaking time" to "${clock(speakSecs)} at 150 wpm"
+                "Reading" to "${clock(readSecs)} at 230 wpm",
+                "Speaking" to "${clock(speakSecs)} at 150 wpm"
             ),
             copyText = "$words words, ${clock(readSecs)} read",
             iconName = "ic_inspect_define",
