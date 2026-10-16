@@ -40,7 +40,8 @@ object Timespan {
                 val from = if (ym == startYm) a else ym.atDay(1)
                 val to = if (ym == endYm) b else ym.atEndOfMonth()
                 val name = ym.month.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).uppercase(Locale.ROOT)
-                val label = if (crossesYear) "$name ${(ym.year % 100).toString().padStart(2, '0')}" else name
+                // The year shows only where it changes (January), so OCT NOV DEC JAN ’27 reads cleanly.
+                val label = if (crossesYear && ym != startYm && ym.monthValue == 1) "$name ’${(ym.year % 100).toString().padStart(2, '0')}" else name
                 out.add(SpanRow(label, (to.toEpochDay() - from.toEpochDay() + 1).toInt(), from.dayOfMonth - 1, 31, ym == startYm, ym == endYm))
                 ym = ym.plusMonths(1)
             }
