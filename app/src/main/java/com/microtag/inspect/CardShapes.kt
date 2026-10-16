@@ -21,16 +21,26 @@ import kotlin.math.sqrt
 // ==========================================================
 
 enum class Cut { Square, Round, Chamfer, Scoop, Step }
-enum class Bite { Semi, Tri, Rect, Slot, Ramp }
+/**
+ * Semi: a true half-circle when width = 2 x depth. Recess: a long shallow bite with 45-degree ends.
+ * Step45: a wall straight in, a flat run, then a 45-degree way back out (wall first in reading order).
+ */
+enum class Bite { Semi, Tri, Rect, Slot, Ramp, Recess, Step45 }
 enum class Edge { Top, Right, Bottom, Left }
 
 data class Corner(val cut: Cut = Cut.Square, val size: Float = 0f)
 
-/** A notch in an edge. [at] is the centre as a fraction of the edge, [depth] is dp into the card (negative = outwards, avoid). */
+/**
+ * A notch in an edge. [at] is the centre as a fraction of the edge, [depth] is dp into the card (negative = outwards, avoid).
+ * A [width] of 1 or less is a fraction of the edge (a long recess), more than 1 is dp.
+ */
 data class Notch(val edge: Edge, val at: Float, val width: Float, val depth: Float, val kind: Bite = Bite.Semi)
 
 /** A round hole punched through the card, centre as fractions of width and height. */
 data class Punch(val x: Float, val y: Float, val radius: Float)
+
+/** A zigzag of equal triangles along an edge; the count adapts to the card's width so the pitch stays fine. */
+data class Teeth(val edge: Edge, val pitch: Float, val depth: Float, val from: Float = 0.03f, val to: Float = 0.97f)
 
 data class TicketSpec(
     val tl: Corner = Corner(),
@@ -38,6 +48,7 @@ data class TicketSpec(
     val br: Corner = Corner(),
     val bl: Corner = Corner(),
     val notches: List<Notch> = emptyList(),
+    val teeth: List<Teeth> = emptyList(),
     val punches: List<Punch> = emptyList()
 )
 
@@ -88,7 +99,13 @@ fun buildTicketPath(spec: TicketSpec, w: Float, h: Float, dp: Float): Path {
         // top and bottom, whichever way the outline is being drawn. 0..1 = a fraction of the edge, more than 1 =
         // dp from the start, negative = dp back from the end.
         val reversed = edges[i] == Edge.Bottom || edges[i] == Edge.Left
-        val here = spec.notches.filter { it.edge == edges[i] }.map { nt ->
+        val generated = spec.teeth.filter { it.edge == edges[i] }.flatMap { t ->
+            val usable = len * (t.to - t.from)
+            val count = max(1, (usable / (t.pitch * dp)).toInt())
+            val wd = usable / count / dp
+            (0 until count).map { k -> Notch(edges[i], t.from + (t.to - t.from) * (k + 0.5f) / count, wd, t.depth, Bite.Tri) }
+        }
+        val here = (spec.notches.filter { it.edge == edges[i] } + generated).map { nt ->
             val pos = when {
                 nt.at in 0f..1f -> len * nt.at
                 nt.at > 1f -> nt.at * dp
@@ -98,7 +115,7 @@ fun buildTicketPath(spec: TicketSpec, w: Float, h: Float, dp: Float): Path {
         }.sortedBy { it.first }
         var cursor = segStart
         for ((pos, nt) in here) {
-            val nw = nt.width * dp
+            val nw = if (nt.width <= 1f) len * nt.width else nt.width * dp
             val nd = nt.depth * dp
             val lo = max(cursor + nw / 2f, segStart + nw / 2f)
             val hi = segEnd - nw / 2f
@@ -110,8 +127,21 @@ fun buildTicketPath(spec: TicketSpec, w: Float, h: Float, dp: Float): Path {
             path.lineTo(p0.x, p0.y)
             when (nt.kind) {
                 Bite.Semi -> {
-                    val c1 = p(0f, nd * 1.3333f); val c2 = p(nw, nd * 1.3333f); val e = p(nw, 0f)
-                    path.cubicTo(c1.x, c1.y, c2.x, c2.y, e.x, e.y)
+                    // Two quarter-ellipses: a true semicircle when the width is twice the depth.
+                    val mid = p(nw / 2f, nd)
+                    val a1 = p(0f, nd * K); val a2 = p(nw / 2f * (1f - K), nd)
+                    path.cubicTo(a1.x, a1.y, a2.x, a2.y, mid.x, mid.y)
+                    val b1 = p(nw / 2f * (1f + K), nd); val b2 = p(nw, nd * K); val e = p(nw, 0f)
+                    path.cubicTo(b1.x, b1.y, b2.x, b2.y, e.x, e.y)
+                }
+                Bite.Recess -> {
+                    val q1 = p(nd, nd); val q2 = p(nw - nd, nd); val e = p(nw, 0f)
+                    path.lineTo(q1.x, q1.y); path.lineTo(q2.x, q2.y); path.lineTo(e.x, e.y)
+                }
+                Bite.Step45 -> {
+                    // Reading order puts the wall first. The left and bottom edges are drawn backwards, so mirror it there.
+                    val seq = if (reversed) listOf(nd to nd, nw to nd, nw to 0f) else listOf(0f to nd, nw - nd to nd, nw to 0f)
+                    seq.forEach { (al, de) -> val q = p(al, de); path.lineTo(q.x, q.y) }
                 }
                 Bite.Tri -> {
                     val m = p(nw / 2f, nd); val e = p(nw, 0f)
@@ -224,32 +254,26 @@ object CardShapes {
         }
 
     /** The perforation line: dp up from the bottom edge, just above the big value. */
-    const val TEAR_FROM_BOTTOM = 136f
+    const val TEAR_FROM_BOTTOM = 150f
 
     private fun tear() = listOf(
-        Notch(Edge.Left, -TEAR_FROM_BOTTOM, 34f, 12f, Bite.Semi),
-        Notch(Edge.Right, -TEAR_FROM_BOTTOM, 34f, 12f, Bite.Semi)
+        // True semicircles: width is twice the depth.
+        Notch(Edge.Left, -TEAR_FROM_BOTTOM, 28f, 14f, Bite.Semi),
+        Notch(Edge.Right, -TEAR_FROM_BOTTOM, 28f, 14f, Bite.Semi)
     )
 
     /** True for cards whose side notches sit on a tear line, so the card draws a dashed perforation between them. */
     fun hasTear(domain: String): Boolean = domain in setOf("CONV", "MONEY", "TEXT")
 
-    /** Extra space the big value keeps clear on the right, for cards with a deep cut in the bottom-right corner. */
-    fun bigEndInset(domain: String): Float = when (domain) {
-        "DIMS" -> 52f
-        else -> 0f
-    }
-
     fun specFor(domain: String): TicketSpec = when (domain) {
         // The concept card: soft top, a cut foot, a bite out of the right edge level with the circles.
         "COLOUR" -> TicketSpec(
             tl = Corner(Cut.Round, 30f), tr = Corner(Cut.Round, 30f), bl = Corner(Cut.Chamfer, 42f),
-            notches = listOf(Notch(Edge.Right, 186f, 44f, 15f, Bite.Semi))
+            notches = listOf(Notch(Edge.Right, 0.46f, 40f, 14f, Bite.Step45))
         )
         // A till receipt: torn bottom edge.
         "CALC" -> TicketSpec(
-            tl = Corner(Cut.Chamfer, 20f), tr = Corner(Cut.Chamfer, 20f),
-            notches = row(Edge.Bottom, 9, 0.08f, 0.92f, 20f, 9f, Bite.Tri)
+            teeth = listOf(Teeth(Edge.Bottom, 12.5f, 6f))
         )
         // A ruler laid across: opposed corners cut, a tear line above the result.
         "CONV" -> TicketSpec(
@@ -259,7 +283,7 @@ object CardShapes {
         )
         // A banknote: scooped corners, a tear line above the total.
         "MONEY" -> TicketSpec(
-            tl = Corner(Cut.Scoop, 22f), tr = Corner(Cut.Scoop, 22f), br = Corner(Cut.Scoop, 22f), bl = Corner(Cut.Scoop, 22f),
+            tl = Corner(Cut.Scoop, 14f), tr = Corner(Cut.Scoop, 14f), br = Corner(Cut.Scoop, 14f), bl = Corner(Cut.Scoop, 14f),
             notches = tear()
         )
         // A watch: very round, with a crown on the top edge.
@@ -275,16 +299,17 @@ object CardShapes {
         // A browser tab with a pointer bitten into the right edge.
         "URL" -> TicketSpec(
             tl = Corner(Cut.Round, 28f), tr = Corner(Cut.Round, 28f), br = Corner(Cut.Chamfer, 30f),
-            notches = listOf(Notch(Edge.Right, 150f, 40f, 22f, Bite.Tri), Notch(Edge.Bottom, 0.3f, 34f, 10f, Bite.Ramp))
+            notches = listOf(Notch(Edge.Bottom, 0.3f, 34f, 10f, Bite.Ramp))
         )
         // A scan sticker: soft corners, small registration bites at the top-left like a QR finder.
         "UPI" -> TicketSpec(
             tl = Corner(Cut.Round, 14f), tr = Corner(Cut.Round, 14f), bl = Corner(Cut.Round, 14f), br = Corner(Cut.Round, 14f),
-            notches = listOf(Notch(Edge.Top, 52f, 26f, 10f, Bite.Rect), Notch(Edge.Left, 52f, 26f, 10f, Bite.Rect))
+            // One notch, lined up with the left edge of the QR tile.
+            notches = listOf(Notch(Edge.Top, 39f, 26f, 10f, Bite.Rect))
         )
         // A bank front: soft roof, columns along the base.
         "IFSC" -> TicketSpec(
-            tl = Corner(Cut.Round, 30f), tr = Corner(Cut.Round, 30f),
+            tl = Corner(Cut.Chamfer, 26f),
             notches = row(Edge.Bottom, 4, 0.2f, 0.8f, 36f, 12f, Bite.Slot)
         )
         // A postage stamp: perforated on all four sides.
@@ -302,17 +327,20 @@ object CardShapes {
         // A book page: stitched spine, curled foot.
         "DEFINE" -> TicketSpec(
             tl = Corner(Cut.Round, 18f), tr = Corner(Cut.Round, 6f), br = Corner(Cut.Chamfer, 34f),
-            notches = row(Edge.Left, 3, 0.25f, 0.75f, 20f, 7f, Bite.Slot)
+            // One long shallow recess, like a page lifted out of its binding.
+            notches = listOf(Notch(Edge.Left, 0.5f, 0.62f, 8f, Bite.Recess))
         )
         // A framed photo with a thumb notch.
         "WIKI" -> TicketSpec(
             tr = Corner(Cut.Round, 58f), br = Corner(Cut.Scoop, 30f), tl = Corner(Cut.Chamfer, 16f),
-            notches = listOf(Notch(Edge.Left, 0.3f, 38f, 12f, Bite.Semi))
+            // A step cut level with the photo's top edge (the poster puts the photo at 118dp).
+            notches = listOf(Notch(Edge.Left, 138f, 40f, 14f, Bite.Step45))
         )
         // A drafting sheet: a clipped corner, a title block stepped out of the foot, registration ticks.
         "DIMS" -> TicketSpec(
-            tl = Corner(Cut.Chamfer, 24f), br = Corner(Cut.Step, 40f),
-            notches = row(Edge.Top, 3, 0.25f, 0.75f, 6f, 6f, Bite.Rect)
+            tl = Corner(Cut.Chamfer, 24f),
+            // The top edge is a ruler: fine ticks, every fourth one longer.
+            notches = (0..24).map { k -> Notch(Edge.Top, 0.12f + 0.82f * k / 24f, 3f, if (k % 4 == 0) 9f else 5f, Bite.Rect) }
         )
         else -> TicketSpec(
             tl = Corner(Cut.Round, 26f), tr = Corner(Cut.Round, 26f), bl = Corner(Cut.Round, 26f), br = Corner(Cut.Chamfer, 28f),
