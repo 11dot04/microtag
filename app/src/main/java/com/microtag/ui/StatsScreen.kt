@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -207,7 +208,6 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth().height(260.dp)
         )
 
-        // CRITICAL FIX: Removed IntrinsicSize.Min constraints that crashed FitText scaling
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatTile("SELECTED", total.toString(), Modifier.weight(1f))
             StatTile("PEAK HOUR", peakHour?.let { "%02d:00".format(it) } ?: "--", Modifier.weight(1f))
