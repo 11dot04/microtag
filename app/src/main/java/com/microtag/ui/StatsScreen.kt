@@ -64,8 +64,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import com.microtag.R
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import java.text.SimpleDateFormat
@@ -79,34 +77,22 @@ import java.util.Calendar
 import kotlin.math.max
 import kotlin.math.min
 
-// ==========================================================
-// DATA
-// Built from the promotion log. The log keeps the newest 500 entries and each entry is one
-// promotion (repeats collapse into it), so this is a recent-activity view rather than lifetime stats.
-// ==========================================================
-
 private class Session(val timeMs: Long, val pkg: String, val path: String, val day: Int, val hour: Int, val epochDay: Long)
 
 private class StatsData(
     val sessions: List<Session>,
-    val entries: List<MicrotagLog.Entry>       // everything, for the promote rate
+    val entries: List<MicrotagLog.Entry> 
 )
 
-/** Updates to the same notification within this window belong to the same session. */
 private const val SESSION_GAP_MS = 30 * 60 * 1000L
 
 private fun dayIndexOf(ms: Long): Int {
     val c = Calendar.getInstance().apply { timeInMillis = ms }
-    return (c.get(Calendar.DAY_OF_WEEK) + 5) % 7   // Monday = 0 ... Sunday = 6
+    return (c.get(Calendar.DAY_OF_WEEK) + 5) % 7
 }
 
 private fun epochDayOf(ms: Long): Long = (ms + TimeZone.getDefault().getOffset(ms)) / 86_400_000L
 
-/**
- * The log has an entry for every promoted update, so an ongoing notification (a VPN session, a workout)
- * shows up dozens of times. Entries are folded by notification key: a new interception starts only when a key
- * is first seen, or comes back after a long silence. The hour is the hour the session started.
- */
 private fun loadStats(): StatsData {
     val all = MicrotagLog.snapshot()
     val lastSeen = HashMap<String, Long>()
@@ -127,7 +113,6 @@ private fun loadStats(): StatsData {
     return StatsData(sessions, all)
 }
 
-/** Today's sessions per hour, for the dashboard's dot matrix. */
 fun todayHourCounts(): IntArray {
     val out = IntArray(24)
     val today = epochDayOf(System.currentTimeMillis())
@@ -148,7 +133,6 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
     var selected by remember { mutableStateOf(setOf(today)) }
     var apps by remember { mutableStateOf(emptySet<String>()) }
 
-    // Everything below follows the two filters: weekdays and apps.
     val byApp = remember(apps) { data.sessions.filter { apps.isEmpty() || it.pkg in apps } }
     val scoped = remember(selected, apps) { byApp.filter { it.day in selected } }
     val values = remember(scoped) { IntArray(24).also { v -> scoped.forEach { v[it.hour]++ } } }
@@ -198,11 +182,9 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
         )
 
         DayChips(selected, today) { day ->
-            // Always keep at least one day on.
             selected = if (day in selected) (if (selected.size > 1) selected - day else selected) else selected + day
         }
 
-        // App filter: every figure and graph on this page follows it.
         if (topApps.isNotEmpty()) {
             Row(
                 Modifier.bleed(20.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
@@ -225,12 +207,13 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth().height(260.dp)
         )
 
-        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        // CRITICAL FIX: Removed IntrinsicSize.Min constraints that crashed FitText scaling
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatTile("SELECTED", total.toString(), Modifier.weight(1f))
             StatTile("PEAK HOUR", peakHour?.let { "%02d:00".format(it) } ?: "--", Modifier.weight(1f))
             StatTile("ALL TIME", prefs.interceptCount.toString(), Modifier.weight(1f))
         }
-        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatTile("PROMOTED", rate?.let { "$it%" } ?: "--", Modifier.weight(1f))
             StatTile("STREAK", if (streak > 0) "$streak d" else "--", Modifier.weight(1f))
             StatTile("BEST DAY", best?.let { "${it.value}" } ?: "--", Modifier.weight(1f), caption2 = best?.let {
@@ -249,7 +232,6 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
     }
 }
 
-/** Top five sources for a set of sessions, as (label, count). */
 private fun sourcesOf(context: android.content.Context, sessions: List<Session>): List<Pair<String, Int>> {
     val pm = context.packageManager
     return sessions.groupingBy { it.pkg }.eachCount().toList()
@@ -261,10 +243,6 @@ private fun sourcesOf(context: android.content.Context, sessions: List<Session>)
             label to n
         }
 }
-
-// ==========================================================
-// DAY CHIPS
-// ==========================================================
 
 @Composable
 private fun DayChips(selected: Set<Int>, today: Int, onToggle: (Int) -> Unit) {
@@ -299,7 +277,6 @@ private fun DayChips(selected: Set<Int>, today: Int, onToggle: (Int) -> Unit) {
                     )
                 }
                 Spacer(Modifier.height(5.dp))
-                // A small dot marks today.
                 Box(
                     Modifier
                         .size(4.dp)
@@ -311,12 +288,6 @@ private fun DayChips(selected: Set<Int>, today: Int, onToggle: (Int) -> Unit) {
     }
 }
 
-// ==========================================================
-// CHART
-// Vertical hour lines, a smooth curve through every hour, a hatched band on the current hour,
-// a dashed curve for hours still to come, and a drag-to-scrub readout with detent haptics.
-// ==========================================================
-
 @Composable
 private fun HourChart(values: IntArray, nowHour: Int?, dashFuture: Boolean, modifier: Modifier) {
     val view = LocalView.current
@@ -324,7 +295,6 @@ private fun HourChart(values: IntArray, nowHour: Int?, dashFuture: Boolean, modi
     val anim = remember { List(24) { Animatable(0f) } }
     var scrub by remember { mutableIntStateOf(-1) }
 
-    // Each hour springs to its new value, so switching days morphs the curve.
     LaunchedEffect(values.toList()) {
         anim.forEachIndexed { i, a ->
             launch { a.animateTo(values[i].toFloat(), spring(dampingRatio = 0.75f, stiffness = 180f)) }
@@ -359,14 +329,13 @@ private fun HourChart(values: IntArray, nowHour: Int?, dashFuture: Boolean, modi
         val cw = size.width - padL - padR
         val ch = bottom - top
         val vals = FloatArray(24) { anim[it].value }
-        val maxV = max(5f, vals.max())   // a floor, so two events don't look like a spike
+        val maxV = max(1f, vals.max())
 
         fun px(h: Float) = padL + (h + 0.5f) / 24f * cw
         fun py(v: Float) = bottom - (v / maxV) * ch * 0.9f
         val accent = TagColors.Lime
         val labelStyle = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 11.sp, color = TagColors.Outline)
 
-        // hour lines and labels, every four hours
         for (t in 0..24 step 4) {
             val x = padL + t / 24f * cw
             drawLine(TagColors.White.copy(alpha = 0.28f), Offset(x, top - 8.dp.toPx()), Offset(x, bottom), 1.5.dp.toPx())
@@ -376,7 +345,6 @@ private fun HourChart(values: IntArray, nowHour: Int?, dashFuture: Boolean, modi
             }
         }
 
-        // hatched band on the current hour
         if (nowHour != null) {
             val l = padL + nowHour / 24f * cw
             val r = l + cw / 24f
@@ -390,7 +358,6 @@ private fun HourChart(values: IntArray, nowHour: Int?, dashFuture: Boolean, modi
             }
         }
 
-        // the curve: Catmull-Rom turned into cubic segments
         val pts = List(24) { Offset(px(it.toFloat()), py(vals[it])) }
         val path = Path().apply {
             moveTo(pts[0].x, pts[0].y)
@@ -419,7 +386,6 @@ private fun HourChart(values: IntArray, nowHour: Int?, dashFuture: Boolean, modi
             }
         }
 
-        // the callout: the peak by default, the touched hour while scrubbing
         val focus = if (scrub >= 0) scrub else vals.indices.maxByOrNull { vals[it] } ?: 0
         val focusValue = vals[focus]
         if (scrub >= 0 || focusValue > 0.5f) {
@@ -449,15 +415,10 @@ private fun HourChart(values: IntArray, nowHour: Int?, dashFuture: Boolean, modi
     }
 }
 
-// ==========================================================
-// SUMMARY
-// ==========================================================
-
 @Composable
 private fun StatTile(caption: String, value: String, modifier: Modifier, caption2: String? = null) {
     Column(
         modifier
-            .fillMaxHeight()
             .clip(TagShapes.Rect)
             .border(2.dp, TagColors.Outline, TagShapes.Rect)
             .padding(horizontal = 14.dp, vertical = 12.dp)
@@ -495,7 +456,6 @@ private fun SectionLabel(text: String) {
     )
 }
 
-/** Seven days by 24 hours. Selected weekdays are bright, the others recede. */
 @Composable
 private fun Heatmap(grid: Array<IntArray>, selected: Set<Int>, modifier: Modifier) {
     val measurer = rememberTextMeasurer()
@@ -536,7 +496,6 @@ private fun Heatmap(grid: Array<IntArray>, selected: Set<Int>, modifier: Modifie
     }
 }
 
-/** Night, morning, afternoon, evening: one interlocked bar. */
 @Composable
 private fun TimeOfDay(values: IntArray) {
     val buckets = listOf("NIGHT" to 0..5, "MORNING" to 6..11, "AFTERNOON" to 12..17, "EVENING" to 18..23)
@@ -575,10 +534,10 @@ private fun TimeOfDay(values: IntArray) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(8.dp).clip(CircleShape).background(TagColors.Lime.copy(alpha = alphas[i])))
                         Spacer(Modifier.width(6.dp))
-                    Text(
-                        name,
-                        style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.8.sp, color = TagColors.Outline)
-                    )
+                        Text(
+                            name,
+                            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.8.sp, color = TagColors.Outline)
+                        )
                     }
                     Text(
                         "${counts[i] * 100 / total}%",
@@ -590,7 +549,6 @@ private fun TimeOfDay(values: IntArray) {
     }
 }
 
-/** Which kind of rule fired, using the log's path field. */
 @Composable
 private fun ByType(sessions: List<Session>) {
     val rows = remember(sessions) {
