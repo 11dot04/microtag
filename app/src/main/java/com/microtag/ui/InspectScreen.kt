@@ -18,11 +18,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -43,7 +47,10 @@ import androidx.compose.ui.unit.sp
 import com.microtag.R
 import com.microtag.inspect.InspectCard
 import com.microtag.inspect.InspectPayload
+import com.microtag.inspect.InspectResult
 import com.microtag.inspect.InspectSamples
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun BackBar(onBack: () -> Unit) {
@@ -56,18 +63,17 @@ fun BackBar(onBack: () -> Unit) {
     }
 }
 
-// CRITICAL FIX: Restored static UI variables so ChipPreview doesn't trigger mass IO resolution
 private class InspectTip(
     val icon: Int,
     val title: String,
     val blurb: String,
-    val input: String,
-    val output: String,
+    val key: String,
+    val output: String, 
     val chipIcon: Int? = null,
     val glyph: String? = null,
     val swatch: Color? = null,
     val backwards: String? = null,
-    val sample: (() -> InspectPayload)? = null
+    val make: ((String) -> InspectResult?)? = null
 )
 
 private class TipBlockSpec(val label: String, val tips: List<InspectTip>)
@@ -76,40 +82,41 @@ private val Blocks = listOf(
     TipBlockSpec(
         "Numbers",
         listOf(
-            InspectTip(R.drawable.ic_inspect_calc, "Calculations", "Select a sum, percentages included. The card shows the working.", "567 + 15%", "652.05", glyph = "=", sample = InspectSamples::calc),
-            InspectTip(R.drawable.ic_inspect_convert, "Units", "Select a measurement and see it in the other system.", "51 lb", "23.13 kg", glyph = "⇄", sample = InspectSamples::convert),
-            InspectTip(R.drawable.ic_equals, "Numbers", "Select a big number for its words, and now and then a fact about it.", "3,100,000,000", "3.1 Arab", glyph = "=", backwards = "Select the words (three lakh fifty thousand) to get the digits.", sample = InspectSamples::number),
-            InspectTip(R.drawable.ic_inspect_convert, "Dimensions", "Select sizes like 21 x 29.7 cm or 1920x1080. Standard sizes are named.", "21 x 29.7 cm", "A4 paper", glyph = "×", backwards = "Select a name (A3, us letter, 1080p, queen bed, credit card) to get its size.", sample = InspectSamples::dimensions)
+            InspectTip(R.drawable.ic_inspect_calc, "Calculations", "Select a sum, percentages included. The card shows the working.", "567 + 15%", "652.05", glyph = "="),
+            InspectTip(R.drawable.ic_inspect_convert, "Units", "Select a measurement and see it in the other system.", "51 lb", "23.13 kg", glyph = "⇄"),
+            InspectTip(R.drawable.ic_equals, "Numbers", "Select a big number for its words, and now and then a fact about it.", "3,100,000,000", "3.1 Arab", glyph = "=", backwards = "Select the words (three lakh fifty thousand) to get the digits."),
+            InspectTip(R.drawable.ic_inspect_convert, "Dimensions", "Select sizes like 21 x 29.7 cm or 1920x1080. Standard sizes are named.", "21 x 29.7 cm", "A4 paper", glyph = "×", backwards = "Select a name (A3, us letter, 1080p, queen bed, credit card) to get its size.")
         )
     ),
     TipBlockSpec(
         "Money and India",
         listOf(
-            InspectTip(R.drawable.ic_inspect_convert, "Currency", "Select an amount and see it in your own currency.", "\$38", "3681", glyph = "₹", sample = InspectSamples::money),
-            InspectTip(R.drawable.ic_upi_rupee, "UPI IDs", "Copy a UPI ID to see which app it belongs to, scan it as a QR, or jump straight to paying.", "ryan@oksbi", "Google Pay", glyph = "₹", sample = InspectSamples::upi),
-            InspectTip(R.drawable.ic_upi_rupee, "Bank codes", "Select an IFSC code for the bank, branch and what it supports.", "SBIN0001234", "SBI", glyph = "#", sample = InspectSamples::bank),
-            InspectTip(R.drawable.ic_inspect_convert, "PIN codes", "Select a six-digit PIN for the place it covers.", "400001", "Mumbai", glyph = "#", sample = InspectSamples::post)
+            InspectTip(R.drawable.ic_inspect_convert, "Currency", "Select an amount and see it in your own currency.", "money", "3681", glyph = "₹"),
+            InspectTip(R.drawable.ic_upi_rupee, "UPI IDs", "Copy a UPI ID to see which app it belongs to, scan it as a QR, or jump straight to paying.", "ryan@oksbi", "Google Pay", glyph = "₹"),
+            InspectTip(R.drawable.ic_upi_rupee, "Bank codes", "Select an IFSC code for the bank, branch and what it supports.", "SBIN0001234", "SBI", glyph = "#", make = { InspectSamples.bank() }),
+            InspectTip(R.drawable.ic_inspect_convert, "PIN codes", "Select a six-digit PIN for the place it covers.", "400001", "Mumbai", glyph = "#", make = { InspectSamples.post() })
         )
     ),
     TipBlockSpec(
         "Time",
         listOf(
-            InspectTip(R.drawable.ic_calendar_countdown, "Time zones", "Select a time in any zone and see it on your clock, with the gap and the day change.", "3 PM EST", "1:30 am", chipIcon = R.drawable.ic_calendar_countdown, sample = InspectSamples::time),
-            InspectTip(R.drawable.ic_calendar_countdown, "Dates", "Select a date and see how far away it is. The card draws the months in between.", "09 November.", "in 29d", chipIcon = R.drawable.ic_calendar_countdown, sample = InspectSamples::timespan)
+            InspectTip(R.drawable.ic_calendar_countdown, "Time zones", "Select a time in any zone and see it on your clock, with the gap and the day change.", "3 PM EST", "1:30 am", chipIcon = R.drawable.ic_calendar_countdown),
+            InspectTip(R.drawable.ic_calendar_countdown, "Dates", "Select a date and see how far away it is. The card draws the months in between.", "date", "in 29d", chipIcon = R.drawable.ic_calendar_countdown)
         )
     ),
     TipBlockSpec(
         "Words and web",
         listOf(
-            InspectTip(R.drawable.ic_inspect_define, "Definitions", "Select a word. Tap the chip for the full entry, with every meaning.", "raster", "scan lines", chipIcon = R.drawable.ic_inspect_define, sample = InspectSamples::define),
-            InspectTip(R.drawable.ic_inspect_define, "Wikipedia", "Select a person, place or thing, even a long title, for the summary and a photo when there is one.", "Leonhard Euler", "Leonhard", chipIcon = R.drawable.ic_inspect_define, sample = InspectSamples::wiki),
-            InspectTip(R.drawable.ic_inspect_convert, "Links", "Copy or select a link. Trackers are stripped, shortened links can be unrolled, and a check looks at the site.", "https://bit.ly/3xYzAb", "Short link", glyph = "!", sample = InspectSamples::link)
+            InspectTip(R.drawable.ic_inspect_define, "Definitions", "Select a word. Tap the chip for the full entry, with every meaning.", "raster", "scan lines", chipIcon = R.drawable.ic_inspect_define),
+            InspectTip(R.drawable.ic_inspect_define, "Wikipedia", "Select a person, place or thing, even a long title, for the summary and a photo when there is one.", "Leonhard Euler", "Leonhard", chipIcon = R.drawable.ic_inspect_define, make = { InspectSamples.wiki() }),
+            InspectTip(R.drawable.ic_inspect_define, "Reading time", "Select a longer passage for how long it takes to read or say aloud.", "Select a passage like this one, a few sentences long, and the card will estimate how long it takes to read it out loud, and how many words it holds.", "10 sec", chipIcon = R.drawable.ic_inspect_define),
+            InspectTip(R.drawable.ic_inspect_convert, "Links", "Copy or select a link. Trackers are stripped, shortened links can be unrolled, and a check looks at the site.", "https://bit.ly/3xYzAb", "Short link", glyph = "!")
         )
     ),
     TipBlockSpec(
         "Colour",
         listOf(
-            InspectTip(R.drawable.ic_inspect_colour, "Colours", "Select a colour code for the colour, its name and its complement.", "#CCFF00", "#CCFF00", swatch = Color(0xFFCCFF00), backwards = "Select a name (teal, forest green) to get the hex code.", sample = InspectSamples::colour)
+            InspectTip(R.drawable.ic_inspect_colour, "Colours", "Select a colour code for the colour, its name and its complement.", "#CCFF00", "#CCFF00", swatch = Color(0xFFCCFF00), backwards = "Select a name (teal, forest green) to get the hex code.")
         )
     )
 )
@@ -181,8 +188,19 @@ private fun TipBlock(block: TipBlockSpec) {
 @Composable
 private fun TipRow(tip: InspectTip, shape: Shape) {
     var open by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<InspectResult?>(null) }
     val view = LocalView.current
+    val text = remember(tip) { InspectSamples.input(tip.key) }
     
+    // Lazily fetch the real payload ONLY when the user opens the card
+    LaunchedEffect(open) {
+        if (open && result == null) {
+            result = withContext(Dispatchers.IO) {
+                if (tip.make != null) tip.make.invoke(text) else InspectSamples.resolve(text)
+            }
+        }
+    }
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -222,7 +240,7 @@ private fun TipRow(tip: InspectTip, shape: Shape) {
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    tip.input, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    text, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 15.sp, color = TagColors.OnLime)
                 )
             }
@@ -249,16 +267,13 @@ private fun TipRow(tip: InspectTip, shape: Shape) {
                 )
             }
         }
-        
         AnimatedVisibility(visible = open) {
             Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
-                // CRITICAL FIX: Data resolution is safely isolated inside if(open) again
-                if (tip.sample != null) {
-                    val sample = remember(tip) { tip.sample.invoke() }
-                    InspectCard(sample)
+                if (result != null) {
+                    InspectCard(result!!.toPayload())
                 } else {
                     Text(
-                        "Nothing to show offline.",
+                        "Loading...",
                         style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = TagColors.Outline)
                     )
                 }
