@@ -86,7 +86,18 @@ data class InspectResult(
     val nums: List<Double> = emptyList(),
     val unit: String = "",
     /** Calendar event to open when the card's arrow is tapped (0 = none). */
-    val eventId: Long = 0L
+    val eventId: Long = 0L,
+    /** A small floating line under the hero (number facts, notes). Blank = none. */
+    val fact: String = "",
+    /** A tiny mono caption (money: "RATES 7 H OLD"; define: sources). Blank = none. */
+    val caption: String = "",
+    /**
+     * Free-form pieces a card lays out itself. Meaning depends on the domain:
+     * TIME [fromTime, fromZone, fromDate, toTime, toZone, toDate, gap, dayNote];
+     * DATE [fromMonth, fromDay, fromWeekday, toMonth, toDay, toWeekday, span, year];
+     * CALC tape lines; WIKI disambiguation entries.
+     */
+    val parts: List<String> = emptyList()
 ) {
     fun toPayload(): InspectPayload = InspectPayload(
         domain = domain,
@@ -105,7 +116,10 @@ data class InspectResult(
         imageUrl = imageUrl,
         nums = nums,
         unit = unit,
-        eventId = eventId
+        eventId = eventId,
+        fact = fact,
+        caption = caption,
+        parts = parts
     )
 }
 
