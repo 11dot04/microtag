@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -195,13 +196,14 @@ private fun PermissionPage(perms: Permissions, cx: Dp, cy: Dp, mirrored: Boolean
                             .padding(horizontal = 22.dp)
                     ) {
                         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "Shizuku",
-                                modifier = Modifier.weight(1f),
-                                style = TextStyle(
+                            FitText(
+                                AnnotatedString("Shizuku"),
+                                TextStyle(
                                     fontFamily = Montserrat, fontWeight = FontWeight.Bold,
                                     fontSize = 17.sp, color = TagColors.OnLime
-                                )
+                                ),
+                                Modifier.weight(1f),
+                                contentAlignment = Alignment.CenterStart
                             )
                             TagSwitch(
                                 checked = perms.hasShizuku,
@@ -320,13 +322,14 @@ private fun LiftPage(cx: Dp, cy: Dp, onFinish: () -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
         // Tiles first, so the copy sits on top of them.
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        // Clipped just above the button, so the tiles look like they come out of it.
+        BoxWithConstraints(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 96.dp).clipToBounds()) {
             val w = constraints.maxWidth.toFloat()
             val h = constraints.maxHeight.toFloat()
             val targetX = with(density) { cx.toPx() }
             val targetY = with(density) { cy.toPx() }
             Flyers.forEachIndexed { i, f ->
-                FlyingTile(f, i, startX = f.xFrac * w, startY = h * 0.88f, targetX = targetX, targetY = targetY)
+                FlyingTile(f, i, startX = f.xFrac * w, startY = h + 40f, targetX = targetX, targetY = targetY)
             }
         }
 
@@ -339,13 +342,13 @@ private fun LiftPage(cx: Dp, cy: Dp, onFinish: () -> Unit) {
             Spacer(Modifier.weight(1f))
             Text(
                 text = buildAnnotatedString {
-                    withStyle(SpanStyle(fontWeight = FontWeight.Light)) { append("Sometimes when I feel like it ") }
-                    withStyle(SpanStyle(fontWeight = FontWeight.Black)) { append("I’ll bring some stuff up here too.") }
+                    withStyle(SpanStyle(fontWeight = FontWeight.Light)) { append("Sometimes when I feel like it\n") }
+                    withStyle(SpanStyle(fontWeight = FontWeight.Black)) { append("I’ll bring some stuff\nup here too.") }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.End,
                 style = TextStyle(
-                    fontFamily = Montserrat, fontSize = 34.sp, lineHeight = 38.sp,
+                    fontFamily = Montserrat, fontSize = 30.sp, lineHeight = 34.sp,
                     letterSpacing = (-0.8).sp, color = TagColors.OnLime
                 )
             )
