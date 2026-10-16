@@ -1,110 +1,86 @@
 package com.microtag.inspect
 
+import java.time.Clock
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Currency
+import java.util.Locale
 
-/** Example cards for the Inspect screen's showcase. Nothing here touches the network. */
+/**
+ * Example results for the Inspect screen. Every one is produced by the real detector (or the real builder
+ * for the ones that need a lookup), so the pill preview and the card are always the same result.
+ * Nothing here needs a network except [wiki], which tries one live lookup and falls back to a built-in summary.
+ */
 object InspectSamples {
 
-    fun calc() = InspectPayload(
-        domain = "CALC", title = "25,185", subtitle = "345*73", copyText = "25185",
-        rows = listOf("Expression" to "345*73", "Result" to "25185")
-    )
-
-    fun timespan(): InspectPayload {
-        val today = LocalDate.now()
-        val d = today.plusDays(120)
-        return InspectPayload(
-            domain = "DATE", title = "In 120 days", subtitle = d.toString(), copyText = d.toString(),
-            rows = listOf(
-                "Date" to d.toString(), "Breakdown" to "3 months, 4 weeks, 2 days",
-                "Week" to "Week ${d.get(java.time.temporal.IsoFields.WEEK_OF_WEEK_BASED_YEAR)} of ${d.year}",
-                "Day of year" to d.dayOfYear.toString()
-            ),
-            nums = listOf(today.toEpochDay().toDouble(), d.toEpochDay().toDouble())
+    private val rates = object : RateSource {
+        override fun table() = RateTable(
+            mapOf("USD" to 1.0, "INR" to 88.0, "EUR" to 0.92, "GBP" to 0.79, "JPY" to 150.0, "AED" to 3.67),
+            System.currentTimeMillis() - 2 * 3_600_000L
         )
     }
 
-    fun time() = InspectPayload(
-        domain = "TIME", title = "10:30 pm IST", subtitle = "From 5 PM GMT", copyText = "10:30 pm IST",
-        rows = listOf("Local" to "Today · 10:30 pm IST", "That is" to "in 3h 10m"),
-        nums = listOf(17 * 60.0, 22 * 60.0 + 30)
-    )
+    private val dictionary = object : DictionarySource {
+        override fun lookup(query: String) = DictResult(
+            word = "raster", phonetic = "/ˈɹæstɚ/",
+            senses = listOf(
+                Sense("noun", "A scanning pattern of parallel lines that form the display of an image projected on a cathode-ray tube or monitor.", "The raster is redrawn sixty times a second."),
+                Sense("noun", "A bitmap image, consisting of a grid of pixels, stored as a sequence of values."),
+                Sense("noun", "A rectangular pattern of parallel scanning lines followed by the electron beam on a screen."),
+                Sense("verb", "To scan in parallel lines."),
+                Sense("verb", "To convert a vector image into a bitmap.", "The tool rasters the logo at three sizes.")
+            ),
+            sources = listOf("Wiktionary", "Datamuse")
+        )
+    }
 
-    fun convert() = InspectPayload(
-        domain = "CONV", title = "23.13 kg", subtitle = "51 lb", copyText = "23.13 kg",
-        rows = listOf("In g" to "23133.2 g", "In st" to "3.64 st")
-    )
+    private fun env() = Env(Locale.getDefault(), Clock.systemDefaultZone(), rates, dictionary)
 
-    fun money() = InspectPayload(
-        domain = "MONEY", title = "₹3,681.00", subtitle = "\$38.00", copyText = "₹3,681.00",
-        rows = listOf("In INR" to "₹3,681.00", "Rate" to "1 USD = 96.87 INR", "Updated" to "2 h ago")
-    )
+    /** The text the sample selects. Some depend on today's date or the device's currency. */
+    fun input(key: String): String = when (key) {
+        "date" -> DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH).format(LocalDate.now().plusDays(136))
+        "money" -> {
+            val local = try { Currency.getInstance(Locale.getDefault()).currencyCode } catch (_: Exception) { "USD" }
+            if (local == "USD") "€38" else "\$38"
+        }
+        else -> key
+    }
 
-    fun colour() = InspectPayload(
-        domain = "COLOUR", title = "Volt", big = "#CCFF00", subtitle = "rgb(204, 255, 0)", copyText = "#CCFF00",
-        accent = 0xFFCCFF00.toInt(),
-        palette = listOf(0xFFCCFF00.toInt(), 0xFF3300FF.toInt()),
-        rows = listOf(
-            "Name" to "Volt", "HEX" to "#CCFF00", "RGB" to "rgb(204, 255, 0)", "HSL" to "hsl(72, 100%, 50%)",
-            "Readable with" to "Black text, 17.9:1", "Complement" to "#3300FF"
+    /** Runs the real detector on [text]. Null when nothing matches (which the screen shows as a blank card). */
+    fun resolve(text: String): InspectResult? = try {
+        Detectors.resolve(text, Source.SELECTION, env())
+    } catch (_: Exception) {
+        null
+    }
+
+    fun bank(): InspectResult = IfscDetector.build(
+        "SBIN0001234",
+        mapOf(
+            "BANK" to "State Bank of India", "BRANCH" to "FORT", "CITY" to "MUMBAI", "STATE" to "MAHARASHTRA",
+            "ADDRESS" to "STATE BANK BHAVAN, MADAME CAMA ROAD, NEAR MANTRALAYA", "MICR" to "400002001",
+            "UPI" to "yes", "IMPS" to "yes", "NEFT" to "yes", "RTGS" to "yes"
         )
     )
 
-    fun define() = InspectPayload(
-        domain = "DEFINE", title = "raster", subtitle = "/ˈɹæstɚ/", copyText = "raster",
-        url = "https://en.wiktionary.org/wiki/raster",
-        rows = listOf(
-            "noun" to "A scanning pattern of parallel lines that form the display of an image projected on a cathode-ray tube, computer monitor or video display terminal.",
-            "" to "A bitmap image, consisting of a grid of pixels, stored as a sequence of values.",
-            "" to "A rectangular pattern of parallel scanning lines followed by the electron beam on a screen.",
-            "verb" to "To scan in parallel lines.",
-            "" to "To convert a vector image into a bitmap.",
-            "Source" to "Wiktionary, Datamuse"
+    fun post(): InspectResult = PinCodeDetector.build(
+        "400001",
+        listOf(
+            PinCodeDetector.Office("Fort", "Mumbai", "Maharashtra", "Maharashtra", "Sub Post Office"),
+            PinCodeDetector.Office("Horniman Circle", "Mumbai", "Maharashtra", "Maharashtra", "Sub Post Office"),
+            PinCodeDetector.Office("Mumbai GPO", "Mumbai", "Maharashtra", "Maharashtra", "Head Post Office")
         )
     )
 
-    fun wiki() = InspectPayload(
-        domain = "WIKI", title = "Alan Turing", subtitle = "English mathematician and computer scientist (1912–1954)",
-        copyText = "Alan Turing", url = "https://en.wikipedia.org/wiki/Alan_Turing",
-        fullContent = "Alan Mathison Turing was an English mathematician, computer scientist, logician, cryptanalyst, philosopher and theoretical biologist. He was highly influential in the development of theoretical computer science."
-    )
-
-    fun link() = InspectPayload(
-        domain = "URL", title = "bit.ly/3xYzAb", subtitle = "Shortened link", copyText = "https://bit.ly/3xYzAb",
-        url = "https://bit.ly/3xYzAb", status = "WARN", checkHost = "bit.ly", resolveUrl = "https://bit.ly/3xYzAb",
-        rows = listOf("Heads up" to "A shortened link hides where it goes. Resolve it to see the real address.")
-    )
-
-    fun upi() = InspectPayload(
-        domain = "UPI", title = "ryan@oksbi", subtitle = "Google Pay · SBI", copyText = "ryan@oksbi",
-        url = "upi://pay?pa=ryan@oksbi&cu=INR"
-    )
-
-    fun bank() = InspectPayload(
-        domain = "IFSC", title = "SBIN0001234", subtitle = "FORT, MUMBAI", copyText = "SBIN0001234",
-        rows = listOf(
-            "Bank" to "State Bank of India", "Branch" to "Fort", "Place" to "Mumbai, Maharashtra",
-            "MICR" to "400002001", "Supports" to "UPI, IMPS, NEFT, RTGS"
+    /** A live Wikipedia lookup (blocking: call off the main thread), or the same card without a photo if offline. */
+    fun wiki(): InspectResult {
+        val live = resolve("Leonhard Euler")
+        if (live != null && live.domain == "WIKI") return live
+        return EntityDetector.build(
+            EntityDetector.Summary(
+                "standard", "Leonhard Euler", "Swiss mathematician and physicist (1707–1783)",
+                "Leonhard Euler was a Swiss mathematician, physicist, astronomer, geographer, logician, and engineer who founded the studies of graph theory and topology. He made pioneering and influential discoveries in many other branches of mathematics, such as analytic number theory, complex analysis, and infinitesimal calculus.",
+                "https://en.wikipedia.org/wiki/Leonhard_Euler"
+            )
         )
-    )
-
-    fun post() = InspectPayload(
-        domain = "PIN", title = "400001", subtitle = "Mumbai, Maharashtra", copyText = "400001",
-        rows = listOf("Area" to "Fort", "District" to "Mumbai", "State" to "Maharashtra", "Post offices" to "Fort, Horniman Circle, GPO and 4 more")
-    )
-
-    fun number() = InspectPayload(
-        domain = "NUM", title = "34,54,64,000", subtitle = "Number in words", copyText = "345464000",
-        rows = listOf(
-            "In words" to "Thirty-four crore fifty-four lakh sixty-four thousand",
-            "International" to "three hundred forty-five million four hundred sixty-four thousand",
-            "Compact" to "345.46 M"
-        )
-    )
-
-    fun dimensions() = InspectPayload(
-        domain = "DIMS", title = "384,000 cm³", big = "120 × 80 × 40 cm", subtitle = "Volume", copyText = "120 × 80 × 40 cm",
-        nums = listOf(120.0, 80.0, 40.0), unit = "cm",
-        rows = listOf("Area" to "9600 cm²", "Volume" to "384000 cm³", "Space diagonal" to "149.7 cm", "In in" to "47.24 × 31.5 × 15.75 in")
-    )
+    }
 }
