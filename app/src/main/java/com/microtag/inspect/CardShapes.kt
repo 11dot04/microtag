@@ -330,11 +330,10 @@ object CardShapes {
             // One long shallow recess, like a page lifted out of its binding.
             notches = listOf(Notch(Edge.Left, 0.5f, 0.62f, 8f, Bite.Recess))
         )
-        // A framed photo with a thumb notch.
         "WIKI" -> TicketSpec(
-            tr = Corner(Cut.Round, 58f), br = Corner(Cut.Scoop, 30f), tl = Corner(Cut.Chamfer, 16f),
-            // A step cut level with the photo's top edge (the poster puts the photo at 118dp).
-            notches = listOf(Notch(Edge.Left, 138f, 40f, 14f, Bite.Step45))
+            tl = Corner(Cut.Chamfer, 24f), tr = Corner(Cut.Round, 42f), br = Corner(Cut.Chamfer, 40f), bl = Corner(Cut.Round, 30f),
+            // A step bite on the left, level with the top of the summary.
+            notches = listOf(Notch(Edge.Left, 0.225f, 40f, 14f, Bite.Step45))
         )
         // A drafting sheet: a clipped corner, a title block stepped out of the foot, registration ticks.
         "DIMS" -> TicketSpec(
