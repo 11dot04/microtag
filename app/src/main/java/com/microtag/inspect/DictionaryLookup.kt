@@ -311,7 +311,7 @@ internal object DefineDetector {
         }
         return InspectResult(
             domain = "DEFINE",
-            pill = pillFor(PillStyle.valueOf(DEFINE_PILL_STYLE_DEFAULT), r, first.definition),
+            pill = pillFor((runCatching { PillStyle.valueOf(PillConfig.DEFINE) }.getOrDefault(PillStyle.GLOSS)), r, first.definition),
             title = r.word,
             subtitle = r.phonetic,
             cardTitle = r.word,
