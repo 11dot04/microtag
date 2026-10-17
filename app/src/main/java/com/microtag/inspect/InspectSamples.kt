@@ -72,9 +72,9 @@ object InspectSamples {
     )
 
     /** A live Wikipedia lookup (blocking: call off the main thread), or the same card without a photo if offline. */
-    fun wiki(): InspectResult {
-        val live = resolve("Leonhard Euler")
-        if (live != null && live.domain == "WIKI") return live
+    fun wiki(live: Boolean = true): InspectResult {
+        val found = if (live) resolve("Leonhard Euler") else null
+        if (found != null && found.domain == "WIKI") return found
         return EntityDetector.build(
             EntityDetector.Summary(
                 "standard", "Leonhard Euler", "Swiss mathematician and physicist (1707–1783)",
