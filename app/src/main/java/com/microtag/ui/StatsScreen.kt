@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -126,6 +127,7 @@ private val DayLabels = listOf("MO", "TU", "WE", "TH", "FR", "SA", "SU")
 @Composable
 fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
     val context = LocalContext.current
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
     val data = remember { loadStats() }
     val today = remember { dayIndexOf(System.currentTimeMillis()) }
@@ -176,8 +178,9 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
         FitText(
             AnnotatedString("Interceptions"),
             TextStyle(
-                fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 48.sp,
-                lineHeight = 52.sp, letterSpacing = (-1.2).sp, color = TagColors.White
+                fontFamily = TagFonts.display, fontWeight = FontWeight.Black, fontSize = 48.sp,
+                lineHeight = 52.sp, letterSpacing = (-1.2).sp, color = TagColors.White,
+                fontSynthesis = TagFonts.NoSynthesis
             ),
             Modifier.fillMaxWidth()
         )
@@ -208,21 +211,41 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth().height(260.dp)
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatTile("SELECTED", total.toString(), Modifier.weight(1f))
-            StatTile("PEAK HOUR", peakHour?.let { "%02d:00".format(it) } ?: "--", Modifier.weight(1f))
-            StatTile("ALL TIME", prefs.interceptCount.toString(), Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatTile("PROMOTED", rate?.let { "$it%" } ?: "--", Modifier.weight(1f))
-            StatTile("STREAK", if (streak > 0) "$streak d" else "--", Modifier.weight(1f))
-            StatTile("BEST DAY", best?.let { "${it.value}" } ?: "--", Modifier.weight(1f), caption2 = best?.let {
+        // Six equal tiles in one interlocking block, like the rows in Settings and Inspect.
+        val tiles = listOf(
+            Triple("SELECTED", total.toString(), when (selected.size) {
+                1 -> DayLabels[selected.first()]
+                7 -> "EVERY DAY"
+                else -> "${selected.size} DAYS"
+            }),
+            Triple("PEAK HOUR", peakHour?.let { "%02d:00".format(it) } ?: "--", peakHour?.let { "${values[it]} AT PEAK" }),
+            Triple("ALL TIME", prefs.interceptCount.toString(), "ALL APPS"),
+            Triple("PROMOTED", rate?.let { "$it%" } ?: "--", "OF EVALUATED"),
+            Triple("STREAK", if (streak > 0) "$streak d" else "--", "IN A ROW"),
+            Triple("BEST DAY", best?.let { "${it.value}" } ?: "--", best?.let {
                 SimpleDateFormat("d MMM", Locale.getDefault()).format(Date(it.key * 86_400_000L)).uppercase()
             })
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            for (r in 0 until 2) {
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    for (c in 0 until 3) {
+                        val (caption, value, sub) = tiles[r * 3 + c]
+                        StatTile(caption, value, sub, cellShape(r, c, 2, 3), Modifier.weight(1f))
+                    }
+                }
+            }
         }
 
         SectionLabel("WEEK AT A GLANCE")
-        Heatmap(heat, selected, Modifier.fillMaxWidth())
+        Text(
+            "Tap a row to look at just that day.",
+            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = TagColors.Outline)
+        )
+        Heatmap(heat, selected, Modifier.fillMaxWidth()) { day ->
+            view.tick(Tick.Detent)
+            selected = setOf(day)
+        }
 
         SectionLabel("TIME OF DAY")
         TimeOfDay(values)
@@ -415,32 +438,47 @@ private fun HourChart(values: IntArray, nowHour: Int?, dashFuture: Boolean, modi
     }
 }
 
+/** Corner radius is big only where the tile sits on the outside of the block, tight (6dp) where tiles meet. */
+private fun cellShape(row: Int, col: Int, rows: Int, cols: Int): Shape {
+    val big = CornerSize(22.dp)
+    val small = CornerSize(6.dp)
+    return RoundedCornerShape(
+        topStart = if (row == 0 && col == 0) big else small,
+        topEnd = if (row == 0 && col == cols - 1) big else small,
+        bottomEnd = if (row == rows - 1 && col == cols - 1) big else small,
+        bottomStart = if (row == rows - 1 && col == 0) big else small
+    )
+}
+
 @Composable
-private fun StatTile(caption: String, value: String, modifier: Modifier, caption2: String? = null) {
+private fun StatTile(caption: String, value: String, sub: String?, shape: Shape, modifier: Modifier) {
     Column(
         modifier
-            .clip(TagShapes.Rect)
-            .border(2.dp, TagColors.Outline, TagShapes.Rect)
-            .padding(horizontal = 14.dp, vertical = 12.dp)
+            .height(92.dp)          // fixed, so every tile is the same size whatever it holds
+            .clip(shape)
+            .background(TagColors.Surface)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
             caption,
             style = TextStyle(
-                fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 10.sp,
+                fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 10.sp,
                 letterSpacing = 1.sp, color = TagColors.Outline
             )
         )
-        Spacer(Modifier.height(4.dp))
         FitText(
             AnnotatedString(value),
-            TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 26.sp, color = TagColors.White)
+            TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 28.sp, color = TagColors.White)
         )
-        if (caption2 != null) {
-            Text(
-                caption2,
-                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 10.sp, letterSpacing = 0.8.sp, color = TagColors.Lime)
+        Text(
+            sub ?: " ",
+            maxLines = 1,
+            style = TextStyle(
+                fontFamily = TagFonts.mono, fontWeight = FontWeight.Medium, fontSize = 10.sp,
+                letterSpacing = 0.8.sp, color = TagColors.AccentText
             )
-        }
+        )
     }
 }
 
@@ -450,14 +488,14 @@ private fun SectionLabel(text: String) {
         text,
         modifier = Modifier.padding(top = 8.dp),
         style = TextStyle(
-            fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-            letterSpacing = 1.2.sp, color = TagColors.Lime
+            fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+            letterSpacing = 1.2.sp, color = TagColors.AccentText
         )
     )
 }
 
 @Composable
-private fun Heatmap(grid: Array<IntArray>, selected: Set<Int>, modifier: Modifier) {
+private fun Heatmap(grid: Array<IntArray>, selected: Set<Int>, modifier: Modifier, onDay: (Int) -> Unit) {
     val measurer = rememberTextMeasurer()
     val maxV = max(1, grid.maxOf { row -> row.max() })
     BoxWithConstraints(modifier) {
@@ -465,7 +503,17 @@ private fun Heatmap(grid: Array<IntArray>, selected: Set<Int>, modifier: Modifie
         val labelW = 26.dp
         val cell = (maxWidth - labelW - gap * 23) / 24
         val height = (cell + gap) * 7 + 22.dp
-        Canvas(Modifier.fillMaxWidth().height(height)) {
+        Canvas(
+            Modifier
+                .fillMaxWidth()
+                .height(height)
+                .pointerInput(cell) {
+                    detectTapGestures { o ->
+                        val row = (o.y / (cell + gap).toPx()).toInt()
+                        if (row in 0..6) onDay(row)
+                    }
+                }
+        ) {
             val g = gap.toPx()
             val lw = labelW.toPx()
             val c = cell.toPx()
