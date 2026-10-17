@@ -70,6 +70,7 @@ object InspectEngine {
     }
 
     fun inspect(context: Context, rawText: String, source: Source) {
+        PillPrefs.attach(context)
         val app = context.applicationContext
         pool.execute {
             try {
