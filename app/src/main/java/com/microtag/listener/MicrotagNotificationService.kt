@@ -13,6 +13,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -70,10 +71,37 @@ class MicrotagNotificationService : NotificationListenerService() {
 
     private val pollTask = object : Runnable {
         override fun run() {
-            pollActiveNotifications()
-            handler.postDelayed(this, POLL_INTERVAL_MS)
+            val power = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val delay = when {
+                // Night hours / Battery Saver: take every capsule down (OTP aside) and check back slowly.
+                settings.quietReason() != null -> {
+                    tiles.filter { it.value != MicrotagPrefs.KEY_OTP }.keys.toList().forEach(::clearCapsule)
+                    QUIET_POLL_MS
+                }
+                !power.isInteractive -> { pollActiveNotifications(); IDLE_POLL_MS }
+                else -> { pollActiveNotifications(); POLL_INTERVAL_MS }
+            }
+            handler.postDelayed(this, delay)
         }
     }
+
+    // Battery Saver flipping on or off should take effect at once, not at the next slow poll.
+    private var powerReceiverRegistered = false
+    private val powerReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            handler.removeCallbacks(pollTask)
+            handler.post(pollTask)
+        }
+    }
+
+    /** One interception per capsule session. Transient chips (OTP, songs, DMs) count each new headline. */
+    private fun countsAsNew(key: String, tile: String?, timeoutSeconds: Int, headlineChanged: Boolean): Boolean {
+        if (!capsuleIds.containsKey(key)) return true
+        return timeoutSeconds > 0 && headlineChanged && tile != MicrotagPrefs.KEY_DOWNLOADS
+    }
+
+    /** OTP codes still come through at night; everything else waits. */
+    private fun quiet(tile: String?): Boolean = tile != MicrotagPrefs.KEY_OTP && settings.quietReason() != null
 
     override fun onCreate() {
         super.onCreate()
@@ -93,6 +121,13 @@ class MicrotagNotificationService : NotificationListenerService() {
         Log.i(TAG, "Listener connected")
         handler.removeCallbacks(pollTask)
         handler.post(pollTask)
+        if (!powerReceiverRegistered) {
+            ContextCompat.registerReceiver(
+                this, powerReceiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            powerReceiverRegistered = true
+        }
         startSideSources()
     }
 
@@ -113,6 +148,10 @@ class MicrotagNotificationService : NotificationListenerService() {
         getSharedPreferences("tag_settings", Context.MODE_PRIVATE)
             .unregisterOnSharedPreferenceChangeListener(prefsListener)
         handler.removeCallbacksAndMessages(null)
+        if (powerReceiverRegistered) {
+            try { unregisterReceiver(powerReceiver) } catch (_: Exception) {}
+            powerReceiverRegistered = false
+        }
         setRingerWatching(false)
         CalendarCountdown.stop()
         super.onDestroy()
@@ -217,6 +256,7 @@ class MicrotagNotificationService : NotificationListenerService() {
                 }
             }
             key == "calendar_lead_min" || key == "calendar_excluded" -> CalendarCountdown.refresh()
+            key in TagSettings.QUIET_KEYS -> { handler.removeCallbacks(pollTask); handler.post(pollTask) }
         }
     }
 
@@ -287,6 +327,14 @@ class MicrotagNotificationService : NotificationListenerService() {
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
         val id = capsuleIdFor(sbn.key)
 
+        // Night hours / Battery Saver: stay silent, except for OTP codes.
+        val routedTile = CapsuleParser.tileFor(pkg, extras)
+        if (quiet(routedTile)) {
+            if (capsuleIds.containsKey(sbn.key)) clearCapsule(sbn.key)
+            logDecision(sbn, "PARSER", Decision.SKIPPED, "quiet: ${settings.quietReason()}")
+            return
+        }
+
         // 1. Dynamic rules (custom_rules.json). The gate runs before each rule's regex, so a rule
         //    that is off (tile off, app not picked for streaks) is never matched against the text.
         val match = RuleEngine.evaluate(pkg, title, text) { rule ->
@@ -304,8 +352,12 @@ class MicrotagNotificationService : NotificationListenerService() {
                     match.pillText, match.iconName)
                 return
             }
+            // Same pill as before (only the text moved on, e.g. a VPN's duration) is an update, not a new interception.
+            val pillChanged = lastShown[sbn.key]?.startsWith("${match.pillText}|") != true
+            val isNew = countsAsNew(sbn.key, match.tile, match.timeoutSeconds, pillChanged)
             Log.d(TAG, "RULE   $pkg pill='${match.pillText}' icon=${match.iconName}")
-            logDecision(sbn, "RULE", Decision.PROMOTED, "custom rule matched",
+            logDecision(sbn, "RULE", if (isNew) Decision.PROMOTED else Decision.UNCHANGED,
+                if (isNew) "custom rule matched" else "update to a live capsule",
                 match.pillText, match.iconName)
             lastShown[sbn.key] = signature
             lastShownAt[sbn.key] = System.currentTimeMillis()
@@ -313,7 +365,7 @@ class MicrotagNotificationService : NotificationListenerService() {
             capsuleIds[sbn.key] = id
             remember(sbn.key, pkg, match.tile)
             trackTimeout(sbn.key, match.timeoutSeconds)
-            prefs.incrementInterceptCount()
+            if (isNew) prefs.incrementInterceptCount()
             MicrotagReminder.showCapsule(
                 context = applicationContext,
                 pillText = match.pillText,
@@ -330,7 +382,6 @@ class MicrotagNotificationService : NotificationListenerService() {
 
         // 2. Capsule parser. The owning tile is known from package/extras alone, so an off tile
         //    never reaches the parser.
-        val routedTile = CapsuleParser.tileFor(pkg, extras)
         if (!TileGate.isOn(prefs, routedTile)) {
             if (capsuleIds.containsKey(sbn.key)) clearCapsule(sbn.key)
             logDecision(sbn, "PARSER", Decision.SKIPPED, "tile is off in dashboard")
@@ -372,9 +423,10 @@ class MicrotagNotificationService : NotificationListenerService() {
                     parsed.pillText, parsed.iconName)
                 return
             }
+            val isNew = countsAsNew(sbn.key, parsed.tile, parsed.timeoutSeconds, !headlineSame)
             Log.d(TAG, "PARSER $pkg pill='${parsed.pillText}' icon=${parsed.iconName}")
-            logDecision(sbn, "PARSER", Decision.PROMOTED,
-                if (headlineSame) "content refresh" else "parser produced a capsule",
+            logDecision(sbn, "PARSER", if (isNew) Decision.PROMOTED else Decision.UNCHANGED,
+                if (headlineSame) "content refresh" else if (isNew) "parser produced a capsule" else "pill changed on a live capsule",
                 parsed.pillText, parsed.iconName)
             lastShown[sbn.key] = headline
             lastContent[sbn.key] = content
@@ -385,7 +437,7 @@ class MicrotagNotificationService : NotificationListenerService() {
             remember(sbn.key, pkg, parsed.tile)
             trackTimeout(sbn.key, parsed.timeoutSeconds)
 
-            prefs.incrementInterceptCount()
+            if (isNew) prefs.incrementInterceptCount()
             // System capsules (Bluetooth, DND, battery) open the matching settings page; every other
             // capsule names its app and opens what the original notification would have opened.
             val isSystem = pkg == "com.android.bluetooth" || pkg == "com.android.systemui"
@@ -507,12 +559,14 @@ class MicrotagNotificationService : NotificationListenerService() {
             logDecision(sbn, "FALLBACK", Decision.UNCHANGED, "Teams, same as last shown", "Teams Live")
             return true
         }
-        logDecision(sbn, "FALLBACK", Decision.PROMOTED, "Teams meeting/call fallback", "Teams Live")
+        val isNew = !capsuleIds.containsKey(sbn.key)
+        logDecision(sbn, "FALLBACK", if (isNew) Decision.PROMOTED else Decision.UNCHANGED,
+            if (isNew) "Teams meeting/call fallback" else "Teams update on a live capsule", "Teams Live")
         lastShown[sbn.key] = signature
         capsuleIds[sbn.key] = id
         trackTimeout(sbn.key, 15)
         remember(sbn.key, sbn.packageName, MicrotagPrefs.KEY_TEAMS)
-        prefs.incrementInterceptCount()
+        if (isNew) prefs.incrementInterceptCount()
         MicrotagReminder.showCapsule(
             context = applicationContext,
             pillText = "Teams Live",
@@ -534,12 +588,14 @@ class MicrotagNotificationService : NotificationListenerService() {
             logDecision(sbn, "FALLBACK", Decision.UNCHANGED, "Maps, same as last shown", "Nav")
             return true
         }
-        logDecision(sbn, "FALLBACK", Decision.PROMOTED, "Maps ongoing navigation fallback", "Nav")
+        val isNew = !capsuleIds.containsKey(sbn.key)
+        logDecision(sbn, "FALLBACK", if (isNew) Decision.PROMOTED else Decision.UNCHANGED,
+            if (isNew) "Maps ongoing navigation fallback" else "Maps update on a live capsule", "Nav")
         lastShown[sbn.key] = signature
         capsuleIds[sbn.key] = id
         trackTimeout(sbn.key, 10)
         remember(sbn.key, sbn.packageName, MicrotagPrefs.KEY_MAPS)
-        prefs.incrementInterceptCount()
+        if (isNew) prefs.incrementInterceptCount()
         MicrotagReminder.showCapsule(
             context = applicationContext,
             pillText = "Nav",
@@ -625,6 +681,8 @@ class MicrotagNotificationService : NotificationListenerService() {
     companion object {
         private const val TAG = "MicrotagListener"
         private const val POLL_INTERVAL_MS = 3_000L
+        private const val IDLE_POLL_MS = 10_000L    // screen off
+        private const val QUIET_POLL_MS = 30_000L   // night hours / Battery Saver
         private const val CONTENT_REFRESH_MS = 10_000L
         private const val RINGER_CAPSULE_ID = 7_300_002
     }
