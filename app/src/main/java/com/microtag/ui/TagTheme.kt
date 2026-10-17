@@ -137,6 +137,8 @@ data class TagPalette(
     /** Light tile colour for sitting on the accent poster (onboarding), and the ink that reads on it. */
     val paper: Color,
     val paperInk: Color,
+    /** Supporting colours for the moments that can carry more than one (onboarding tiles, previews, the credits poster). */
+    val extras: List<Color> = emptyList(),
     /** Optional font roles, as res/font base names (see TagFonts). Null keeps Montserrat. */
     val display: String? = null,
     val mono: String? = null
@@ -163,7 +165,7 @@ object TagPalettes {
         surface = Color(0xFFE8E1D2), pausedPoster = Color(0xFFDCD4C2),
         outline = Color(0xFF7C8D89), dim = Color(0xFF7A8683),
         paper = Color(0xFFF2EDE2), paperInk = Color(0xFF0E4A4B),
-        display = "bodoni_moda", mono = "xanh_mono"
+        display = "bodoni_moda", mono = "dm_mono"
     )
 
     /** Near-black with a bright rouge and champagne. Dark. */
@@ -174,7 +176,7 @@ object TagPalettes {
         surface = Color(0xFF211A19), pausedPoster = Color(0xFF241C1B),
         outline = Color(0xFFB7AA90), dim = Color(0xFF7A6F60),
         paper = Color(0xFFEADFC6), paperInk = Color(0xFF15100F),
-        display = "gfs_didot", mono = "xanh_mono"
+        display = "gfs_didot", mono = "dm_mono"
     )
 
     /** Bone paper, black ink, one loud vermilion. Light. */
@@ -198,7 +200,57 @@ object TagPalettes {
         paper = Color(0xFFF1EBDD), paperInk = Color(0xFF2A211C)
     )
 
-    val All = listOf(Lime, Atelier, Rouge, Vermilion, Sage)
+    /** Warm black, orange-red, cyan and yellow: a bold split-complementary set. Dark. */
+    val Signal = TagPalette(
+        id = "signal", name = "Signal",
+        base = Color(0xFF1A1717), ink = Color(0xFFF6E6D8),
+        accent = Color(0xFFF04A00), onAccent = Color(0xFF1A1717),
+        surface = Color(0xFF262222), pausedPoster = Color(0xFF2A2525),
+        outline = Color(0xFFBDB1A2), dim = Color(0xFF7C7166),
+        signal = Color(0xFFF2B227),
+        paper = Color(0xFFF6E6D8), paperInk = Color(0xFF1A1717),
+        extras = listOf(Color(0xFF08A4C4), Color(0xFFF2B227), Color(0xFFF6E6D8))
+    )
+
+    /** Forest, rose, mustard and powder blue. Dark. */
+    val Maison = TagPalette(
+        id = "maison", name = "Maison",
+        base = Color(0xFF14201F), ink = Color(0xFFF5E9E4),
+        accent = Color(0xFFE8828A), onAccent = Color(0xFF14201F),
+        surface = Color(0xFF1D2E2C), pausedPoster = Color(0xFF223634),
+        outline = Color(0xFF8FA5A1), dim = Color(0xFF6B7F7B),
+        signal = Color(0xFFF2C14E),
+        paper = Color(0xFFFDD2DA), paperInk = Color(0xFF14201F),
+        extras = listOf(Color(0xFF2D4A47), Color(0xFFDDA83E), Color(0xFF8B3A3F), Color(0xFFCEDDE8)),
+        display = "playfair_display", mono = "dm_mono"
+    )
+
+    /** Analogous: every colour sits in the green-to-yellow arc. A warm coral is the only outsider, for warnings. Dark. */
+    val Verdant = TagPalette(
+        id = "verdant", name = "Verdant",
+        base = Color(0xFF0D1A14), ink = Color(0xFFE4F2E0),
+        accent = Color(0xFFA8E05F), onAccent = Color(0xFF0D1A14),
+        surface = Color(0xFF14261D), pausedPoster = Color(0xFF173024),
+        outline = Color(0xFF7FA38B), dim = Color(0xFF5E7C68),
+        signal = Color(0xFFFF7A59),
+        paper = Color(0xFFE4F2E0), paperInk = Color(0xFF0D1A14),
+        extras = listOf(Color(0xFF4FD1A5), Color(0xFFE5F28A), Color(0xFF2E7D5B))
+    )
+
+    /** Analogous: violet through orchid to blue, on a lilac-tinted white. Light. */
+    val Dusk = TagPalette(
+        id = "dusk", name = "Dusk",
+        base = Color(0xFFF4F0FA), ink = Color(0xFF231A3A),
+        accent = Color(0xFF5B3FD0), onAccent = Color(0xFFF4F0FA),
+        surface = Color(0xFFEAE4F5), pausedPoster = Color(0xFFDDD5EE),
+        outline = Color(0xFF8A7FA8), dim = Color(0xFF8A82A0),
+        signal = Color(0xFFD9480F),
+        paper = Color(0xFFF4F0FA), paperInk = Color(0xFF231A3A),
+        extras = listOf(Color(0xFFF0A6E0), Color(0xFFA9C1FF), Color(0xFFD9CCFF)),
+        display = "instrument_serif"
+    )
+
+    val All = listOf(Lime, Atelier, Signal, Maison, Rouge, Verdant, Vermilion, Dusk, Sage)
     fun byId(id: String?): TagPalette = All.firstOrNull { it.id == id } ?: Lime
 }
 
@@ -229,6 +281,11 @@ object TagColors {
     /** A rare warning colour: the permission banner and the armed bin, nothing else. */
     val Signal: Color get() = palette.signal
     val Dim: Color get() = palette.dim
+    /** Whatever reads on top of [Signal]: dark on a bright warning colour, light on a deep one. */
+    val OnSignal: Color
+        get() = if (palette.signal.luminance() > 0.4f) Color(0xFF14110F) else Color(0xFFF6F6F6)
+    val Extras: List<Color> get() = palette.extras
+    val Name: String get() = palette.name
     val Paper: Color get() = palette.paper
     val PaperInk: Color get() = palette.paperInk
     val IsLight: Boolean get() = palette.isLight
@@ -426,62 +483,8 @@ object TagShapes {
     /** Onboarding pills that nearly touch: round outside, tight inside. */
     val JoinLeft = RoundedCornerShape(topStart = CornerSize(50), bottomStart = CornerSize(50), topEnd = CornerSize(6.dp), bottomEnd = CornerSize(6.dp))
     val JoinRight = RoundedCornerShape(topStart = CornerSize(6.dp), bottomStart = CornerSize(6.dp), topEnd = CornerSize(50), bottomEnd = CornerSize(50))
-
-    // Material 3 Expressive style shapes, drawn here so they need no extra dependency.
-    // If your material3 is 1.4+, MaterialShapes.Clover4Leaf.toShape() and friends are drop-in swaps.
-    val Clover: Shape = polarShape { 0.78f + 0.22f * cos(4f * it) }
-    val Scallop: Shape = polarShape { 0.89f + 0.11f * abs(cos(6f * it)) }
-    val Flower: Shape = polarShape { 0.70f + 0.30f * abs(cos(3f * it)) }
-    val Cookie: Shape = polarShape { 0.92f + 0.08f * cos(9f * it) }
-    val Puffy: Shape = polarShape { 0.87f + 0.13f * cos(5f * it) }
-    val Pentagon: Shape = roundedPolygonShape(5, 0.30f)
 }
 
-/** A closed curve whose radius (0..1 of the half-size) depends on the angle, measured from the top. */
-private fun polarShape(radius: (Float) -> Float): Shape = GenericShape { size, _ ->
-    val cx = size.width / 2f
-    val cy = size.height / 2f
-    val r0 = min(size.width, size.height) / 2f
-    val steps = 240
-    for (i in 0..steps) {
-        val t = i / steps.toFloat() * 2f * PI.toFloat()
-        val r = r0 * radius(t)
-        val x = cx + r * sin(t)
-        val y = cy - r * cos(t)
-        if (i == 0) moveTo(x, y) else lineTo(x, y)
-    }
-    close()
-}
-
-/** A regular polygon, point up, with each corner rounded off by `round` of the edge length. */
-private fun roundedPolygonShape(sides: Int, round: Float): Shape = GenericShape { size, _ ->
-    val cx = size.width / 2f
-    val cy = size.height / 2f
-    val r = min(size.width, size.height) / 2f
-    val pts = List(sides) { i ->
-        val a = 2f * PI.toFloat() * i / sides
-        Offset(cx + r * sin(a), cy - r * cos(a))
-    }
-    fun mix(a: Offset, b: Offset, t: Float) = Offset(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
-    for (i in 0 until sides) {
-        val prev = pts[(i + sides - 1) % sides]
-        val cur = pts[i]
-        val next = pts[(i + 1) % sides]
-        val from = mix(cur, prev, round)
-        val to = mix(cur, next, round)
-        if (i == 0) moveTo(from.x, from.y) else lineTo(from.x, from.y)
-        // Quadratic corner with the vertex as control point, sampled so no Path API version matters.
-        for (k in 1..8) {
-            val t = k / 8f
-            val u = 1f - t
-            lineTo(
-                u * u * from.x + 2f * u * t * cur.x + t * t * to.x,
-                u * u * from.y + 2f * u * t * cur.y + t * t * to.y
-            )
-        }
-    }
-    close()
-}
 
 // ==========================================================
 // HAPTICS
@@ -610,7 +613,7 @@ private fun fgOf(state: TileState): Color = when (state) {
     TileState.Off -> TagColors.White
     TileState.On -> TagColors.OnLime
     TileState.Static -> TagColors.Black
-    TileState.Signal -> TagColors.White
+    TileState.Signal -> TagColors.OnSignal
 }
 
 private fun edgeOf(state: TileState): Color =
