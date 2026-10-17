@@ -86,7 +86,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import com.microtag.R
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import com.microtag.core.MicrotagPrefs
 import com.microtag.core.MicrotagReminder
 import com.microtag.listener.MicrotagLogActivity
@@ -209,17 +211,30 @@ fun DashboardScreen(
         val posterVisible by remember { derivedStateOf { scroll.value < posterPx } }
 
         // Detent: never rest half-collapsed. Past 40% it settles collapsed, before that it bounces back open.
+        //
+        // This used to work once and then stop. A finger release ends the drag a beat before the fling
+        // starts, so the settle animation could be interrupted by that fling (or by the next touch).
+        // An interrupted animateScrollTo throws a CancellationException, and thrown inside collect it
+        // silently ended this whole effect, so no later scroll was ever settled. Now the settle waits
+        // for the fling to claim the scroll, and an interruption only ends that one animation.
         LaunchedEffect(collapse) {
             snapshotFlow { scroll.isScrollInProgress }.collect { scrolling ->
-                if (!scrolling) {
-                    val v = scroll.value
-                    val end = collapse.toInt()
-                    if (v in 1 until end) {
-                        view.tick(Tick.Detent)
+                if (scrolling) return@collect
+                delay(80)
+                if (scroll.isScrollInProgress) return@collect   // the fling took over; settle when it ends
+                val v = scroll.value
+                val end = collapse.toInt()
+                if (v in 1 until end) {
+                    view.tick(Tick.Detent)
+                    try {
                         scroll.animateScrollTo(
                             if (v < collapse * 0.4f) 0 else end,
                             spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)
                         )
+                    } catch (e: CancellationException) {
+                        // Interrupted by a new touch or fling: end this settle only. If the effect itself
+                        // was cancelled (leaving the screen), this rethrows.
+                        ensureActive()
                     }
                 }
             }
