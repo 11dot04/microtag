@@ -151,7 +151,7 @@ fun LogsScreen(onBack: () -> Unit) {
                 FloatingButton(filled = false, onClick = { share(context, MicrotagLog.asText(filtered)) }) { tint ->
                     TagIcon(R.drawable.ic_share, tint, size = 26.dp)
                 }
-                FloatingButton(filled = armed, accent = if (armed) TagColors.Signal else TagColors.Lime, onAccent = TagColors.White, onClick = {
+                FloatingButton(filled = armed, accent = if (armed) TagColors.Signal else TagColors.Lime, onAccent = if (armed) TagColors.OnSignal else TagColors.White, onClick = {
                     if (armed) { MicrotagLog.clear(); entries = MicrotagLog.snapshot(); armed = false } else armed = true
                 }) { tint -> TagIcon(R.drawable.ic_trash, tint, size = 26.dp) }
             }
