@@ -1,28 +1,69 @@
 package com.microtag.inspect
 
+/** Where chosen pill styles live. The app backs this with SharedPreferences (PillPrefs); tests leave it empty. */
+internal interface PillStore {
+    fun read(key: String): String?
+    fun write(key: String, value: String)
+}
+
 /**
- * What the status-bar pill says, one word per card. Change a value here and rebuild; nothing else moves.
- * (The dictionary has its own switch, DEFINE_PILL_STYLE_DEFAULT in DictionaryLookup.kt.)
+ * What the status-bar pill says, one word per card. The defaults are here; the Inspect screen lets the user pick
+ * another choice per card, and the pick is stored. Adding a choice is one line in [options] plus its branch in the detector.
+ * (The pill text itself is built by each detector from the value returned here.)
  */
 internal object PillConfig {
-    /** WIKI: TITLE = the article name, SURNAME = last name for people / short name for places, CONTEXT = "mathematician", "in Spain". */
-    const val WIKI = "CONTEXT"
-    /** TIME: TIME = "00:30 +1d", TIME_ZONE = "00:30 IST", DAY = "tomorrow". */
-    const val TIME = "TIME"
-    /** DATE: RELATIVE = "in 136d", DATE = "28 Feb". */
-    const val DATE = "RELATIVE"
-    /** MONEY: LOCAL = "₹1,660", BOTH = "$20 = ₹1,660". */
-    const val MONEY = "LOCAL"
-    /** NUMBER: COMPACT = "3.1B", GROUPED = "3,100,000,000". */
-    const val NUMBER = "COMPACT"
-    /** DIMS: SIZE = "210×297mm", AREA = "623.7 cm²", STANDARD = "A4" when the size is a standard. */
-    const val DIMS = "SIZE"
-    /** TEXT: READ = "22s read", WORDS = "64 words". */
-    const val TEXT = "READ"
-    /** CALC: RESULT = "652.05", EQUATION = "567+15%=652.05". */
-    const val CALC = "RESULT"
-    /** IFSC: BANK = "HDFC Bank", CODE = "HDFC0000001", BRANCH = "Mumbai". */
-    const val IFSC = "BANK"
+    class Choice(val value: String, val label: String)
+    class Option(val key: String, val default: String, val choices: List<Choice>)
+
+    @Volatile var store: PillStore? = null
+
+    val options: List<Option> = listOf(
+        // WIKI: CONTEXT = "mathematician" / "in Spain", SURNAME = last name (short name for places), TITLE = the article name.
+        Option("WIKI", "CONTEXT", listOf(Choice("CONTEXT", "Context"), Choice("SURNAME", "Surname"), Choice("TITLE", "Title"))),
+        // TIME: TIME = "00:30 +1d", TIME_ZONE = "00:30 IST", DAY = "tomorrow".
+        Option("TIME", "TIME", listOf(Choice("TIME", "Time"), Choice("TIME_ZONE", "Time + zone"), Choice("DAY", "Day"))),
+        // DATE: RELATIVE = "in 136d", DATE = "28 Feb".
+        Option("DATE", "RELATIVE", listOf(Choice("RELATIVE", "Days away"), Choice("DATE", "Date"))),
+        // MONEY: LOCAL = "₹1,660", BOTH = "$20 = ₹1,660".
+        Option("MONEY", "LOCAL", listOf(Choice("LOCAL", "Local"), Choice("BOTH", "Both"))),
+        // NUMBER: COMPACT = "3.1B", GROUPED = "3,100,000,000".
+        Option("NUMBER", "COMPACT", listOf(Choice("COMPACT", "Short"), Choice("GROUPED", "Full"))),
+        // DIMS: SIZE = "210×297mm", AREA = "623.7 cm²", STANDARD = "A4" when the size is a standard.
+        Option("DIMS", "SIZE", listOf(Choice("SIZE", "Size"), Choice("AREA", "Area"), Choice("STANDARD", "Standard"))),
+        // TEXT: READ = "22s read", WORDS = "64 words".
+        Option("TEXT", "READ", listOf(Choice("READ", "Read time"), Choice("WORDS", "Words"))),
+        // CALC: RESULT = "652.05", EQUATION = "567+15%=652.05".
+        Option("CALC", "RESULT", listOf(Choice("RESULT", "Result"), Choice("EQUATION", "Equation"))),
+        // IFSC: BANK = "HDFC Bank", CODE = "HDFC0000001", BRANCH = "Mumbai".
+        Option("IFSC", "BANK", listOf(Choice("BANK", "Bank"), Choice("CODE", "Code"), Choice("BRANCH", "Branch"))),
+        // DEFINE: GLOSS = a short gist of the meaning, IPA = how it sounds, WORD = the word itself.
+        Option("DEFINE", "GLOSS", listOf(Choice("GLOSS", "Gist"), Choice("IPA", "Sound"), Choice("WORD", "Word")))
+    )
+
+    private val byKey = options.associateBy { it.key }
+
+    fun option(key: String): Option? = byKey[key]
+
+    fun get(key: String): String {
+        val o = byKey[key] ?: return ""
+        val v = try { store?.read(key) } catch (_: Exception) { null }
+        return if (v != null && o.choices.any { it.value == v }) v else o.default
+    }
+
+    fun set(key: String, value: String) {
+        try { store?.write(key, value) } catch (_: Exception) { }
+    }
+
+    val WIKI: String get() = get("WIKI")
+    val TIME: String get() = get("TIME")
+    val DATE: String get() = get("DATE")
+    val MONEY: String get() = get("MONEY")
+    val NUMBER: String get() = get("NUMBER")
+    val DIMS: String get() = get("DIMS")
+    val TEXT: String get() = get("TEXT")
+    val CALC: String get() = get("CALC")
+    val IFSC: String get() = get("IFSC")
+    val DEFINE: String get() = get("DEFINE")
 }
 
 /** Pill text for a Wikipedia article. Pure, so it is tested. */
