@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
@@ -120,6 +121,9 @@ internal class CardCtx(
     val onEvent: () -> Unit,
     val drag: Modifier
 ) {
+    /** The same card context with another accent (the Wiki poster tints its OPEN pill to match its photo). */
+    fun withAccent(a: Color) = CardCtx(p, a, busy, flash, onCopy, onShare, onOpen, onCheck, onResolve, onEvent, drag)
+
     fun actions(): List<Pair<String, () -> Unit>> {
         val out = ArrayList<Pair<String, () -> Unit>>()
         if (p.resolveUrl.isNotBlank()) out.add((if (busy == "RESOLVE") "…" else "RESOLVE") to onResolve)
@@ -161,8 +165,7 @@ internal fun CardFrame(
     val shape = remember(p.domain) { CardShapes.shapeFor(p.domain) }
     val tear = CardShapes.hasTear(p.domain)
     val maxH = (LocalConfiguration.current.screenHeightDp * 0.86f).dp
-    val grey = surface == Surface.Grey
-    val outline = if (grey) Color.Black.copy(alpha = 0.4f) else TagColors.Outline
+    val outline = if (surface.luminance() > 0.5f) Color.Black.copy(alpha = 0.4f) else TagColors.Outline
     Column(
         modifier
             .widthIn(max = maxWidth)
@@ -212,6 +215,7 @@ fun InspectCard(
     val c = CardCtx(p, cardAccent(p), busy, flash, onCopy, onShare, onOpen, onCheck, onResolve, onEvent, dragModifier)
     when (p.domain) {
         "COLOUR" -> ColourCard(c, modifier)
+        "PIN" -> PostCard(c, modifier)
         "WIKI" -> WikiCard(c, modifier)
         "TIME" -> TimeCard(c, modifier)
         "DATE" -> DateCard(c, modifier)
@@ -253,7 +257,7 @@ private fun StandardCard(c: CardCtx, modifier: Modifier) {
     }
     val slot = slots[abs((p.domain + p.copyValue).hashCode()) % slots.size]
 
-    CardFrame(p, modifier, c.drag, Surface.Black, if (p.domain == "UPI" || p.domain == "PIN") 400.dp else 520.dp) {
+    CardFrame(p, modifier, c.drag, Surface.Black, if (p.domain == "UPI") 400.dp else 520.dp) {
         CardHeader(c, slot == ArrowSlot.Header)
         Spacer(Modifier.height(12.dp))
 
