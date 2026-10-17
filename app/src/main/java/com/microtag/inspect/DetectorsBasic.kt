@@ -131,6 +131,8 @@ internal object ColourDetector {
         return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
     }
 
+    private fun mix(a: Int, b: Int, t: Double): Int = (a + (b - a) * t).roundToInt().coerceIn(0, 255)
+
     internal fun build(c: IntArray, nameOverride: String? = null): InspectResult {
         val (r, g, b, a) = listOf(c[0], c[1], c[2], c[3])
         val hex = String.format(Locale.ROOT, "#%02X%02X%02X", r, g, b)
@@ -139,7 +141,15 @@ internal object ColourDetector {
         val lum = luminance(r, g, b)
         val onWhite = 1.05 / (lum + 0.05)
         val onBlack = (lum + 0.05) / 0.05
-        val readable = if (onBlack >= onWhite) "Black text, ${Fmt.trimmed(onBlack, 1)}:1" else "White text, ${Fmt.trimmed(onWhite, 1)}:1"
+        val useBlack = onBlack >= onWhite
+        val ratio = if (useBlack) onBlack else onWhite
+        val who = if (useBlack) "Black" else "White"
+        val readable = when {
+            ratio >= 7.0 -> "$who text suitable"
+            ratio >= 4.5 -> "$who text readable"
+            ratio >= 3.0 -> "$who text, large only"
+            else -> "Low contrast, $who text best"
+        } + " · ${Fmt.trimmed(ratio, 1)}:1"
         val rows = mutableListOf(
             "HEX" to full,
             "RGB" to "rgb($r, $g, $b)",
@@ -169,7 +179,10 @@ internal object ColourDetector {
             accent = (0xFF shl 24) or (acc[0] shl 16) or (acc[1] shl 8) or acc[2],
             palette = listOf(
                 (0xFF shl 24) or (r shl 16) or (g shl 8) or b,
-                (0xFF shl 24) or (comp[0] shl 16) or (comp[1] shl 8) or comp[2]
+                (0xFF shl 24) or (comp[0] shl 16) or (comp[1] shl 8) or comp[2],
+                // a lighter and a darker step of the same colour, for the card's pinwheel
+                (0xFF shl 24) or (mix(r, 255, 0.38) shl 16) or (mix(g, 255, 0.38) shl 8) or mix(b, 255, 0.38),
+                (0xFF shl 24) or (mix(r, 0, 0.42) shl 16) or (mix(g, 0, 0.42) shl 8) or mix(b, 0, 0.42)
             ),
             timeoutSeconds = 15
         )
