@@ -306,7 +306,8 @@ internal class WordFit(val size: Float, val lines: List<List<String>>)
  */
 internal fun fitWordBlocks(
     tm: TextMeasurer, blocks: List<String>, style: TextStyle, maxWidthPx: Float,
-    maxSp: Float, minSp: Float, maxLines: Int
+    maxSp: Float, minSp: Float, maxLines: Int,
+    maxHeightPx: Float = Float.MAX_VALUE, spPx: Float = 1f, leading: (Int) -> Float = { 1f }
 ): WordFit {
     val words = blocks.map { b -> b.split(' ').filter { it.isNotEmpty() } }
     fun w(t: String, s: Float): Float = tm.measure(t, style.copy(fontSize = s.sp), softWrap = false, maxLines = 1).size.width.toFloat()
@@ -325,7 +326,9 @@ internal fun fitWordBlocks(
         val longest = words.flatten().maxOfOrNull { w(it, s) } ?: 0f
         if (longest <= maxWidthPx) {
             val l = wrap(s)
-            if (l.sumOf { it.size } <= maxLines || s <= minSp) return WordFit(s, l)
+            val n = l.sumOf { it.size }
+            val tall = n * s * spPx * leading(n) > maxHeightPx
+            if ((n <= maxLines && !tall) || s <= minSp) return WordFit(s, l)
         } else if (s <= minSp) return WordFit(s, wrap(s))
         s = maxOf(minSp, s * 0.96f)
     }
