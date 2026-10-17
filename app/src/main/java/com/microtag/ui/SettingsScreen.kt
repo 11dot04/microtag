@@ -1,5 +1,11 @@
 package com.microtag.ui
 
+import android.app.TimePickerDialog
+import android.content.Context
+import android.text.format.DateFormat
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.microtag.R
+import java.util.Calendar
 
 /** One row inside a block. `checked == null` means the row is a plain action. */
 private class Item(
@@ -37,10 +44,27 @@ private class Item(
     val sub: String,
     val checked: Boolean? = null,
     val onChange: (Boolean) -> Unit = {},
-    val onClick: (() -> Unit)? = null
+    val onClick: (() -> Unit)? = null,
+    /** Shown in accent at the end of an action row instead of the chevron (a time, a choice). */
+    val value: String? = null
 )
 
 private val RowSurface = Color(0xFF15161A)
+
+private fun clock(context: Context, minuteOfDay: Int): String {
+    val c = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, minuteOfDay / 60)
+        set(Calendar.MINUTE, minuteOfDay % 60)
+    }
+    return DateFormat.getTimeFormat(context).format(c.time)
+}
+
+private fun pickTime(context: Context, initial: Int, onPicked: (Int) -> Unit) {
+    TimePickerDialog(
+        context, { _, h, m -> onPicked(h * 60 + m) },
+        initial / 60, initial % 60, DateFormat.is24HourFormat(context)
+    ).show()
+}
 
 /**
  * Rows in a block interlock like the Simulate / Stats / Logs buttons on the dashboard,
@@ -63,6 +87,10 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
     var materialYou by remember { mutableStateOf(settings.materialYou) }
     var reducedMotion by remember { mutableStateOf(settings.reducedMotion) }
     var haptics by remember { mutableStateOf(settings.haptics) }
+    var nightPause by remember { mutableStateOf(settings.nightPause) }
+    var nightStart by remember { mutableStateOf(settings.nightStartMin) }
+    var nightEnd by remember { mutableStateOf(settings.nightEndMin) }
+    var batterySaver by remember { mutableStateOf(settings.pauseOnBatterySaver) }
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "dev"
     }
@@ -87,6 +115,27 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
                 Item("Calendar", "For the events countdown.", perms.hasCalendar, { perms.requestCalendar() }),
                 Item("Shizuku", "Optional. Clipboard access in the background.", perms.hasShizuku, { perms.requestShizuku() })
             )
+        )
+        Block(
+            "Battery",
+            buildList {
+                add(Item("Pause at night", "No chips overnight. OTP codes still come through.", nightPause, {
+                    nightPause = it
+                    settings.nightPause = it
+                }))
+                if (nightPause) {
+                    add(Item("Off from", "Tap to change.", onClick = {
+                        pickTime(context, nightStart) { nightStart = it; settings.nightStartMin = it }
+                    }, value = clock(context, nightStart)))
+                    add(Item("Back on at", "Tap to change.", onClick = {
+                        pickTime(context, nightEnd) { nightEnd = it; settings.nightEndMin = it }
+                    }, value = clock(context, nightEnd)))
+                }
+                add(Item("Pause on Battery Saver", "No chips while Android's Battery Saver is on. OTP codes still come through.", batterySaver, {
+                    batterySaver = it
+                    settings.pauseOnBatterySaver = it
+                }))
+            }
         )
         Block(
             "Look and feel",
@@ -123,7 +172,13 @@ private fun Block(label: String, items: List<Item>) {
             letterSpacing = 1.2.sp, color = TagColors.Lime
         )
     )
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    Column(
+        Modifier.then(
+            if (TagMotion.enabled) Modifier.animateContentSize(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow))
+            else Modifier
+        ),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
         items.forEachIndexed { i, item -> SettingRow(item, groupShape(i, items.size)) }
     }
 }
@@ -163,6 +218,10 @@ private fun SettingRow(item: Item, shape: Shape) {
         }
         when {
             item.checked != null -> TagSwitch(checked = item.checked, onChange = item.onChange)
+            item.onClick != null && item.value != null -> Text(
+                item.value,
+                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 17.sp, color = TagColors.Lime)
+            )
             item.onClick != null -> TagIcon(R.drawable.ic_chevron_right, TagColors.White, size = 24.dp)
         }
     }
