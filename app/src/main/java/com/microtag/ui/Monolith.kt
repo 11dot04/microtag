@@ -109,7 +109,7 @@ private const val NUMERAL_LS = -0.02f   // em; tune to taste for the hero font
 
 /** The hero numeral's typeface: res/font/style.ttf. Swap the file, never the name. */
 private fun heroTypeface(context: android.content.Context): Typeface? = ResourcesCompat.getFont(context, R.font.style)
-private val Mono = FontFamily.Monospace
+private val Mono: FontFamily get() = TagFonts.data
 
 private fun numeralInk(typeface: Typeface?, text: String): Rect {
     val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
