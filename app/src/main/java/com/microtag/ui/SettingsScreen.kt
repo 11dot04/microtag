@@ -10,6 +10,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
+import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
@@ -240,9 +245,11 @@ private fun SettingRow(item: Item, shape: Shape) {
 }
 
 /**
- * One card per palette, each drawn in its own colours (and its own display face when the font
- * files are present), so the choice is made by looking. Tapping swaps the whole app at once.
+ * The palettes in a Material 3 multi-browse carousel: one big card, a medium one and a sliver
+ * that squeezes in from the edge as you scroll. Each card is a strip of the palette's colours
+ * (like a paint chip), with its name and an "Aa" in its own display face. Tapping applies it.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PalettePicker(selected: String, onPick: (TagPalette) -> Unit) {
     val context = LocalContext.current
@@ -255,40 +262,58 @@ private fun PalettePicker(selected: String, onPick: (TagPalette) -> Unit) {
             letterSpacing = 1.2.sp, color = TagColors.AccentText
         )
     )
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        TagPalettes.All.forEach { p ->
-            val on = p.id == selected
-            val display = remember(p.id) { p.display?.let { TagFonts.family(context, it) } ?: Montserrat }
-            val shape = RoundedCornerShape(22.dp)
-            Column(
-                Modifier
-                    .width(112.dp)
-                    .clip(shape)
-                    .background(p.base)
-                    .border(if (on) 3.dp else 1.dp, if (on) TagColors.Lime else TagColors.Outline, shape)
-                    .clickable { view.tick(Tick.On); onPick(p) }
-                    .padding(8.dp)
-            ) {
-                Box(
-                    Modifier.fillMaxWidth().height(72.dp).clip(RoundedCornerShape(16.dp)).background(p.accent),
-                    contentAlignment = Alignment.Center
+    val state = rememberCarouselState { TagPalettes.All.size }
+    HorizontalMultiBrowseCarousel(
+        state = state,
+        preferredItemWidth = 210.dp,
+        modifier = Modifier.fillMaxWidth().height(224.dp),
+        itemSpacing = 6.dp,
+        contentPadding = PaddingValues(0.dp)
+    ) { i ->
+        val p = TagPalettes.All[i]
+        val on = p.id == selected
+        val display = remember(p.id) { p.display?.let { TagFonts.family(context, it) } ?: Montserrat }
+        val corner = RoundedCornerShape(28.dp)
+        Box(
+            Modifier
+                .fillMaxSize()
+                .maskClip(corner)
+                .background(p.base)
+                .clickable { view.tick(Tick.On); onPick(p) }
+        ) {
+            Column(Modifier.fillMaxSize().padding(10.dp)) {
+                // The paint chip: surface, ink, a wide accent, then whatever extra colours the palette has.
+                Row(
+                    Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(20.dp))
+                ) {
+                    listOf(p.surface to 1f, p.ink to 1f, p.accent to 2.4f).plus(p.extras.map { it to 1f }).plus(p.paper to 1f)
+                        .forEach { (c, w) -> Box(Modifier.weight(w).fillMaxHeight().background(c)) }
+                }
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 10.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
+                        p.name,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        softWrap = false,
+                        style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = p.ink)
+                    )
+                    Text(
                         "Aa",
+                        maxLines = 1,
+                        softWrap = false,
                         style = TextStyle(
-                            fontFamily = display, fontWeight = FontWeight.Black, fontSize = 34.sp,
-                            color = p.onAccent, fontSynthesis = TagFonts.NoSynthesis
+                            fontFamily = display, fontWeight = FontWeight.Black, fontSize = 24.sp,
+                            color = p.ink, fontSynthesis = TagFonts.NoSynthesis
                         )
                     )
                 }
-                Text(
-                    p.name,
-                    modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 2.dp),
-                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = p.ink)
-                )
+            }
+            if (on) {
+                // The chosen palette wears a ring in its own ink.
+                Box(Modifier.fillMaxSize().border(3.dp, p.ink, corner))
             }
         }
     }
