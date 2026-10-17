@@ -40,6 +40,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.toShape
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -321,8 +324,8 @@ private fun PageDots(current: Int) {
 // ==========================================================
 
 /**
- * shape: 0 clover, 1 scallop, 2 pentagon, 3 flower, 4 cookie, 5 puffy.
- * fill: 0 paper, 1 outline, 2 tonal, 3 light.
+ * shape: an index into [flyerShape]. fill: 0 paper, 1 outline, 2 and 3 take the palette's extra
+ * colours (or tonal versions of the accent when it has none).
  * x is a fraction of the width; y is the centre's height above the screen bottom.
  */
 private class Flyer(
@@ -330,7 +333,7 @@ private class Flyer(
     val size: Dp, val xFrac: Float, val bottom: Dp, val rot: Float
 )
 
-// Two loose rows. Vertical neighbours never share a fill. The last tile is half off the edge.
+// Two loose rows. Vertical neighbours never share a fill or a shape. The last tile is half off the edge.
 private val Flyers = listOf(
     Flyer(R.drawable.ic_upi_rupee, shape = 0, fill = 0, size = 112.dp, xFrac = 0.14f, bottom = 190.dp, rot = -12f),
     Flyer(R.drawable.ic_otp, shape = 1, fill = 2, size = 104.dp, xFrac = 0.38f, bottom = 186.dp, rot = 9f),
@@ -338,17 +341,28 @@ private val Flyers = listOf(
     Flyer(R.drawable.ic_song_next, shape = 3, fill = 1, size = 108.dp, xFrac = 0.87f, bottom = 192.dp, rot = 16f),
     Flyer(R.drawable.ic_print, shape = 4, fill = 3, size = 90.dp, xFrac = 0.27f, bottom = 266.dp, rot = 22f),
     Flyer(R.drawable.ic_weather, shape = 5, fill = 0, size = 94.dp, xFrac = 0.52f, bottom = 272.dp, rot = -18f),
-    Flyer(R.drawable.ic_streak, shape = 0, fill = 2, size = 84.dp, xFrac = 0.76f, bottom = 262.dp, rot = 8f),
-    Flyer(R.drawable.ic_download, shape = 1, fill = 1, size = 78.dp, xFrac = 0.03f, bottom = 250.dp, rot = 30f)
+    Flyer(R.drawable.ic_streak, shape = 6, fill = 2, size = 84.dp, xFrac = 0.76f, bottom = 262.dp, rot = 8f),
+    Flyer(R.drawable.ic_download, shape = 7, fill = 1, size = 78.dp, xFrac = 0.03f, bottom = 250.dp, rot = 30f)
 )
 
+/** Real Material 3 Expressive shapes. No four-leaf clover, no hexagon. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun flyerShape(kind: Int): Shape = when (kind) {
-    0 -> TagShapes.Clover
-    1 -> TagShapes.Scallop
-    2 -> TagShapes.Pentagon
-    3 -> TagShapes.Flower
-    4 -> TagShapes.Cookie
-    else -> TagShapes.Puffy
+    0 -> MaterialShapes.Sunny
+    1 -> MaterialShapes.Cookie9Sided
+    2 -> MaterialShapes.Pentagon
+    3 -> MaterialShapes.Flower
+    4 -> MaterialShapes.Puffy
+    5 -> MaterialShapes.SoftBurst
+    6 -> MaterialShapes.Cookie6Sided
+    else -> MaterialShapes.Cookie12Sided
+}.toShape()
+
+/** WCAG-style contrast between two colours, 1 (identical) to 21. */
+private fun contrast(a: Color, b: Color): Float {
+    val la = a.luminance()
+    val lb = b.luminance()
+    return (maxOf(la, lb) + 0.05f) / (minOf(la, lb) + 0.05f)
 }
 
 @Composable
@@ -466,18 +480,22 @@ private fun SedimentTile(
     val sizePx = with(density) { f.size.toPx() }
     val drop = with(density) { 140.dp.toPx() }
     val sway = with(density) { 18.dp.toPx() }
-    val shape = flyerShape(f.shape)
+    val shape = remember(f.shape) { flyerShape(f.shape) }
 
     // Colours are relative to the accent poster. Never the base colour: on the lime palette that is black.
+    // A palette with supporting colours hands them out around the pile.
     val accent = TagColors.Lime
     val onAccent = TagColors.OnLime
+    val extras = TagColors.Extras
     val bg: Color = when (f.fill) {
         0 -> TagColors.Paper
         1 -> Color.Transparent
-        2 -> lerp(accent, onAccent, 0.16f)
-        else -> lerp(accent, TagColors.Paper, 0.5f)
+        2 -> if (extras.isNotEmpty()) extras[index % extras.size] else lerp(accent, onAccent, 0.16f)
+        else -> if (extras.isNotEmpty()) extras[(index + 1) % extras.size] else lerp(accent, TagColors.Paper, 0.5f)
     }
     val iconTint = if (f.fill == 1) onAccent else if (bg.luminance() > 0.45f) TagColors.PaperInk else TagColors.Paper
+    // Tiles that are too close to the poster in brightness get a thin ring so their edge still reads.
+    val ring = f.fill != 1 && contrast(bg, accent) < 1.5f
 
     Box(
         Modifier
@@ -501,7 +519,13 @@ private fun SedimentTile(
             }
             .clip(shape)
             .background(bg)
-            .then(if (f.fill == 1) Modifier.border(2.dp, onAccent, shape) else Modifier),
+            .then(
+                when {
+                    f.fill == 1 -> Modifier.border(2.dp, onAccent, shape)
+                    ring -> Modifier.border(2.dp, onAccent.copy(alpha = 0.55f), shape)
+                    else -> Modifier
+                }
+            ),
         contentAlignment = Alignment.Center
     ) {
         TagIcon(f.icon, iconTint, size = 38.dp)
