@@ -60,12 +60,15 @@ fun pillTint(p: InspectPayload): Color = when (p.status) {
     else -> Paper.Line
 }
 
-/** The card's surface. Black, except for the colour card on a very dark colour, which goes mid-grey so it can be seen. */
+/**
+ * The card's surface. Black, except for the colour card on a dark colour (one that would sink into black):
+ * that card is filled with the colour itself and uses white ink.
+ */
 internal object Surface {
     val Black = TagColors.Black.copy(alpha = 0.97f)
-    val Grey = Color(0xFF8C8C8C)
-    const val DARK_LUMINANCE = 0.075f
+    /** Below this luminance a colour has under about 3:1 against black. */
+    const val DARK_LUMINANCE = 0.11f
 
-    fun forColour(c: Color): Color = if (c.luminance() < DARK_LUMINANCE) Grey else Black
-    fun isGrey(c: Color): Boolean = c.luminance() < DARK_LUMINANCE
+    fun isFilled(c: Color): Boolean = c.luminance() < DARK_LUMINANCE
+    fun forColour(c: Color): Color = if (isFilled(c)) c.copy(alpha = 1f) else Black
 }
