@@ -3,7 +3,11 @@ package com.microtag.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.StartOffsetType
@@ -42,6 +46,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.luminance
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -163,8 +172,9 @@ private fun PermissionPage(perms: Permissions, cx: Dp, cy: Dp, mirrored: Boolean
                 FitText(
                     text = AnnotatedString("I’ll live here"),
                     style = TextStyle(
-                        fontFamily = Montserrat, fontWeight = FontWeight.Black,
-                        fontSize = 52.sp, lineHeight = 56.sp, letterSpacing = (-1.5).sp, color = TagColors.OnLime
+                        fontFamily = TagFonts.display, fontWeight = FontWeight.Black,
+                        fontSize = 52.sp, lineHeight = 56.sp, letterSpacing = (-1.5).sp, color = TagColors.OnLime,
+                        fontSynthesis = TagFonts.NoSynthesis
                     ),
                     modifier = Modifier.fillMaxWidth(),
                     contentAlignment = Alignment.CenterEnd
@@ -305,77 +315,119 @@ private fun PageDots(current: Int) {
 
 // ==========================================================
 // PAGE 2: "I'll bring some stuff up here too"
-// Tiles rise, tilt level, shrink and vanish into the camera cutout. Staggered, looping.
+// The tiles settle at the bottom like sediment, bigger than before, and stay put. Tapping the
+// button lifts them out one by one, tilts them level and shrinks each into the camera cutout.
+// They are never black, so they may touch the button.
 // ==========================================================
 
-/** shape: 0 circle, 1 squircle, 2 hexagon, 3 leaf, 4 cut corners, 5 pill. fill: 0 white, 1 outline, 2 tonal, 3 light. */
+/**
+ * shape: 0 clover, 1 scallop, 2 pentagon, 3 flower, 4 cookie, 5 puffy.
+ * fill: 0 paper, 1 outline, 2 tonal, 3 light.
+ * x is a fraction of the width; y is the centre's height above the screen bottom.
+ */
 private class Flyer(
-    val icon: Int, val xFrac: Float, val shape: Int, val fill: Int,
-    val w: Dp = 64.dp, val h: Dp = 64.dp
+    val icon: Int, val shape: Int, val fill: Int,
+    val size: Dp, val xFrac: Float, val bottom: Dp, val rot: Float
 )
 
-// Neighbours (by xFrac) never share a shape or a fill. No black bases: they vanished under the
-// copy and clashed with the black button.
+// Two loose rows. Vertical neighbours never share a fill. The last tile is half off the edge.
 private val Flyers = listOf(
-    Flyer(R.drawable.ic_upi_rupee, 0.16f, shape = 0, fill = 0),
-    Flyer(R.drawable.ic_streak, 0.27f, shape = 4, fill = 2),
-    Flyer(R.drawable.ic_otp, 0.38f, shape = 5, fill = 3, w = 84.dp, h = 48.dp),
-    Flyer(R.drawable.ic_earbuds, 0.50f, shape = 3, fill = 1),
-    Flyer(R.drawable.ic_song_next, 0.60f, shape = 2, fill = 0, w = 70.dp, h = 62.dp),
-    Flyer(R.drawable.ic_print, 0.71f, shape = 1, fill = 2),
-    Flyer(R.drawable.ic_weather, 0.82f, shape = 0, fill = 1, w = 58.dp, h = 58.dp),
-    Flyer(R.drawable.ic_download, 0.90f, shape = 3, fill = 3)
+    Flyer(R.drawable.ic_upi_rupee, shape = 0, fill = 0, size = 112.dp, xFrac = 0.14f, bottom = 190.dp, rot = -12f),
+    Flyer(R.drawable.ic_otp, shape = 1, fill = 2, size = 104.dp, xFrac = 0.38f, bottom = 186.dp, rot = 9f),
+    Flyer(R.drawable.ic_earbuds, shape = 2, fill = 3, size = 100.dp, xFrac = 0.62f, bottom = 188.dp, rot = -7f),
+    Flyer(R.drawable.ic_song_next, shape = 3, fill = 1, size = 108.dp, xFrac = 0.87f, bottom = 192.dp, rot = 16f),
+    Flyer(R.drawable.ic_print, shape = 4, fill = 3, size = 90.dp, xFrac = 0.27f, bottom = 266.dp, rot = 22f),
+    Flyer(R.drawable.ic_weather, shape = 5, fill = 0, size = 94.dp, xFrac = 0.52f, bottom = 272.dp, rot = -18f),
+    Flyer(R.drawable.ic_streak, shape = 0, fill = 2, size = 84.dp, xFrac = 0.76f, bottom = 262.dp, rot = 8f),
+    Flyer(R.drawable.ic_download, shape = 1, fill = 1, size = 78.dp, xFrac = 0.03f, bottom = 250.dp, rot = 30f)
 )
-
-private val Hexagon = GenericShape { size, _ ->
-    val w = size.width
-    val h = size.height
-    moveTo(w * 0.25f, 0f); lineTo(w * 0.75f, 0f); lineTo(w, h * 0.5f)
-    lineTo(w * 0.75f, h); lineTo(w * 0.25f, h); lineTo(0f, h * 0.5f); close()
-}
 
 private fun flyerShape(kind: Int): Shape = when (kind) {
-    0 -> CircleShape
-    1 -> RoundedCornerShape(22.dp)
-    2 -> Hexagon
-    3 -> RoundedCornerShape(topStart = 30.dp, topEnd = 8.dp, bottomEnd = 30.dp, bottomStart = 8.dp)
-    4 -> CutCornerShape(topStart = 18.dp, bottomEnd = 18.dp)
-    else -> RoundedCornerShape(percent = 50)
+    0 -> TagShapes.Clover
+    1 -> TagShapes.Scallop
+    2 -> TagShapes.Pentagon
+    3 -> TagShapes.Flower
+    4 -> TagShapes.Cookie
+    else -> TagShapes.Puffy
 }
 
 @Composable
 private fun LiftPage(cx: Dp, cy: Dp, onFinish: () -> Unit) {
     val view = LocalView.current
     val density = LocalDensity.current
+    val animate = TagMotion.enabled
+    var launched by remember { mutableStateOf(false) }
+
+    // 0 -> 1 as each tile drops into the pile; 0 -> 1 as each tile leaves it.
+    val settle = remember { Flyers.map { Animatable(0f) } }
+    val leave = remember { Flyers.map { Animatable(0f) } }
+    // The highest tiles go first, so the pile empties from the top down.
+    val order = remember { Flyers.sortedByDescending { it.bottom.value }.let { sorted -> Flyers.map { sorted.indexOf(it) } } }
+
+    LaunchedEffect(Unit) {
+        coroutineScope {
+            Flyers.indices.forEach { i ->
+                launch {
+                    if (!animate) settle[i].snapTo(1f) else {
+                        delay(120L + i * 70L)
+                        settle[i].animateTo(1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessLow))
+                    }
+                }
+            }
+        }
+    }
+    LaunchedEffect(launched) {
+        if (!launched) return@LaunchedEffect
+        if (!animate) { onFinish(); return@LaunchedEffect }
+        coroutineScope {
+            Flyers.indices.forEach { i ->
+                launch {
+                    delay(order[i] * 90L)
+                    leave[i].animateTo(1f, tween(1150, easing = LinearEasing))
+                }
+            }
+        }
+        onFinish()
+    }
+
+    // Copy, dots and button get out of the way as soon as the tiles start to leave.
+    val uiAlpha by animateFloatAsState(if (launched) 0f else 1f, tween(300), label = "uiAlpha")
 
     Box(Modifier.fillMaxSize()) {
-        // Tiles first, so the copy sits on top of them.
-        // Clipped just above the button, so the tiles look like they come out of it.
-        BoxWithConstraints(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 96.dp).clipToBounds()) {
+        // The pile. Edge to edge, so "bottom" really is the bottom of the screen.
+        BoxWithConstraints(Modifier.fillMaxSize()) {
             val w = constraints.maxWidth.toFloat()
             val h = constraints.maxHeight.toFloat()
             val targetX = with(density) { cx.toPx() }
             val targetY = with(density) { cy.toPx() }
             Flyers.forEachIndexed { i, f ->
-                FlyingTile(f, i, startX = f.xFrac * w, startY = h + 40f, targetX = targetX, targetY = targetY)
+                SedimentTile(
+                    f, i,
+                    restX = f.xFrac * w,
+                    restY = h - with(density) { f.bottom.toPx() },
+                    targetX = targetX, targetY = targetY,
+                    settle = settle[i], leave = leave[i]
+                )
             }
         }
 
+        // Copy sits above the pile, right-aligned, one fitted line at a time.
         Column(
             Modifier
                 .fillMaxSize()
+                .graphicsLayer { alpha = uiAlpha }
                 .navigationBarsPadding()
-                .padding(horizontal = 34.dp)
+                .padding(start = 34.dp, end = 34.dp, bottom = 330.dp),
+            verticalArrangement = Arrangement.Bottom
         ) {
-            Spacer(Modifier.weight(1f))
-            // Hand-broken lines, each one fitted so nothing ever wraps mid-phrase.
             val light = TextStyle(
                 fontFamily = Montserrat, fontWeight = FontWeight.Light, fontSize = 28.sp,
                 lineHeight = 32.sp, letterSpacing = (-0.6).sp, color = TagColors.OnLime
             )
             val heavy = TextStyle(
-                fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 40.sp,
-                lineHeight = 42.sp, letterSpacing = (-1).sp, color = TagColors.OnLime
+                fontFamily = TagFonts.display, fontWeight = FontWeight.Black, fontSize = 40.sp,
+                lineHeight = 42.sp, letterSpacing = (-1).sp, color = TagColors.OnLime,
+                fontSynthesis = TagFonts.NoSynthesis
             )
             listOf(
                 "Sometimes when" to light, "I feel like it" to light,
@@ -383,65 +435,75 @@ private fun LiftPage(cx: Dp, cy: Dp, onFinish: () -> Unit) {
             ).forEach { (line, style) ->
                 FitText(AnnotatedString(line), style, Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd)
             }
-            Spacer(Modifier.weight(0.7f))
+        }
+
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .graphicsLayer { alpha = uiAlpha }
+                .navigationBarsPadding()
+                .padding(horizontal = 34.dp)
+        ) {
             PageDots(1)
-            BlackPill("Got it") { view.tick(Tick.Confirm); onFinish() }
+            BlackPill("Got it") {
+                if (!launched) {
+                    view.tick(Tick.Confirm)
+                    launched = true
+                }
+            }
             Spacer(Modifier.height(16.dp))
         }
     }
 }
 
 @Composable
-private fun FlyingTile(f: Flyer, index: Int, startX: Float, startY: Float, targetX: Float, targetY: Float) {
+private fun SedimentTile(
+    f: Flyer, index: Int,
+    restX: Float, restY: Float, targetX: Float, targetY: Float,
+    settle: Animatable<Float, *>, leave: Animatable<Float, *>
+) {
     val density = LocalDensity.current
-    val halfW = with(density) { f.w.toPx() / 2f }
-    val halfH = with(density) { f.h.toPx() / 2f }
-    val sway = with(density) { 16.dp.toPx() }
-
-    // FastForward offsets make later tiles start mid-flight, so the screen is never empty.
-    val p by rememberInfiniteTransition(label = "lift$index").animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(5200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-            initialStartOffset = StartOffset(index * 650, StartOffsetType.FastForward)
-        ),
-        label = "p"
-    )
-
+    val sizePx = with(density) { f.size.toPx() }
+    val drop = with(density) { 140.dp.toPx() }
+    val sway = with(density) { 18.dp.toPx() }
     val shape = flyerShape(f.shape)
-    val ink = TagColors.OnLime
-    val (base, outlined) = when (f.fill) {
-        0 -> TagColors.White to false
-        1 -> Color.Transparent to true
-        2 -> lerp(TagColors.Lime, ink, 0.16f) to false
-        else -> lerp(TagColors.Lime, TagColors.White, 0.5f) to false
+
+    // Colours are relative to the accent poster. Never the base colour: on the lime palette that is black.
+    val accent = TagColors.Lime
+    val onAccent = TagColors.OnLime
+    val bg: Color = when (f.fill) {
+        0 -> TagColors.Paper
+        1 -> Color.Transparent
+        2 -> lerp(accent, onAccent, 0.16f)
+        else -> lerp(accent, TagColors.Paper, 0.5f)
     }
+    val iconTint = if (f.fill == 1) onAccent else if (bg.luminance() > 0.45f) TagColors.PaperInk else TagColors.Paper
 
     Box(
         Modifier
-            .size(f.w, f.h)
+            .size(f.size)
             .graphicsLayer {
-                val u = p
-                val glide = u * u * (3f - 2f * u)              // sideways: smooth
-                val lift = u.pow(2.2f)                          // upward: slow, then gets sucked in
+                val s = settle.value                      // spring: may overshoot a little
+                val u = leave.value
+                val glide = u * u * (3f - 2f * u)          // sideways: smooth
+                val lift = u.pow(2.2f)                     // upward: slow, then sucked in
                 val dir = if (index % 2 == 0) -1f else 1f
                 val wobble = sin(u * 2f * PI.toFloat() * 1.5f + index) * sway * (1f - u)
-                translationX = startX + (targetX - startX) * glide + wobble - halfW
-                translationY = startY + (targetY - startY) * lift - halfH
-                val intro = 0.7f + 0.3f * min(1f, u / 0.1f)
-                val s = (1f - 0.94f * u.pow(1.6f)) * intro
-                scaleX = s
-                scaleY = s
-                rotationZ = dir * 16f * (1f - u)
-                alpha = min(1f, u / 0.12f) * (1f - ((u - 0.9f) / 0.1f).coerceIn(0f, 1f))
+                translationX = restX + (targetX - restX) * glide + wobble - sizePx / 2f
+                translationY = restY + (targetY - restY) * lift - sizePx / 2f - (1f - s) * drop
+                val shrink = 1f - 0.95f * u.pow(1.5f)
+                val appear = 0.8f + 0.2f * s.coerceIn(0f, 1f)
+                scaleX = shrink * appear
+                scaleY = shrink * appear
+                // Rests at its own tilt, comes level on the way out, a touch wilder while dropping in.
+                rotationZ = f.rot * (1f - u) + dir * 40f * (1f - s)
+                alpha = s.coerceIn(0f, 1f) * (1f - ((u - 0.9f) / 0.1f).coerceIn(0f, 1f))
             }
             .clip(shape)
-            .background(base)
-            .then(if (outlined) Modifier.border(2.dp, ink, shape) else Modifier),
+            .background(bg)
+            .then(if (f.fill == 1) Modifier.border(2.dp, onAccent, shape) else Modifier),
         contentAlignment = Alignment.Center
     ) {
-        TagIcon(f.icon, ink, size = 30.dp)
+        TagIcon(f.icon, iconTint, size = 38.dp)
     }
 }
