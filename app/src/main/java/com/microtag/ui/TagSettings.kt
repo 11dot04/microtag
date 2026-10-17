@@ -72,6 +72,11 @@ class TagSettings(context: Context) {
         get() = sp.getBoolean("haptics", true)
         set(v) = sp.edit { putBoolean("haptics", v) }
 
+    /** Id of the chosen TagPalette ("lime", "atelier", "rouge", "vermilion", "sage"). */
+    var palette: String
+        get() = sp.getString("palette", "lime") ?: "lime"
+        set(v) = sp.edit { putString("palette", v) }
+
     // ---- Battery ------------------------------------------------------------------------------
 
     /** Keep TAG quiet overnight. OTP codes are exempt; see quietReason(). */
