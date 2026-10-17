@@ -84,10 +84,22 @@ internal fun splitYears(desc: String): Pair<String, String> {
     return desc to ""
 }
 
-/** "Swiss mathematician and physicist" -> "Swiss mathematician": the first clause, at most three words. */
+private val danglers = setOf("in", "of", "the", "a", "an", "and", "for", "to", "on", "at", "by", "from", "with")
+
+/** "Swiss mathematician and physicist" -> "Swiss mathematician"; "Hill station in India" stays whole. At most four words, never ending on a joining word. */
 internal fun shortKicker(desc: String): String {
     val first = desc.split(Regex("""\s*(?:,|;|\s[–—-]\s|\s+and\s+|\s+who\s+|\s+that\s+)""")).first().trim()
-    return first.split(' ').filter { it.isNotEmpty() }.take(3).joinToString(" ")
+    val ws = first.split(' ').filter { it.isNotEmpty() }.take(4).toMutableList()
+    while (ws.size > 1 && ws.last().lowercase() in danglers) ws.removeAt(ws.size - 1)
+    return ws.joinToString(" ")
+}
+
+/** Line height for the title block: tighter the more lines there are. */
+internal fun leadFor(lines: Int): Float = when {
+    lines <= 2 -> 0.98f
+    lines == 3 -> 0.92f
+    lines == 4 -> 0.86f
+    else -> 0.80f
 }
 
 /** The summary without its dates, and without the full name repeated at the start ("Euler was a Swiss..."). */
@@ -209,7 +221,7 @@ private fun Poster(c: CardCtx) {
     val filter = remember(duo) { duo.filter() }
 
     val (kicker, years) = remember(p.subText) { splitYears(p.subText) }
-    val person = years.isNotBlank() || WikiPill.isPerson(p.subText)
+    val person = WikiPill.isPerson(p.subText)
     val blurb = remember(p.title, p.fullContent, person) { cleanBlurb(p.title, p.fullContent, person) }
     val stagger = remember(years, p.fact) { staggerOf(years, p.fact) }
     val name = remember(p.title) { p.title.uppercase() }
@@ -237,8 +249,12 @@ private fun Poster(c: CardCtx) {
         val baseStyle = sans(1f, FontWeight.Normal, Color.White, 0.4f)
         val widthPx = with(density) { fx(0.865f).toPx() }
         val blocks = if (desc.isBlank()) listOf(name) else listOf(name, desc)
-        val fit = remember(blocks, widthPx, u) { fitWordBlocks(tm, blocks, baseStyle, widthPx, 46f * u, 15f * u, 6) }
-        val lineStyle = baseStyle.copy(fontSize = fit.size.sp).tight(0.98f)
+        val heightPx = with(density) { bandH.toPx() * 0.88f }
+        val spPx = density.density * density.fontScale
+        val fit = remember(blocks, widthPx, u, heightPx) {
+            fitWordBlocks(tm, blocks, baseStyle, widthPx, 46f * u, 15f * u, 8, heightPx, spPx, ::leadFor)
+        }
+        val lineStyle = baseStyle.copy(fontSize = fit.size.sp).tight(leadFor(fit.lines.sumOf { it.size }))
         val nameLines = fit.lines.getOrElse(0) { emptyList() }
         val descLines = fit.lines.getOrElse(1) { emptyList() }
         val nameWidth = remember(nameLines, fit.size) {
@@ -287,7 +303,7 @@ private fun Poster(c: CardCtx) {
                     blurb,
                     style = TextStyle(
                         fontFamily = Montserrat, fontWeight = FontWeight.Normal, fontSize = (12f * u).sp, lineHeight = lineH.sp,
-                        color = Color.White.copy(alpha = 0.92f), textIndent = TextIndent(firstLine = (14f * u).sp),
+                        color = Color.White.copy(alpha = 0.92f), textIndent = TextIndent(firstLine = (30f * u).sp),
                         lineBreak = LineBreak.Paragraph, hyphens = Hyphens.Auto
                     ),
                     maxLines = maxLines, overflow = TextOverflow.Ellipsis,
