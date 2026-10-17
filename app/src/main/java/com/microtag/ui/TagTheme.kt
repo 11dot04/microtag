@@ -26,6 +26,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.foundation.shape.GenericShape
+import androidx.compose.ui.text.font.FontFamily as ComposeFontFamily
+import androidx.compose.ui.text.font.FontSynthesis
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.min
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -102,33 +109,143 @@ import kotlin.math.max
 
 // ==========================================================
 // PALETTE
-// One accent, pure black, one cool grey for structure.
-// Lime fill = on. Outline only = off. White fill = always on, not switchable.
+// Every colour in the app comes from one palette with a handful of roles:
+//   base    the page and the "off" tiles          (TagColors.Black)
+//   ink     text and the always-on tiles          (TagColors.White)
+//   accent  the poster and everything switched on (TagColors.Lime)
+// The old names stay so existing screens keep working; on a light palette Black is simply
+// cream and White is simply dark. Lime fill = on. Outline only = off.
 // ==========================================================
 
+data class TagPalette(
+    val id: String,
+    val name: String,
+    val base: Color,
+    val ink: Color,
+    val accent: Color,
+    /** Whatever reads on top of the accent. */
+    val onAccent: Color,
+    /** The accent as small text on the base, when the plain accent is too weak for that. */
+    val accentText: Color = accent,
+    /** Settings rows and other raised surfaces. */
+    val surface: Color,
+    /** The poster while TAG is paused. */
+    val pausedPoster: Color,
+    val outline: Color,
+    val dim: Color,
+    val signal: Color = Color(0xFFFF4A2B),
+    /** Light tile colour for sitting on the accent poster (onboarding), and the ink that reads on it. */
+    val paper: Color,
+    val paperInk: Color,
+    /** Optional font roles, as res/font base names (see TagFonts). Null keeps Montserrat. */
+    val display: String? = null,
+    val mono: String? = null
+) {
+    val isLight: Boolean get() = base.luminance() > 0.5f
+}
+
+object TagPalettes {
+    /** The original: lime on black. */
+    val Lime = TagPalette(
+        id = "lime", name = "Lime",
+        base = Color(0xFF000000), ink = Color(0xFFF6F6F6),
+        accent = Color(0xFFCCFF00), onAccent = Color(0xFF000000),
+        surface = Color(0xFF15161A), pausedPoster = Color(0xFF101114),
+        outline = Color(0xFFC3C9D4), dim = Color(0xFF6E737C),
+        paper = Color(0xFFF6F6F6), paperInk = Color(0xFF000000)
+    )
+
+    /** Cream paper, deep teal, a serif display face. Light. */
+    val Atelier = TagPalette(
+        id = "atelier", name = "Atelier",
+        base = Color(0xFFF2EDE2), ink = Color(0xFF14201F),
+        accent = Color(0xFF0E4A4B), onAccent = Color(0xFFF2EDE2),
+        surface = Color(0xFFE8E1D2), pausedPoster = Color(0xFFDCD4C2),
+        outline = Color(0xFF7C8D89), dim = Color(0xFF7A8683),
+        paper = Color(0xFFF2EDE2), paperInk = Color(0xFF0E4A4B),
+        display = "bodoni_moda", mono = "xanh_mono"
+    )
+
+    /** Near-black with a bright rouge and champagne. Dark. */
+    val Rouge = TagPalette(
+        id = "rouge", name = "Rouge",
+        base = Color(0xFF15100F), ink = Color(0xFFEADFC6),
+        accent = Color(0xFFD2455C), onAccent = Color(0xFF15100F),
+        surface = Color(0xFF211A19), pausedPoster = Color(0xFF241C1B),
+        outline = Color(0xFFB7AA90), dim = Color(0xFF7A6F60),
+        paper = Color(0xFFEADFC6), paperInk = Color(0xFF15100F),
+        display = "gfs_didot", mono = "xanh_mono"
+    )
+
+    /** Bone paper, black ink, one loud vermilion. Light. */
+    val Vermilion = TagPalette(
+        id = "vermilion", name = "Vermilion",
+        base = Color(0xFFECE8E1), ink = Color(0xFF121212),
+        accent = Color(0xFFE3492B), onAccent = Color(0xFF121212),
+        accentText = Color(0xFFB8310F),
+        surface = Color(0xFFE2DDD4), pausedPoster = Color(0xFFD8D2C7),
+        outline = Color(0xFF8B867D), dim = Color(0xFF858078),
+        paper = Color(0xFFECE8E1), paperInk = Color(0xFF121212)
+    )
+
+    /** Espresso with soft sage. Dark. */
+    val Sage = TagPalette(
+        id = "sage", name = "Sage",
+        base = Color(0xFF2A211C), ink = Color(0xFFF1EBDD),
+        accent = Color(0xFFA9B6A1), onAccent = Color(0xFF2A211C),
+        surface = Color(0xFF342A24), pausedPoster = Color(0xFF392E27),
+        outline = Color(0xFFB9B2A2), dim = Color(0xFF85796D),
+        paper = Color(0xFFF1EBDD), paperInk = Color(0xFF2A211C)
+    )
+
+    val All = listOf(Lime, Atelier, Rouge, Vermilion, Sage)
+    fun byId(id: String?): TagPalette = All.firstOrNull { it.id == id } ?: Lime
+}
+
 object TagColors {
-    private val DefaultLime = Color(0xFFCCFF00)
-    private var accent by mutableStateOf(DefaultLime)
+    private var palette by mutableStateOf(TagPalettes.Lime)
+    private var accentOverride by mutableStateOf<Color?>(null)
+    private var materialYouOn = false
 
-    /** The accent. Brand lime by default, the system accent when Material You is on. */
-    val Lime: Color get() = accent
+    /** The accent. The palette's own, or the system accent when Material You is on. */
+    val Lime: Color get() = accentOverride ?: palette.accent
+    val Accent: Color get() = Lime
 
-    /** Whatever reads on top of the accent: black on light accents, white on dark ones. */
-    val OnLime: Color get() = if (accent.luminance() > 0.4f) Black else White
+    /** Whatever reads on top of the accent. */
+    val OnLime: Color
+        get() = accentOverride?.let { if (it.luminance() > 0.4f) Color(0xFF000000) else Color(0xFFF6F6F6) } ?: palette.onAccent
 
-    val Black = Color(0xFF000000)
-    val White = Color(0xFFF6F6F6)
-    val Outline = Color(0xFFC3C9D4)
-    val Steel = Color(0xFFC5CCD8)
+    /** The accent as small text on the base. */
+    val AccentText: Color get() = accentOverride ?: palette.accentText
+
+    val Black: Color get() = palette.base     // the base: page, off tiles, plates
+    val White: Color get() = palette.ink      // ink: text, always-on tiles
+    val Base: Color get() = palette.base
+    val Ink: Color get() = palette.ink
+    val Surface: Color get() = palette.surface
+    val PausedPoster: Color get() = palette.pausedPoster
+    val Outline: Color get() = palette.outline
+    val Steel: Color get() = palette.outline
     /** A rare warning colour: the permission banner and the armed bin, nothing else. */
-    val Signal = Color(0xFFFF4A2B)
-    val Dim = Color(0xFF6E737C)
+    val Signal: Color get() = palette.signal
+    val Dim: Color get() = palette.dim
+    val Paper: Color get() = palette.paper
+    val PaperInk: Color get() = palette.paperInk
+    val IsLight: Boolean get() = palette.isLight
+    val Id: String get() = palette.id
 
-    fun useMaterialYou(context: Context, enabled: Boolean) {
-        accent = if (enabled && Build.VERSION.SDK_INT >= 31) {
-            Color(context.getColor(android.R.color.system_accent1_200))
-        } else DefaultLime
+    fun usePalette(context: Context, id: String, materialYou: Boolean = materialYouOn) {
+        val p = TagPalettes.byId(id)
+        palette = p
+        materialYouOn = materialYou
+        accentOverride = if (materialYou && Build.VERSION.SDK_INT >= 31) {
+            // Light palettes need the darker tone of the system accent to stay readable.
+            Color(context.getColor(if (p.isLight) android.R.color.system_accent1_700 else android.R.color.system_accent1_200))
+        } else null
+        TagFonts.apply(context, p)
     }
+
+    fun useMaterialYou(context: Context, enabled: Boolean) = usePalette(context, palette.id, enabled)
 }
 
 /** Global motion and haptics switches, driven from Settings. */
@@ -148,6 +265,45 @@ val Montserrat = FontFamily(
     Font(R.font.montserrat_bold, FontWeight.Bold),
     Font(R.font.montserrat_black, FontWeight.Black)
 )
+
+/**
+ * Font roles a palette can change. Montserrat stays the label face everywhere; a palette may
+ * swap the display face (big headings) and the mono face (small data and captions).
+ *
+ * Drop static TTFs into res/font named <base>_<weight>.ttf, for example bodoni_moda_regular,
+ * bodoni_moda_bold, bodoni_moda_black, gfs_didot_regular, xanh_mono_regular. Weights looked
+ * for: light, regular, medium, bold, black; a bare <base>.ttf also works. Nothing found means
+ * Montserrat is used, so a palette never breaks for want of a file.
+ */
+object TagFonts {
+    private var displayFamily by mutableStateOf<ComposeFontFamily>(Montserrat)
+    private var monoFamily by mutableStateOf<ComposeFontFamily>(Montserrat)
+
+    val display: ComposeFontFamily get() = displayFamily
+    val mono: ComposeFontFamily get() = monoFamily
+
+    /** Single-weight faces must not be faux-bolded. Use this on any style that uses [display]. */
+    val NoSynthesis = FontSynthesis.None
+
+    fun apply(context: Context, p: TagPalette) {
+        displayFamily = p.display?.let { family(context, it) } ?: Montserrat
+        monoFamily = p.mono?.let { family(context, it) } ?: Montserrat
+    }
+
+    fun family(context: Context, base: String): ComposeFontFamily? {
+        fun res(name: String) = context.resources.getIdentifier(name, "font", context.packageName)
+        val fonts = buildList {
+            listOf(
+                "light" to FontWeight.Light, "regular" to FontWeight.Normal, "medium" to FontWeight.Medium,
+                "bold" to FontWeight.Bold, "black" to FontWeight.Black
+            ).forEach { (suffix, weight) ->
+                res("${base}_$suffix").takeIf { it != 0 }?.let { add(Font(it, weight)) }
+            }
+            if (isEmpty()) res(base).takeIf { it != 0 }?.let { add(Font(it, FontWeight.Normal)) }
+        }
+        return if (fonts.isEmpty()) null else ComposeFontFamily(fonts)
+    }
+}
 
 /**
  * Single-purpose text that never wraps mid-word. It keeps every line whole and
@@ -221,17 +377,30 @@ fun TagLabel(
 
 @Composable
 fun TagTheme(content: @Composable () -> Unit) {
-    // Dark only, no dynamic colour: the lime is the identity.
-    val scheme = darkColorScheme(
-        primary = TagColors.Lime,
-        onPrimary = TagColors.OnLime,
-        background = TagColors.Black,
-        onBackground = TagColors.White,
-        surface = TagColors.Black,
-        onSurface = TagColors.White,
-        surfaceContainerHigh = TagColors.Black,
-        outline = TagColors.Outline
-    )
+    // No dynamic colour of its own: the palette is the identity (Material You is an accent override).
+    val scheme = if (TagColors.IsLight) {
+        lightColorScheme(
+            primary = TagColors.Lime,
+            onPrimary = TagColors.OnLime,
+            background = TagColors.Black,
+            onBackground = TagColors.White,
+            surface = TagColors.Black,
+            onSurface = TagColors.White,
+            surfaceContainerHigh = TagColors.Black,
+            outline = TagColors.Outline
+        )
+    } else {
+        darkColorScheme(
+            primary = TagColors.Lime,
+            onPrimary = TagColors.OnLime,
+            background = TagColors.Black,
+            onBackground = TagColors.White,
+            surface = TagColors.Black,
+            onSurface = TagColors.White,
+            surfaceContainerHigh = TagColors.Black,
+            outline = TagColors.Outline
+        )
+    }
     MaterialTheme(colorScheme = scheme, content = content)
 }
 
@@ -250,6 +419,61 @@ object TagShapes {
     /** Onboarding pills that nearly touch: round outside, tight inside. */
     val JoinLeft = RoundedCornerShape(topStart = CornerSize(50), bottomStart = CornerSize(50), topEnd = CornerSize(6.dp), bottomEnd = CornerSize(6.dp))
     val JoinRight = RoundedCornerShape(topStart = CornerSize(6.dp), bottomStart = CornerSize(6.dp), topEnd = CornerSize(50), bottomEnd = CornerSize(50))
+
+    // Material 3 Expressive style shapes, drawn here so they need no extra dependency.
+    // If your material3 is 1.4+, MaterialShapes.Clover4Leaf.toShape() and friends are drop-in swaps.
+    val Clover: Shape = polarShape { 0.78f + 0.22f * cos(4f * it) }
+    val Scallop: Shape = polarShape { 0.89f + 0.11f * abs(cos(6f * it)) }
+    val Flower: Shape = polarShape { 0.70f + 0.30f * abs(cos(3f * it)) }
+    val Cookie: Shape = polarShape { 0.92f + 0.08f * cos(9f * it) }
+    val Puffy: Shape = polarShape { 0.87f + 0.13f * cos(5f * it) }
+    val Pentagon: Shape = roundedPolygonShape(5, 0.30f)
+}
+
+/** A closed curve whose radius (0..1 of the half-size) depends on the angle, measured from the top. */
+private fun polarShape(radius: (Float) -> Float): Shape = GenericShape { size, _ ->
+    val cx = size.width / 2f
+    val cy = size.height / 2f
+    val r0 = min(size.width, size.height) / 2f
+    val steps = 240
+    for (i in 0..steps) {
+        val t = i / steps.toFloat() * 2f * PI.toFloat()
+        val r = r0 * radius(t)
+        val x = cx + r * sin(t)
+        val y = cy - r * cos(t)
+        if (i == 0) moveTo(x, y) else lineTo(x, y)
+    }
+    close()
+}
+
+/** A regular polygon, point up, with each corner rounded off by `round` of the edge length. */
+private fun roundedPolygonShape(sides: Int, round: Float): Shape = GenericShape { size, _ ->
+    val cx = size.width / 2f
+    val cy = size.height / 2f
+    val r = min(size.width, size.height) / 2f
+    val pts = List(sides) { i ->
+        val a = 2f * PI.toFloat() * i / sides
+        Offset(cx + r * sin(a), cy - r * cos(a))
+    }
+    fun mix(a: Offset, b: Offset, t: Float) = Offset(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
+    for (i in 0 until sides) {
+        val prev = pts[(i + sides - 1) % sides]
+        val cur = pts[i]
+        val next = pts[(i + 1) % sides]
+        val from = mix(cur, prev, round)
+        val to = mix(cur, next, round)
+        if (i == 0) moveTo(from.x, from.y) else lineTo(from.x, from.y)
+        // Quadratic corner with the vertex as control point, sampled so no Path API version matters.
+        for (k in 1..8) {
+            val t = k / 8f
+            val u = 1f - t
+            lineTo(
+                u * u * from.x + 2f * u * t * cur.x + t * t * to.x,
+                u * u * from.y + 2f * u * t * cur.y + t * t * to.y
+            )
+        }
+    }
+    close()
 }
 
 // ==========================================================
@@ -352,7 +576,7 @@ fun TagFrame(label: String, color: Color, modifier: Modifier = Modifier, labelBi
                 .background(TagColors.Black)
                 .padding(horizontal = 10.dp),
             style = TextStyle(
-                fontFamily = Montserrat,
+                fontFamily = TagFonts.mono,
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp,
                 lineHeight = 16.sp,
