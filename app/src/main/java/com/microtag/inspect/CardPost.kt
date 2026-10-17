@@ -43,15 +43,15 @@ import kotlin.math.sin
 //   top      what and where, then a table with right-aligned labels
 //   postmark a 24-spoke sunburst in a double ring, half off the card. It is the chakra and a cancellation mark at once;
 //            one bold spoke per post office on the PIN (all of them bold from 24 up)
-//   squares  one small square per office: yellow for head and sub offices, green for branch offices
+//   squares  one small square per office: amber for head and sub offices, sage for branch offices
 //   PIN      in the style font, with the digits' meaning underneath: zone, sorting district, delivery office
 // ==========================================================
 
 /** Drop style.ttf into res/font and this resolves. */
 internal val PostFont = FontFamily(Font(R.font.style))
 
-private val Yellow = Color(0xFFD9B84A)
-private val Green = Color(0xFF5F9F66)
+private val Yellow = Color(0xFFD2A76C)
+private val Green = Color(0xFF8CAA8F)
 
 @Composable
 internal fun PostCard(c: CardCtx, modifier: Modifier) {
@@ -90,7 +90,7 @@ internal fun PostCard(c: CardCtx, modifier: Modifier) {
         Spacer(Modifier.height(14.dp))
 
         // The postmark behind, the squares and the PIN in front.
-        Box(Modifier.fillMaxWidth().height(184.dp)) {
+        Box(Modifier.fillMaxWidth().height(150.dp)) {
             Canvas(Modifier.fillMaxSize()) { drawSunburst(total) }
             Column(Modifier.align(Alignment.BottomEnd), horizontalAlignment = Alignment.End) {
                 OfficeSquares(main, branch)
@@ -128,7 +128,7 @@ private fun PinNumber(pin: String, colour: Color, modifier: Modifier) {
 
 private fun cardAccentForPin(): Color = Color(0xFFC98B77)
 
-/** One square per office, in rows of up to twelve: yellow for head and sub offices, green for branch offices. */
+/** One square per office, in rows of up to twelve: amber for head and sub offices, sage for branch offices. */
 @Composable
 private fun OfficeSquares(main: Int, branch: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp), horizontalAlignment = Alignment.End) {
@@ -146,8 +146,8 @@ private fun squareRow(count: Int, colour: Color) {
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSunburst(offices: Int) {
-    val centre = Offset(dp(26f), size.height - dp(4f))
-    val r = dp(104f)
+    val centre = Offset(dp(2f), size.height - dp(2f))
+    val r = dp(94f)
     val line = Paper.Line
     drawCircle(line.copy(alpha = 0.55f), r, centre, style = Stroke(dp(1.6f)))
     drawCircle(line.copy(alpha = 0.45f), r - dp(9f), centre, style = Stroke(dp(1f)))
