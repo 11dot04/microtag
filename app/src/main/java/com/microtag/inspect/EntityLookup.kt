@@ -28,7 +28,7 @@ internal object EntityDetector {
         return listOf(Candidate("entity", 0.3, slow = true) { lookup(t) })
     }
 
-    internal class Summary(val type: String, val title: String, val description: String, val extract: String, val url: String, val image: String = "")
+    internal class Summary(val type: String, val title: String, val description: String, val extract: String, val url: String, val image: String = "", val lat: Double = Double.NaN, val lon: Double = Double.NaN)
 
     internal fun parse(body: String): Summary? = try {
         val o = JSONObject(body)
@@ -39,7 +39,9 @@ internal object EntityDetector {
             o.optString("description", ""),
             o.optString("extract", ""),
             o.optJSONObject("content_urls")?.optJSONObject("desktop")?.optString("page", "") ?: "",
-            o.optJSONObject("thumbnail")?.optString("source", "") ?: ""
+            o.optJSONObject("thumbnail")?.optString("source", "") ?: "",
+            o.optJSONObject("coordinates")?.optDouble("lat", Double.NaN) ?: Double.NaN,
+            o.optJSONObject("coordinates")?.optDouble("lon", Double.NaN) ?: Double.NaN
         )
     } catch (_: Exception) {
         null
@@ -78,7 +80,7 @@ internal object EntityDetector {
         }
         // The first two sentences are plenty for a card.
         val sentences = s.extract.split(Regex("(?<=[.!?])\\s+(?=[A-Z])"))
-        val body = sentences.take(2).joinToString(" ").take(380)
+        val body = sentences.take(3).joinToString(" ").take(560)
         return InspectResult(
             domain = "WIKI",
             pill = WikiPill.pill(PillConfig.WIKI, s.title, s.description, ::fitWords),
@@ -90,6 +92,10 @@ internal object EntityDetector {
             copyText = s.title,
             openUrl = link,
             imageUrl = s.image,
+            // Places carry coordinates; the card shows them where a person would have their years.
+            fact = if (!s.lat.isNaN() && !s.lon.isNaN())
+                String.format(java.util.Locale.ROOT, "%.2f° %s|%.2f° %s", Math.abs(s.lat), if (s.lat >= 0) "N" else "S", Math.abs(s.lon), if (s.lon >= 0) "E" else "W")
+            else "",
             timeoutSeconds = 25
         )
     }
