@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -40,9 +41,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.MaterialShapes
-import androidx.compose.material3.toShape
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawOutline
+import androidx.graphics.shapes.Morph
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,6 +63,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -324,7 +326,7 @@ private fun PageDots(current: Int) {
 // ==========================================================
 
 /**
- * shape: an index into [flyerShape]. fill: 0 paper, 1 outline, 2 and 3 take the palette's extra
+ * shape: an index into [ExpressiveShapes.All]. fill: 0 paper, 1 outline, 2 and 3 take the palette's extra
  * colours (or tonal versions of the accent when it has none).
  * x is a fraction of the width; y is the centre's height above the screen bottom.
  */
@@ -344,19 +346,6 @@ private val Flyers = listOf(
     Flyer(R.drawable.ic_streak, shape = 6, fill = 2, size = 84.dp, xFrac = 0.76f, bottom = 262.dp, rot = 8f),
     Flyer(R.drawable.ic_download, shape = 7, fill = 1, size = 78.dp, xFrac = 0.03f, bottom = 250.dp, rot = 30f)
 )
-
-/** Real Material 3 Expressive shapes. No four-leaf clover, no hexagon. */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-private fun flyerShape(kind: Int): Shape = when (kind) {
-    0 -> MaterialShapes.Sunny
-    1 -> MaterialShapes.Cookie9Sided
-    2 -> MaterialShapes.Pentagon
-    3 -> MaterialShapes.Flower
-    4 -> MaterialShapes.Puffy
-    5 -> MaterialShapes.SoftBurst
-    6 -> MaterialShapes.Cookie6Sided
-    else -> MaterialShapes.Cookie12Sided
-}.toShape()
 
 /** WCAG-style contrast between two colours, 1 (identical) to 21. */
 private fun contrast(a: Color, b: Color): Float {
@@ -480,7 +469,26 @@ private fun SedimentTile(
     val sizePx = with(density) { f.size.toPx() }
     val drop = with(density) { 140.dp.toPx() }
     val sway = with(density) { 18.dp.toPx() }
-    val shape = remember(f.shape) { flyerShape(f.shape) }
+    // Each tile is a morph: it blooms from a circle into its shape as it lands, then keeps slowly
+    // drifting toward a neighbouring shape and back. One number, p, drives it: 0..1 is circle to
+    // shape, 1..2 is shape to its partner.
+    val polygons = ExpressiveShapes.All
+    val own = polygons[f.shape % polygons.size]
+    val bloom = remember(f.shape) { Morph(ExpressiveShapes.Circle, own) }
+    val drift = remember(f.shape) { Morph(own, polygons[(f.shape + 3) % polygons.size]) }
+    val idle by rememberInfiniteTransition(label = "drift$index").animateFloat(
+        initialValue = 0f,
+        targetValue = if (TagMotion.enabled) 1f else 0f,
+        animationSpec = infiniteRepeatable(
+            tween(3200 + index * 370, easing = FastOutSlowInEasing), RepeatMode.Reverse
+        ),
+        label = "idle"
+    )
+    fun shapeNow(): Shape {
+        val s = settle.value.coerceIn(0f, 1f)
+        val p = s + idle * s.pow(8)          // the drift only wakes up once the tile has landed
+        return if (p <= 1f) MorphShape(bloom, p) else MorphShape(drift, p - 1f)
+    }
 
     // Colours are relative to the accent poster. Never the base colour: on the lime palette that is black.
     // A palette with supporting colours hands them out around the pile.
@@ -516,16 +524,17 @@ private fun SedimentTile(
                 // Rests at its own tilt, comes level on the way out, a touch wilder while dropping in.
                 rotationZ = f.rot * (1f - u) + dir * 40f * (1f - s)
                 alpha = s.coerceIn(0f, 1f) * (1f - ((u - 0.9f) / 0.1f).coerceIn(0f, 1f))
+                clip = true
+                shape = shapeNow()
             }
-            .clip(shape)
-            .background(bg)
-            .then(
+            .drawBehind {
+                val outline = shapeNow().createOutline(size, layoutDirection, this)
+                drawOutline(outline, color = bg)
                 when {
-                    f.fill == 1 -> Modifier.border(2.dp, onAccent, shape)
-                    ring -> Modifier.border(2.dp, onAccent.copy(alpha = 0.55f), shape)
-                    else -> Modifier
+                    f.fill == 1 -> drawOutline(outline, color = onAccent, style = Stroke(2.dp.toPx()))
+                    ring -> drawOutline(outline, color = onAccent.copy(alpha = 0.55f), style = Stroke(2.dp.toPx()))
                 }
-            ),
+            },
         contentAlignment = Alignment.Center
     ) {
         TagIcon(f.icon, iconTint, size = 38.dp)
