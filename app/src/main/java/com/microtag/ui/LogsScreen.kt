@@ -64,8 +64,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-private val CardSurface = Color(0xFF15161A)
-private val LogMono = FontFamily.Monospace
+private val LogMono: FontFamily get() = TagFonts.data
 
 internal class AppMeta(val label: String, val icon: ImageBitmap?)
 
@@ -163,8 +162,9 @@ fun LogsScreen(onBack: () -> Unit) {
             FitText(
                 AnnotatedString("Logs"),
                 TextStyle(
-                    fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 56.sp,
-                    lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White
+                    fontFamily = TagFonts.display, fontWeight = FontWeight.Black, fontSize = 56.sp,
+                    lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White,
+                    fontSynthesis = TagFonts.NoSynthesis
                 ),
                 Modifier.fillMaxWidth()
             )
@@ -185,7 +185,7 @@ fun LogsScreen(onBack: () -> Unit) {
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(22.dp))
-                    .background(CardSurface)
+                    .background(TagColors.Surface)
                     .padding(horizontal = 18.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -255,8 +255,8 @@ fun LogsScreen(onBack: () -> Unit) {
                     row.label,
                     modifier = Modifier.padding(top = 14.dp, start = 4.dp),
                     style = TextStyle(
-                        fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-                        letterSpacing = 1.2.sp, color = TagColors.Lime
+                        fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                        letterSpacing = 1.2.sp, color = TagColors.AccentText
                     )
                 )
                 is LogRow.Item -> {
@@ -340,7 +340,7 @@ private fun LogCard(e: MicrotagLog.Entry, meta: AppMeta?, expanded: Boolean, onT
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
-            .background(CardSurface)
+            .background(TagColors.Surface)
             .drawBehind {
                 // status stripe: accent for promoted, a faint grey for everything else
                 drawRect(
@@ -376,7 +376,7 @@ private fun LogCard(e: MicrotagLog.Entry, meta: AppMeta?, expanded: Boolean, onT
             Column(horizontalAlignment = Alignment.End) {
                 Text(time, style = TextStyle(fontFamily = LogMono, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = TagColors.Outline))
                 if (e.repeats > 1) {
-                    Text("×${e.repeats}", style = TextStyle(fontFamily = LogMono, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TagColors.Lime))
+                    Text("×${e.repeats}", style = TextStyle(fontFamily = LogMono, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TagColors.AccentText))
                 }
             }
         }
