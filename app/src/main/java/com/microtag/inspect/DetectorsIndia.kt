@@ -216,6 +216,7 @@ internal object PinCodeDetector {
 
     internal fun build(pin: String, offices: List<Office>): InspectResult {
         val first = offices.first()
+        val main = offices.count { it.branchType.contains("head", true) || it.branchType.contains("sub", true) }
         val where = listOf(first.district, first.state).filter { it.isNotBlank() }.joinToString(", ")
         val rows = mutableListOf<Pair<String, String>>()
         rows.add("Area" to first.name)
@@ -235,6 +236,8 @@ internal object PinCodeDetector {
             rows = rows,
             copyText = pin,
             iconName = null,
+            // total offices, head and sub offices, branch offices: the card's sunburst and squares
+            nums = listOf(offices.size.toDouble(), main.toDouble(), (offices.size - main).toDouble()),
             timeoutSeconds = 20
         )
     }
