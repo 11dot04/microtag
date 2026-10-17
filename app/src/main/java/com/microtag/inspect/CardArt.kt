@@ -34,7 +34,7 @@ import kotlin.math.sin
 // CARD ART for the standard cards. Colour, time, date and wiki draw their own art in their own files.
 //   dims   a blueprint of the sizes
 //   upi    the real payment QR code, left-aligned
-//   post   a postmark
+//   (post draws its own card in CardPost.kt)
 // ==========================================================
 
 private val Ink = Paper.Ink
@@ -44,7 +44,7 @@ private fun style(sp: Int, weight: FontWeight, color: Color, spacing: Float = 0f
     TextStyle(fontFamily = Montserrat, fontWeight = weight, fontSize = sp.sp, letterSpacing = spacing.sp, color = color)
 
 /** Does this domain draw anything? The card skips the art slot entirely when it does not. */
-fun hasArt(domain: String): Boolean = domain in setOf("DIMS", "UPI", "PIN")
+fun hasArt(domain: String): Boolean = domain in setOf("DIMS", "UPI")
 
 @Composable
 fun CardArt(p: InspectPayload, accent: Color, onCopy: (String) -> Unit, modifier: Modifier = Modifier) {
@@ -54,7 +54,6 @@ fun CardArt(p: InspectPayload, accent: Color, onCopy: (String) -> Unit, modifier
             val tm = rememberTextMeasurer()
             Canvas(modifier.fillMaxWidth().height(176.dp)) { dimsArt(p, accent, tm) }
         }
-        "PIN" -> Canvas(modifier.fillMaxWidth().height(116.dp)) { pinArt(accent) }
         else -> Unit
     }
 }
@@ -83,29 +82,6 @@ private fun UpiArt(p: InspectPayload, onCopy: (String) -> Unit, modifier: Modifi
                 }
             }
         }
-    }
-}
-
-// ---------------------------------------------------------- PIN: a postmark with wavy cancellation lines
-
-private fun DrawScope.pinArt(accent: Color) {
-    val cx = dp(62f); val cy = size.height / 2f; val r = dp(46f)
-    drawCircle(accent, r, Offset(cx, cy), style = Stroke(dp(1.6f)))
-    drawCircle(accent, r - dp(8f), Offset(cx, cy), style = Stroke(dp(1f)))
-    val inner = ovalPath(cx, cy, r - dp(8f), r - dp(8f))
-    hatchIn(inner, Rect(Offset(cx - r, cy - r), Size(r * 2, r * 2)), accent.copy(alpha = 0.35f), dp(5f), dp(1f), true)
-    drawLine(accent, Offset(cx - r + dp(12f), cy), Offset(cx + r - dp(12f), cy), strokeWidth = dp(1.2f))
-    for (i in 0 until 4) {
-        val y = cy - dp(27f) + i * dp(18f)
-        val path = Path()
-        var x = cx + r + dp(10f)
-        path.moveTo(x, y)
-        val end = size.width - dp(4f)
-        while (x < end) {
-            x += dp(3f)
-            path.lineTo(x, y + sin((x - cx) / dp(7f)) * dp(4f))
-        }
-        drawPath(path, Ink.copy(alpha = 0.5f), style = Stroke(dp(1.3f)))
     }
 }
 
