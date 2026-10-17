@@ -105,7 +105,6 @@ import kotlin.math.roundToInt
 // Pausing floods the poster out to dark and turns the numeral into an outline.
 // ==========================================================
 
-private val PosterDark = Color(0xFF101114)
 private const val NUMERAL_LS = -0.02f   // em; tune to taste for the hero font
 
 /** The hero numeral's typeface: res/font/style.ttf. Swap the file, never the name. */
@@ -140,7 +139,7 @@ fun MonolithPoster(
     active: Boolean = true
 ) {
     val context = LocalContext.current
-    val bg by animateColorAsState(if (paused) PosterDark else TagColors.Lime, tween(500), label = "posterBg")
+    val bg by animateColorAsState(if (paused) TagColors.PausedPoster else TagColors.Lime, tween(500), label = "posterBg")
     val fg by animateColorAsState(if (paused) TagColors.White else TagColors.OnLime, tween(500), label = "posterFg")
     val versionName = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "dev"
