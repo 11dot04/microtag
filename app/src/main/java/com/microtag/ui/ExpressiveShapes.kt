@@ -46,7 +46,7 @@ object ExpressiveShapes {
 /** A [Shape] that is `morph` at `progress` (0 = the first polygon, 1 = the second). */
 class MorphShape(private val morph: Morph, private val progress: Float) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val path = morph.toPath(progress.coerceIn(0f, 1f)).asComposePath()
+        val path = morph.asPath(progress.coerceIn(0f, 1f)).asComposePath()
         // Polygons live in -1..1; stretch that to the box.
         val matrix = Matrix()
         matrix.scale(size.width / 2f, size.height / 2f)
