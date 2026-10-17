@@ -145,8 +145,6 @@ private val Blocks = listOf(
     )
 )
 
-private val TipSurface = Color(0xFF15161A)
-
 /** Rows in a block interlock like the ones on the Settings screen: big radius outside, a tight 6dp where they meet. */
 private fun tipShape(index: Int, count: Int): Shape {
     val big = CornerSize(22.dp)
@@ -165,8 +163,9 @@ fun InspectScreen(onBack: () -> Unit) {
         FitText(
             AnnotatedString("Inspect"),
             TextStyle(
-                fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 56.sp,
-                lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White
+                fontFamily = TagFonts.display, fontWeight = FontWeight.Black, fontSize = 56.sp,
+                lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White,
+                fontSynthesis = TagFonts.NoSynthesis
             ),
             Modifier.fillMaxWidth()
         )
@@ -186,8 +185,8 @@ fun InspectScreen(onBack: () -> Unit) {
             Text(
                 "ALWAYS ON",
                 style = TextStyle(
-                    fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-                    letterSpacing = 1.sp, color = TagColors.Lime
+                    fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                    letterSpacing = 1.sp, color = TagColors.AccentText
                 )
             )
         }
@@ -203,8 +202,8 @@ private fun TipBlock(block: TipBlockSpec) {
         block.label.uppercase(),
         modifier = Modifier.padding(start = 4.dp, top = 8.dp),
         style = TextStyle(
-            fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-            letterSpacing = 1.2.sp, color = TagColors.Lime
+            fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+            letterSpacing = 1.2.sp, color = TagColors.AccentText
         )
     )
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -233,7 +232,7 @@ private fun TipRow(tip: InspectTip, shape: Shape) {
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(TipSurface)
+            .background(TagColors.Surface)
             .clickable { view.tick(Tick.Press); open = !open }
             .padding(horizontal = 18.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
