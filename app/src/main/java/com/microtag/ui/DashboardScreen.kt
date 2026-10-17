@@ -240,9 +240,13 @@ fun DashboardScreen(
             }
         }
 
-        // The status bar icons need to be dark over the lime poster and light everywhere else.
+        // Status bar icons follow whatever is behind them: the accent poster at the top, the palette's
+        // base once you scroll (or while paused, when the poster is a quiet tone of the base).
         val lightBackdrop by remember(paused) {
-            derivedStateOf { !paused && TagColors.Lime.luminance() > 0.5f && scroll.value < posterPx * 0.3f }
+            derivedStateOf {
+                if (paused || scroll.value >= posterPx * 0.3f) TagColors.IsLight
+                else TagColors.Lime.luminance() > 0.5f
+            }
         }
         LaunchedEffect(lightBackdrop) { onBackdropChange(lightBackdrop) }
 
