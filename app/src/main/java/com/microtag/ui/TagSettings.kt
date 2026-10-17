@@ -1,7 +1,9 @@
 package com.microtag.ui
 
 import android.content.Context
+import android.os.PowerManager
 import androidx.core.content.edit
+import java.util.Calendar
 
 /** Preference keys for the tiles that don't already have a MicrotagPrefs.KEY_* constant. */
 object TagKeys {
@@ -19,6 +21,7 @@ object TagKeys {
 
 /** Values behind the chevron tiles. On/off lives in MicrotagPrefs; "how" lives here. */
 class TagSettings(context: Context) {
+    private val appContext = context.applicationContext
     private val sp = context.getSharedPreferences("tag_settings", Context.MODE_PRIVATE)
 
     /** Master pause switch for all interceptions. */
@@ -68,4 +71,56 @@ class TagSettings(context: Context) {
     var haptics: Boolean
         get() = sp.getBoolean("haptics", true)
         set(v) = sp.edit { putBoolean("haptics", v) }
+
+    // ---- Battery ------------------------------------------------------------------------------
+
+    /** Keep TAG quiet overnight. OTP codes are exempt; see quietReason(). */
+    var nightPause: Boolean
+        get() = sp.getBoolean("night_pause", false)
+        set(v) = sp.edit { putBoolean("night_pause", v) }
+
+    /** Minutes after midnight. Defaults to 23:00. */
+    var nightStartMin: Int
+        get() = sp.getInt("night_start_min", 23 * 60)
+        set(v) = sp.edit { putInt("night_start_min", v) }
+
+    /** Minutes after midnight. Defaults to 06:00. */
+    var nightEndMin: Int
+        get() = sp.getInt("night_end_min", 6 * 60)
+        set(v) = sp.edit { putInt("night_end_min", v) }
+
+    /** Stay quiet while Android's Battery Saver is on. */
+    var pauseOnBatterySaver: Boolean
+        get() = sp.getBoolean("pause_battery_saver", false)
+        set(v) = sp.edit { putBoolean("pause_battery_saver", v) }
+
+    /** True inside the night window. The window may cross midnight (23:00 to 06:00). */
+    fun inNightHours(minuteOfDay: Int = currentMinuteOfDay()): Boolean {
+        if (!nightPause) return false
+        val s = nightStartMin
+        val e = nightEndMin
+        return when {
+            s == e -> false
+            s < e -> minuteOfDay in s until e
+            else -> minuteOfDay >= s || minuteOfDay < e
+        }
+    }
+
+    /** Why TAG should stay silent right now ("night" or "battery saver"), or null when it shouldn't. */
+    fun quietReason(): String? = when {
+        inNightHours() -> "night"
+        pauseOnBatterySaver && (appContext.getSystemService(Context.POWER_SERVICE) as PowerManager).isPowerSaveMode ->
+            "battery saver"
+        else -> null
+    }
+
+    companion object {
+        /** Changing any of these should make the listener re-evaluate straight away. */
+        val QUIET_KEYS = setOf("night_pause", "night_start_min", "night_end_min", "pause_battery_saver")
+
+        private fun currentMinuteOfDay(): Int {
+            val c = Calendar.getInstance()
+            return c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE)
+        }
+    }
 }
