@@ -10,6 +10,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,7 +54,6 @@ private class Item(
     val value: String? = null
 )
 
-private val RowSurface = Color(0xFF15161A)
 
 private fun clock(context: Context, minuteOfDay: Int): String {
     val c = Calendar.getInstance().apply {
@@ -84,6 +88,7 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
     val settings = remember { TagSettings(context) }
     val perms = rememberPermissions()
 
+    var palette by remember { mutableStateOf(settings.palette) }
     var materialYou by remember { mutableStateOf(settings.materialYou) }
     var reducedMotion by remember { mutableStateOf(settings.reducedMotion) }
     var haptics by remember { mutableStateOf(settings.haptics) }
@@ -100,8 +105,9 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
         FitText(
             AnnotatedString("Settings"),
             TextStyle(
-                fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 56.sp,
-                lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White
+                fontFamily = TagFonts.display, fontWeight = FontWeight.Black, fontSize = 56.sp,
+                lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White,
+                fontSynthesis = TagFonts.NoSynthesis
             ),
             Modifier.fillMaxWidth()
         )
@@ -137,10 +143,15 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
                 }))
             }
         )
+        PalettePicker(selected = palette) { p ->
+            palette = p.id
+            settings.palette = p.id
+            TagColors.usePalette(context, p.id)
+        }
         Block(
             "Look and feel",
             listOf(
-                Item("Material You", "Swap the lime for your system accent colour.", materialYou, {
+                Item("Material You", "Swap the palette accent for your system accent colour.", materialYou, {
                     materialYou = it
                     settings.materialYou = it
                     TagColors.useMaterialYou(context, it)
@@ -168,8 +179,8 @@ private fun Block(label: String, items: List<Item>) {
         label.uppercase(),
         modifier = Modifier.padding(start = 4.dp, top = 8.dp),
         style = TextStyle(
-            fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-            letterSpacing = 1.2.sp, color = TagColors.Lime
+            fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+            letterSpacing = 1.2.sp, color = TagColors.AccentText
         )
     )
     Column(
@@ -191,7 +202,7 @@ private fun SettingRow(item: Item, shape: Shape) {
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(RowSurface)
+            .background(TagColors.Surface)
             .then(
                 if (interactive) Modifier.clickable {
                     if (item.checked != null) item.onChange(!item.checked) else {
@@ -223,6 +234,61 @@ private fun SettingRow(item: Item, shape: Shape) {
                 style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 17.sp, color = TagColors.Lime)
             )
             item.onClick != null -> TagIcon(R.drawable.ic_chevron_right, TagColors.White, size = 24.dp)
+        }
+    }
+}
+
+/**
+ * One card per palette, each drawn in its own colours (and its own display face when the font
+ * files are present), so the choice is made by looking. Tapping swaps the whole app at once.
+ */
+@Composable
+private fun PalettePicker(selected: String, onPick: (TagPalette) -> Unit) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    Text(
+        "PALETTE",
+        modifier = Modifier.padding(start = 4.dp, top = 8.dp),
+        style = TextStyle(
+            fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+            letterSpacing = 1.2.sp, color = TagColors.AccentText
+        )
+    )
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        TagPalettes.All.forEach { p ->
+            val on = p.id == selected
+            val display = remember(p.id) { p.display?.let { TagFonts.family(context, it) } ?: Montserrat }
+            val shape = RoundedCornerShape(22.dp)
+            Column(
+                Modifier
+                    .width(112.dp)
+                    .clip(shape)
+                    .background(p.base)
+                    .border(if (on) 3.dp else 1.dp, if (on) TagColors.Lime else TagColors.Outline, shape)
+                    .clickable { view.tick(Tick.On); onPick(p) }
+                    .padding(8.dp)
+            ) {
+                Box(
+                    Modifier.fillMaxWidth().height(72.dp).clip(RoundedCornerShape(16.dp)).background(p.accent),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Aa",
+                        style = TextStyle(
+                            fontFamily = display, fontWeight = FontWeight.Black, fontSize = 34.sp,
+                            color = p.onAccent, fontSynthesis = TagFonts.NoSynthesis
+                        )
+                    )
+                }
+                Text(
+                    p.name,
+                    modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 2.dp),
+                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = p.ink)
+                )
+            }
         }
     }
 }
