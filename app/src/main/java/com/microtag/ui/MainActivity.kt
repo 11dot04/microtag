@@ -42,7 +42,7 @@ class MainActivity : ComponentActivity() {
 
         // Apply saved look-and-feel before the first frame, so there is no lime flash.
         val settings = TagSettings(applicationContext)
-        TagColors.useMaterialYou(applicationContext, settings.materialYou)
+        TagColors.usePalette(applicationContext, settings.palette, settings.materialYou)
         TagMotion.enabled = !settings.reducedMotion
         TagMotion.haptics = settings.haptics
 
@@ -59,7 +59,8 @@ class MainActivity : ComponentActivity() {
                     val lightBackdrop = when (screen) {
                         Screen.Onboarding -> TagColors.Lime.luminance() > 0.5f
                         Screen.Dashboard -> dashboardLight
-                        else -> false
+                        // Sub-screens sit on the base colour, so a light palette needs dark bar icons.
+                        else -> TagColors.IsLight
                     }
                     LaunchedEffect(lightBackdrop) {
                         val clear = AndroidColor.TRANSPARENT
