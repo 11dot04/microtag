@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -155,13 +156,13 @@ internal fun ActionPill(text: String, accent: Color, filled: Boolean, onClick: (
  * It shares the whole card as text.
  */
 @Composable
-internal fun ShareArrow(onShare: () -> Unit, tint: Color = Paper.Ink) {
+internal fun ShareArrow(onShare: () -> Unit, tint: Color = Paper.Ink, iconSize: Dp = 26.dp) {
     val view = LocalView.current
     Box(
-        Modifier.size(48.dp).plainClick { view.tick(Tick.Press); onShare() },
+        Modifier.size(maxOf(48.dp, iconSize + 14.dp)).plainClick { view.tick(Tick.Press); onShare() },
         contentAlignment = Alignment.Center
     ) {
-        TagIcon(R.drawable.ic_inspect_arrow, tint.copy(alpha = 0.92f), Modifier, 26.dp)
+        TagIcon(R.drawable.ic_inspect_arrow, tint.copy(alpha = 0.92f), Modifier, iconSize)
     }
 }
 
@@ -290,5 +291,42 @@ internal fun AutoWrapText(
             text, style = style.copy(fontSize = size.sp).tight(leading), maxLines = maxLines, overflow = TextOverflow.Ellipsis,
             modifier = if (onClick != null) Modifier.plainClick(onClick) else Modifier
         )
+    }
+}
+
+// ---------------------------------------------------------------- words that never break
+
+/** Lines of words per block, all at one font size. */
+internal class WordFit(val size: Float, val lines: List<List<String>>)
+
+/**
+ * Sets blocks of words at ONE size: the biggest from [maxSp] down to [minSp] at which the longest word fits the
+ * width and the blocks wrap into at most [maxLines] lines. Words are never split; every block starts a new line.
+ * Join words that must stay together with a no-break space.
+ */
+internal fun fitWordBlocks(
+    tm: TextMeasurer, blocks: List<String>, style: TextStyle, maxWidthPx: Float,
+    maxSp: Float, minSp: Float, maxLines: Int
+): WordFit {
+    val words = blocks.map { b -> b.split(' ').filter { it.isNotEmpty() } }
+    fun w(t: String, s: Float): Float = tm.measure(t, style.copy(fontSize = s.sp), softWrap = false, maxLines = 1).size.width.toFloat()
+    fun wrap(s: Float): List<List<String>> = words.map { ws ->
+        val lines = ArrayList<String>()
+        var cur = ""
+        for (word in ws) {
+            val tryLine = if (cur.isEmpty()) word else "$cur $word"
+            if (cur.isNotEmpty() && w(tryLine, s) > maxWidthPx) { lines.add(cur); cur = word } else cur = tryLine
+        }
+        if (cur.isNotEmpty()) lines.add(cur)
+        lines
+    }
+    var s = maxSp
+    while (true) {
+        val longest = words.flatten().maxOfOrNull { w(it, s) } ?: 0f
+        if (longest <= maxWidthPx) {
+            val l = wrap(s)
+            if (l.sumOf { it.size } <= maxLines || s <= minSp) return WordFit(s, l)
+        } else if (s <= minSp) return WordFit(s, wrap(s))
+        s = maxOf(minSp, s * 0.96f)
     }
 }
