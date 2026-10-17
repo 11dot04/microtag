@@ -47,6 +47,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -82,6 +83,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.res.ResourcesCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.findViewTreeLifecycleOwner
 import com.microtag.R
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -309,17 +313,42 @@ fun MonolithOverlay(
         SimpleDateFormat("dd.MM.yy", Locale.US).format(Date()) + "  —  V" + v
     }
 
-    // On first show the numeral spins up from zero; after that it rolls digit by digit.
+    // The numeral spins up from zero and lands with a detent (haptic tick plus a spring kick).
+    // That runs on every launch and every return from the background, not just the first
+    // composition. After that it rolls digit by digit.
     val spin = remember { Animatable(0f) }
+    val kick = remember { Animatable(1f) }
     var spun by remember { mutableStateOf(!TagMotion.enabled) }
-    LaunchedEffect(Unit) {
-        if (!spun) {
-            spin.animateTo(1f, tween(1100, easing = TagEase.Reveal))
-            spun = true
+    var replays by remember { mutableIntStateOf(0) }
+    DisposableEffect(view) {
+        var stopped = false
+        val owner = view.findViewTreeLifecycleOwner()
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> stopped = true
+                // Attaching to a started lifecycle replays ON_START once; only a real return counts.
+                Lifecycle.Event.ON_START -> if (stopped) { stopped = false; replays++ }
+                else -> Unit
+            }
         }
+        owner?.lifecycle?.addObserver(observer)
+        onDispose { owner?.lifecycle?.removeObserver(observer) }
+    }
+    LaunchedEffect(replays) {
+        // Reduced motion, or the poster is scrolled away (the docked counter shouldn't spin): just show the value.
+        if (!TagMotion.enabled || scroll.value > collapseDistance * 0.5f) {
+            spun = true
+            return@LaunchedEffect
+        }
+        spun = false
+        spin.snapTo(0f)
+        spin.animateTo(1f, tween(1100, easing = TagEase.Reveal))
+        spun = true
+        view.tick(Tick.Press)
+        kick.snapTo(1.07f)
+        kick.animateTo(1f, spring(dampingRatio = 0.4f, stiffness = Spring.StiffnessMedium))
     }
     val digits = (if (spun) count else (count * spin.value).roundToInt()).toString()
-    val kick = remember { Animatable(1f) }
     var lastCount by remember { mutableIntStateOf(count) }
     LaunchedEffect(count) {
         if (spun && count > lastCount && TagMotion.enabled) {
@@ -340,20 +369,6 @@ fun MonolithOverlay(
         val dockInk = with(density) { 30.dp.toPx() }
         val dockDist = collapseDistance
 
-        // The numeral's ink box at 100px, then sized so it fills the width (and a little more) or 56% of the poster.
-        // Size from the final number so the numeral doesn't breathe while it spins up.
-        val ink = remember(digits, typeface) { numeralInk(typeface, digits) }
-        val inkSize = remember(count, typeface) { numeralInk(typeface, count.toString()) }
-        val inkW100 = (inkSize.right - inkSize.left).toFloat().coerceAtLeast(1f)
-        val inkH100 = (inkSize.bottom - inkSize.top).toFloat().coerceAtLeast(1f)
-        val fitW = 1.0f * wPx / inkW100 * 100f
-        val fitH = posterPx * 0.56f / inkH100 * 100f
-        val sizePx by animateFloatAsState(
-            targetValue = min(fitW, fitH),
-            animationSpec = if (TagMotion.enabled) spring(dampingRatio = 0.55f, stiffness = 140f) else snap(),
-            label = "numeralSize"
-        )
-
         // Odometer: digits that changed roll up, aligned from the right.
         var shown by remember { mutableStateOf(digits) }
         var previous by remember { mutableStateOf(digits) }
@@ -368,6 +383,22 @@ fun MonolithOverlay(
                 } else roll.snapTo(1f)
             }
         }
+
+        // The numeral's ink box at 100px, then sized so it fills the width (and a little more) or 56% of the poster.
+        // Size from the final number so the numeral doesn't breathe while it spins up.
+        // Everything on screen is drawn from `shown`, the same value the roll animation is keyed to.
+        // Drawing `digits` put the new number on screen for one frame before the roll began.
+        val ink = remember(shown, typeface) { numeralInk(typeface, shown) }
+        val inkSize = remember(count, typeface) { numeralInk(typeface, count.toString()) }
+        val inkW100 = (inkSize.right - inkSize.left).toFloat().coerceAtLeast(1f)
+        val inkH100 = (inkSize.bottom - inkSize.top).toFloat().coerceAtLeast(1f)
+        val fitW = 1.0f * wPx / inkW100 * 100f
+        val fitH = posterPx * 0.56f / inkH100 * 100f
+        val sizePx by animateFloatAsState(
+            targetValue = min(fitW, fitH),
+            animationSpec = if (TagMotion.enabled) spring(dampingRatio = 0.55f, stiffness = 140f) else snap(),
+            label = "numeralSize"
+        )
 
         fun dockProgress(): Float = smooth((scroll.value / dockDist).coerceIn(0f, 1f))
 
@@ -441,10 +472,10 @@ fun MonolithOverlay(
                 var x = -inkLeft
                 val rolling = roll.value < 1f
                 val adv = inkH * 1.25f
-                digits.forEachIndexed { i, ch ->
+                shown.forEachIndexed { i, ch ->
                     val str = ch.toString()
                     val w = paint.measureText(str)
-                    val oldIndex = previous.length - (digits.length - i)
+                    val oldIndex = previous.length - (shown.length - i)
                     val old = if (oldIndex >= 0) previous[oldIndex] else null
                     if (rolling && old != ch) {
                         val e = roll.value
