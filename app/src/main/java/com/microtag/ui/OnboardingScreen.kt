@@ -36,6 +36,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -49,7 +51,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -189,21 +193,23 @@ private fun PermissionPage(perms: Permissions, cx: Dp, cy: Dp, mirrored: Boolean
                     // Shizuku is optional: it lets TAG watch the clipboard in the background.
                     Box(
                         Modifier
-                            .cell(2, 1, 2, 1)
+                            .cell(1, 1, 3, 1)
                             .clip(TagShapes.Pill)
                             .border(2.dp, TagColors.OnLime, TagShapes.Pill)
                             .clickable { perms.requestShizuku() }
                             .padding(horizontal = 22.dp)
                     ) {
                         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                            FitText(
-                                AnnotatedString("Shizuku"),
-                                TextStyle(
+                            // Fixed 17sp like its siblings. The capsule is wide enough that it never needs to shrink.
+                            Text(
+                                "Shizuku",
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                softWrap = false,
+                                style = TextStyle(
                                     fontFamily = Montserrat, fontWeight = FontWeight.Bold,
                                     fontSize = 17.sp, color = TagColors.OnLime
-                                ),
-                                Modifier.weight(1f),
-                                contentAlignment = Alignment.CenterStart
+                                )
                             )
                             TagSwitch(
                                 checked = perms.hasShizuku,
@@ -302,18 +308,40 @@ private fun PageDots(current: Int) {
 // Tiles rise, tilt level, shrink and vanish into the camera cutout. Staggered, looping.
 // ==========================================================
 
-private class Flyer(val icon: Int, val xFrac: Float, val style: Int)
-
-private val Flyers = listOf(
-    Flyer(R.drawable.ic_upi_rupee, 0.16f, 0),
-    Flyer(R.drawable.ic_otp, 0.38f, 1),
-    Flyer(R.drawable.ic_song_next, 0.60f, 2),
-    Flyer(R.drawable.ic_weather, 0.82f, 0),
-    Flyer(R.drawable.ic_streak, 0.27f, 2),
-    Flyer(R.drawable.ic_earbuds, 0.50f, 0),
-    Flyer(R.drawable.ic_print, 0.71f, 1),
-    Flyer(R.drawable.ic_download, 0.90f, 2)
+/** shape: 0 circle, 1 squircle, 2 hexagon, 3 leaf, 4 cut corners, 5 pill. fill: 0 white, 1 outline, 2 tonal, 3 light. */
+private class Flyer(
+    val icon: Int, val xFrac: Float, val shape: Int, val fill: Int,
+    val w: Dp = 64.dp, val h: Dp = 64.dp
 )
+
+// Neighbours (by xFrac) never share a shape or a fill. No black bases: they vanished under the
+// copy and clashed with the black button.
+private val Flyers = listOf(
+    Flyer(R.drawable.ic_upi_rupee, 0.16f, shape = 0, fill = 0),
+    Flyer(R.drawable.ic_streak, 0.27f, shape = 4, fill = 2),
+    Flyer(R.drawable.ic_otp, 0.38f, shape = 5, fill = 3, w = 84.dp, h = 48.dp),
+    Flyer(R.drawable.ic_earbuds, 0.50f, shape = 3, fill = 1),
+    Flyer(R.drawable.ic_song_next, 0.60f, shape = 2, fill = 0, w = 70.dp, h = 62.dp),
+    Flyer(R.drawable.ic_print, 0.71f, shape = 1, fill = 2),
+    Flyer(R.drawable.ic_weather, 0.82f, shape = 0, fill = 1, w = 58.dp, h = 58.dp),
+    Flyer(R.drawable.ic_download, 0.90f, shape = 3, fill = 3)
+)
+
+private val Hexagon = GenericShape { size, _ ->
+    val w = size.width
+    val h = size.height
+    moveTo(w * 0.25f, 0f); lineTo(w * 0.75f, 0f); lineTo(w, h * 0.5f)
+    lineTo(w * 0.75f, h); lineTo(w * 0.25f, h); lineTo(0f, h * 0.5f); close()
+}
+
+private fun flyerShape(kind: Int): Shape = when (kind) {
+    0 -> CircleShape
+    1 -> RoundedCornerShape(22.dp)
+    2 -> Hexagon
+    3 -> RoundedCornerShape(topStart = 30.dp, topEnd = 8.dp, bottomEnd = 30.dp, bottomStart = 8.dp)
+    4 -> CutCornerShape(topStart = 18.dp, bottomEnd = 18.dp)
+    else -> RoundedCornerShape(percent = 50)
+}
 
 @Composable
 private fun LiftPage(cx: Dp, cy: Dp, onFinish: () -> Unit) {
@@ -340,18 +368,21 @@ private fun LiftPage(cx: Dp, cy: Dp, onFinish: () -> Unit) {
                 .padding(horizontal = 34.dp)
         ) {
             Spacer(Modifier.weight(1f))
-            Text(
-                text = buildAnnotatedString {
-                    withStyle(SpanStyle(fontWeight = FontWeight.Light)) { append("Sometimes when I feel like it\n") }
-                    withStyle(SpanStyle(fontWeight = FontWeight.Black)) { append("I’ll bring some stuff\nup here too.") }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.End,
-                style = TextStyle(
-                    fontFamily = Montserrat, fontSize = 30.sp, lineHeight = 34.sp,
-                    letterSpacing = (-0.8).sp, color = TagColors.OnLime
-                )
+            // Hand-broken lines, each one fitted so nothing ever wraps mid-phrase.
+            val light = TextStyle(
+                fontFamily = Montserrat, fontWeight = FontWeight.Light, fontSize = 28.sp,
+                lineHeight = 32.sp, letterSpacing = (-0.6).sp, color = TagColors.OnLime
             )
+            val heavy = TextStyle(
+                fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 40.sp,
+                lineHeight = 42.sp, letterSpacing = (-1).sp, color = TagColors.OnLime
+            )
+            listOf(
+                "Sometimes when" to light, "I feel like it" to light,
+                "I’ll bring" to heavy, "some stuff" to heavy, "up here too." to heavy
+            ).forEach { (line, style) ->
+                FitText(AnnotatedString(line), style, Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd)
+            }
             Spacer(Modifier.weight(0.7f))
             PageDots(1)
             BlackPill("Got it") { view.tick(Tick.Confirm); onFinish() }
@@ -362,9 +393,10 @@ private fun LiftPage(cx: Dp, cy: Dp, onFinish: () -> Unit) {
 
 @Composable
 private fun FlyingTile(f: Flyer, index: Int, startX: Float, startY: Float, targetX: Float, targetY: Float) {
-    val tile = 64.dp
-    val half = with(LocalDensity.current) { tile.toPx() / 2f }
-    val sway = with(LocalDensity.current) { 16.dp.toPx() }
+    val density = LocalDensity.current
+    val halfW = with(density) { f.w.toPx() / 2f }
+    val halfH = with(density) { f.h.toPx() / 2f }
+    val sway = with(density) { 16.dp.toPx() }
 
     // FastForward offsets make later tiles start mid-flight, so the screen is never empty.
     val p by rememberInfiniteTransition(label = "lift$index").animateFloat(
@@ -378,35 +410,38 @@ private fun FlyingTile(f: Flyer, index: Int, startX: Float, startY: Float, targe
         label = "p"
     )
 
-    val shape = RoundedCornerShape(18.dp)
-    val boxModifier = Modifier
-        .size(tile)
-        .graphicsLayer {
-            val u = p
-            val glide = u * u * (3f - 2f * u)              // sideways: smooth
-            val lift = u.pow(2.2f)                          // upward: slow, then gets sucked in
-            val dir = if (index % 2 == 0) -1f else 1f
-            val wobble = sin(u * 2f * PI.toFloat() * 1.5f + index) * sway * (1f - u)
-            translationX = startX + (targetX - startX) * glide + wobble - half
-            translationY = startY + (targetY - startY) * lift - half
-            val intro = 0.7f + 0.3f * min(1f, u / 0.1f)
-            val s = (1f - 0.94f * u.pow(1.6f)) * intro
-            scaleX = s
-            scaleY = s
-            rotationZ = dir * 16f * (1f - u)
-            alpha = min(1f, u / 0.12f) * (1f - ((u - 0.9f) / 0.1f).coerceIn(0f, 1f))
-        }
-        .clip(shape)
+    val shape = flyerShape(f.shape)
+    val ink = TagColors.OnLime
+    val (base, outlined) = when (f.fill) {
+        0 -> TagColors.White to false
+        1 -> Color.Transparent to true
+        2 -> lerp(TagColors.Lime, ink, 0.16f) to false
+        else -> lerp(TagColors.Lime, TagColors.White, 0.5f) to false
+    }
 
-    when (f.style) {
-        0 -> Box(boxModifier.background(TagColors.Black), contentAlignment = Alignment.Center) {
-            TagIcon(f.icon, TagColors.Lime, size = 30.dp)
-        }
-        1 -> Box(boxModifier.background(TagColors.White), contentAlignment = Alignment.Center) {
-            TagIcon(f.icon, TagColors.Black, size = 30.dp)
-        }
-        else -> Box(boxModifier.border(2.dp, TagColors.OnLime, shape), contentAlignment = Alignment.Center) {
-            TagIcon(f.icon, TagColors.OnLime, size = 30.dp)
-        }
+    Box(
+        Modifier
+            .size(f.w, f.h)
+            .graphicsLayer {
+                val u = p
+                val glide = u * u * (3f - 2f * u)              // sideways: smooth
+                val lift = u.pow(2.2f)                          // upward: slow, then gets sucked in
+                val dir = if (index % 2 == 0) -1f else 1f
+                val wobble = sin(u * 2f * PI.toFloat() * 1.5f + index) * sway * (1f - u)
+                translationX = startX + (targetX - startX) * glide + wobble - halfW
+                translationY = startY + (targetY - startY) * lift - halfH
+                val intro = 0.7f + 0.3f * min(1f, u / 0.1f)
+                val s = (1f - 0.94f * u.pow(1.6f)) * intro
+                scaleX = s
+                scaleY = s
+                rotationZ = dir * 16f * (1f - u)
+                alpha = min(1f, u / 0.12f) * (1f - ((u - 0.9f) / 0.1f).coerceIn(0f, 1f))
+            }
+            .clip(shape)
+            .background(base)
+            .then(if (outlined) Modifier.border(2.dp, ink, shape) else Modifier),
+        contentAlignment = Alignment.Center
+    ) {
+        TagIcon(f.icon, ink, size = 30.dp)
     }
 }
