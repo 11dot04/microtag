@@ -59,10 +59,11 @@ import java.util.Date
 import java.util.Locale
 import kotlin.random.Random
 
-private val Poster = Color(0xFF121317)
-private val Dim = Color(0xFF23252D)
-private val Faint = Color(0xFF6E737C)
-private val Mono = FontFamily.Monospace
+// Everything comes from the active palette, so the poster follows the theme.
+private val Poster: Color get() = TagColors.PausedPoster
+private val Dim: Color get() = lerp(TagColors.PausedPoster, TagColors.White, 0.09f)
+private val Faint: Color get() = TagColors.Dim
+private val Mono: FontFamily get() = TagFonts.data
 
 private fun mono(size: Int, color: Color, weight: FontWeight = FontWeight.Medium) =
     TextStyle(fontFamily = Mono, fontWeight = weight, fontSize = size.sp, lineHeight = (size + 3).sp, color = color)
@@ -116,7 +117,7 @@ fun EasterEgg() {
             // Registration marks, circles and checker strips.
             Canvas(Modifier.fillMaxSize()) {
                 val mark = 3.dp.toPx()
-                val markColor = Color(0xFF3A3D46)
+                val markColor = lerp(Poster, TagColors.White, 0.2f)
                 for (cx in listOf(0.33f, 0.74f)) for (cy in listOf(0.26f, 0.52f, 0.76f, 0.95f)) {
                     val x = size.width * cx
                     val y = size.height * cy
@@ -125,7 +126,7 @@ fun EasterEgg() {
                 }
                 val ring = Stroke(1.dp.toPx())
                 for ((fx, fy) in listOf(0.88f to 0.20f, 0.74f to 0.58f, 0.02f to 0.66f, 0.49f to 0.66f, 0.74f to 0.66f)) {
-                    drawCircle(Color(0xFFE6E7EA), 5.dp.toPx(), Offset(size.width * fx, size.height * fy), style = ring)
+                    drawCircle(TagColors.White, 5.dp.toPx(), Offset(size.width * fx, size.height * fy), style = ring)
                 }
                 // dim checker strips down the left edge
                 val cell = 4.dp.toPx()
@@ -220,7 +221,10 @@ fun EasterEgg() {
                 Modifier.padding(start = 20.dp, top = h * 0.5f),
                 horizontalArrangement = Arrangement.spacedBy(w * 0.12f)
             ) {
-                listOf("ACCENT" to TagColors.Lime, "INK" to TagColors.Black, "PAPER" to TagColors.White).forEach { (name, color) ->
+                // The dark and light ends of the palette, whichever way round this palette is.
+                val dark = if (TagColors.IsLight) TagColors.White else TagColors.Black
+                val light = if (TagColors.IsLight) TagColors.Black else TagColors.White
+                listOf("ACCENT" to TagColors.Lime, "INK" to dark, "PAPER" to light).forEach { (name, color) ->
                     val (hex, rgb) = color.hexParts()
                     Column {
                         Box(Modifier.size(10.dp, 2.dp).background(TagColors.White))
@@ -232,11 +236,21 @@ fun EasterEgg() {
                 }
             }
 
+            // Supporting colours of the palette, if it has any.
+            if (TagColors.Extras.isNotEmpty()) {
+                Row(
+                    Modifier.padding(start = 20.dp, top = h * 0.5f + 62.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    TagColors.Extras.take(5).forEach { Box(Modifier.size(14.dp).background(it)) }
+                }
+            }
+
             // The big, dim wordmark, bleeding off the right edge.
             Image(
                 painter = painterResource(R.drawable.ic_tag_wordmark),
                 contentDescription = null,
-                colorFilter = ColorFilter.tint(Color(0xFF22242B)),
+                colorFilter = ColorFilter.tint(lerp(Poster, TagColors.White, 0.08f)),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(bottom = 96.dp)
@@ -256,6 +270,7 @@ fun EasterEgg() {
                 Text("BUILD    $build", style = mono(10, Faint))
                 Text("UPDATED  $updated", style = mono(10, Faint))
                 Text("TARGET   API ${android.os.Build.VERSION.SDK_INT}", style = mono(10, Faint))
+                Text("PALETTE  ${TagColors.Name.uppercase()}", style = mono(10, Faint))
                 Spacer(Modifier.height(10.dp))
                 Text("GITHUB", style = mono(8, Faint))
                 Text(
