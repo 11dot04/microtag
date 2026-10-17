@@ -4,7 +4,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.asComposePath
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.graphics.shapes.CornerRounding
@@ -46,7 +46,18 @@ object ExpressiveShapes {
 /** A [Shape] that is `morph` at `progress` (0 = the first polygon, 1 = the second). */
 class MorphShape(private val morph: Morph, private val progress: Float) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val path = morph.asPath(progress.coerceIn(0f, 1f)).asComposePath()
+        // Built by hand from the morph's bezier segments, so it does not depend on which Path
+        // helper a given graphics-shapes version ships (toPath / asPath are extensions that moved around).
+        val path = Path()
+        var started = false
+        for (c in morph.asCubics(progress.coerceIn(0f, 1f))) {
+            if (!started) {
+                path.moveTo(c.anchor0X, c.anchor0Y)
+                started = true
+            }
+            path.cubicTo(c.control0X, c.control0Y, c.control1X, c.control1Y, c.anchor1X, c.anchor1Y)
+        }
+        path.close()
         // Polygons live in -1..1; stretch that to the box.
         val matrix = Matrix()
         matrix.scale(size.width / 2f, size.height / 2f)
