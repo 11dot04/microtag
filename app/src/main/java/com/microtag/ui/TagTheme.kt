@@ -279,15 +279,22 @@ object TagFonts {
     private var displayFamily by mutableStateOf<ComposeFontFamily>(Montserrat)
     private var monoFamily by mutableStateOf<ComposeFontFamily>(Montserrat)
 
+    private var dataFamily by mutableStateOf<ComposeFontFamily>(FontFamily.Monospace)
+
     val display: ComposeFontFamily get() = displayFamily
     val mono: ComposeFontFamily get() = monoFamily
+
+    /** Timestamps, repeat counts, log lines: the system monospace, or the palette's own mono face. */
+    val data: ComposeFontFamily get() = dataFamily
 
     /** Single-weight faces must not be faux-bolded. Use this on any style that uses [display]. */
     val NoSynthesis = FontSynthesis.None
 
     fun apply(context: Context, p: TagPalette) {
         displayFamily = p.display?.let { family(context, it) } ?: Montserrat
-        monoFamily = p.mono?.let { family(context, it) } ?: Montserrat
+        val customMono = p.mono?.let { family(context, it) }
+        monoFamily = customMono ?: Montserrat
+        dataFamily = customMono ?: FontFamily.Monospace
     }
 
     fun family(context: Context, base: String): ComposeFontFamily? {
