@@ -62,6 +62,8 @@ internal fun labelFor(p: InspectPayload): String {
         "NUM" -> "NUMBER"
         "DEFINE" -> "DEFINE"
         "WIKI" -> "WIKI"
+        "PINNED" -> "PINNED"
+        "FOOD" -> "FOOD"
         "DIMS" -> "DIMENSIONS"
         else -> "TEXT"
     }
@@ -119,10 +121,12 @@ internal class CardCtx(
     val onCheck: () -> Unit,
     val onResolve: () -> Unit,
     val onEvent: () -> Unit,
-    val drag: Modifier
+    val drag: Modifier,
+    /** "pin", "unpin" or "extend". Null when the host can't pin (the demo cards): the pin glyph and the pin buttons then don't show. */
+    val onPin: ((String) -> Unit)? = null
 ) {
     /** The same card context with another accent (the Wiki poster tints its OPEN pill to match its photo). */
-    fun withAccent(a: Color) = CardCtx(p, a, busy, flash, onCopy, onShare, onOpen, onCheck, onResolve, onEvent, drag)
+    fun withAccent(a: Color) = CardCtx(p, a, busy, flash, onCopy, onShare, onOpen, onCheck, onResolve, onEvent, drag, onPin)
 
     fun actions(): List<Pair<String, () -> Unit>> {
         val out = ArrayList<Pair<String, () -> Unit>>()
@@ -138,6 +142,7 @@ internal class CardCtx(
 internal fun CardHeader(c: CardCtx, arrowHere: Boolean) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         LabelPill(labelFor(c.p), pillTint(c.p))
+        PinGlyph(c)
         Spacer(Modifier.weight(1f))
         if (canOpen(c.p)) {
             OpenPill(openLabel(c.p), c.accent, c.onOpen)
@@ -210,10 +215,13 @@ fun InspectCard(
     onCheck: () -> Unit = {},
     onResolve: () -> Unit = {},
     onEvent: () -> Unit = {},
-    dragModifier: Modifier = Modifier
+    dragModifier: Modifier = Modifier,
+    onPin: ((String) -> Unit)? = null
 ) {
-    val c = CardCtx(p, cardAccent(p), busy, flash, onCopy, onShare, onOpen, onCheck, onResolve, onEvent, dragModifier)
+    val c = CardCtx(p, cardAccent(p), busy, flash, onCopy, onShare, onOpen, onCheck, onResolve, onEvent, dragModifier, onPin)
     when (p.domain) {
+        "PINNED" -> PinnedCard(c, modifier)
+        "FOOD" -> FoodCard(c, modifier)
         "COLOUR" -> ColourCard(c, modifier)
         "PIN" -> PostCard(c, modifier)
         "WIKI" -> WikiCard(c, modifier)
