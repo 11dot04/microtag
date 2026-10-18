@@ -39,7 +39,11 @@ data class InspectPayload(
     val eventId: Long = 0L,
     val fact: String = "",
     val caption: String = "",
-    val parts: List<String> = emptyList()
+    val parts: List<String> = emptyList(),
+    /** What was inspected, which reading this card is, and the other close readings ("or read it as..."). */
+    val origin: String = "",
+    val kind: String = "",
+    val alts: List<String> = emptyList()
 ) : Serializable {
 
     val bigText: String get() = big.ifBlank { heroText }
@@ -53,6 +57,6 @@ data class InspectPayload(
             copyText.isBlank() && fullContent.isBlank() && rows.isEmpty()
 
     companion object {
-        private const val serialVersionUID = 6L
+        private const val serialVersionUID = 7L
     }
 }
