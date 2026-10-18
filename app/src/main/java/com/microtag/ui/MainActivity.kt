@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
         // Apply saved look-and-feel before the first frame, so there is no lime flash.
         val settings = TagSettings(applicationContext)
         TagColors.usePalette(applicationContext, settings.palette, settings.materialYou)
+        TagColors.useMulticolour(settings.multicolour)
         TagMotion.enabled = !settings.reducedMotion
         TagMotion.haptics = settings.haptics
 
