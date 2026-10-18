@@ -101,6 +101,10 @@ private val Blocks = listOf(
                 backwards = "Select the words (three lakh fifty thousand) to get the digits.", pill = "NUMBER", chip = "3.1 B"
             ),
             InspectTip(
+                R.drawable.ic_food, "Food", "Select a portion like 2 rotis or 100 g paneer for its calories and macros. A barcode number looks the product up.", "2 rotis",
+                chip = "238 kcal"
+            ),
+            InspectTip(
                 R.drawable.ic_inspect_convert, "Dimensions", "Select sizes like 21 x 29.7 cm or 1920x1080. Standard sizes are named.", "21 x 29.7 cm",
                 backwards = "Select a name (A3, us letter, 1080p, queen bed, credit card) to get its size.", pill = "DIMS", chip = "21×29.7cm"
             )
@@ -139,6 +143,16 @@ private val Blocks = listOf(
         )
     ),
     TipBlockSpec(
+        "Screenshots",
+        listOf(
+            InspectTip(
+                R.drawable.ic_inspect_define, "Screenshot Inspect",
+                "Share a screenshot to Microtag from your gallery or screenshot preview. Everything it can read is outlined: UPI ids, amounts, dates, IFSC codes, links, food and QR codes. Tap an outline for its card, or tap any word to inspect it.",
+                "ryan@oksbi", chip = "Google Pay"
+            )
+        )
+    ),
+    TipBlockSpec(
         "Colour",
         listOf(
             InspectTip(
@@ -159,7 +173,7 @@ private fun tipShape(index: Int, count: Int): Shape {
 }
 
 @Composable
-fun InspectScreen(onBack: () -> Unit) {
+fun InspectScreen(onBack: () -> Unit, onOpenPriority: () -> Unit = {}) {
     val context = LocalContext.current
     remember { PillPrefs.attach(context) }
     SubScreen(onBack, spacing = 10.dp) {
@@ -191,6 +205,22 @@ fun InspectScreen(onBack: () -> Unit) {
                 style = TextStyle(
                     fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
                     letterSpacing = 1.sp, color = TagColors.AccentText
+                )
+            )
+        }
+        val view = LocalView.current
+        Box(
+            Modifier
+                .clip(CircleShape)
+                .border(1.5.dp, TagColors.Outline, CircleShape)
+                .clickable { view.tick(Tick.Press); onOpenPriority() }
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            Text(
+                "WHEN IT COULD BE TWO THINGS",
+                style = TextStyle(
+                    fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                    letterSpacing = 1.sp, color = TagColors.White
                 )
             )
         }
@@ -326,10 +356,10 @@ private fun TipRow(tip: InspectTip, shape: Shape) {
 
 /** "PILL SHOWS" and the choices for one card; the pick is stored and the chip above updates at once. */
 @Composable
-private fun PillPicker(option: PillConfig.Option, current: String, onPick: (String) -> Unit) {
+internal fun PillPicker(option: PillConfig.Option, current: String, onPick: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            "PILL SHOWS",
+            option.heading,
             style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.2.sp, color = TagColors.Outline)
         )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
