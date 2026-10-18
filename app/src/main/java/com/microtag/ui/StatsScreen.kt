@@ -517,7 +517,7 @@ private fun Heatmap(grid: Array<IntArray>, selected: Set<Int>, modifier: Modifie
             val g = gap.toPx()
             val lw = labelW.toPx()
             val c = cell.toPx()
-            val accent = TagColors.Lime
+            val accent = TagColors.tone(1)
             val label = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 10.sp, color = TagColors.Outline)
             for (r in 0 until 7) {
                 val y = r * (c + g)
@@ -572,7 +572,7 @@ private fun TimeOfDay(values: IntArray) {
                         .weight(counts[idx].toFloat())
                         .fillMaxHeight()
                         .clip(shape)
-                        .background(TagColors.Lime.copy(alpha = alphas[idx]))
+                        .background(TagColors.series(idx, alphas[idx]))
                 )
             }
         }
@@ -580,7 +580,7 @@ private fun TimeOfDay(values: IntArray) {
             buckets.forEachIndexed { i, (name, _) ->
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).clip(CircleShape).background(TagColors.Lime.copy(alpha = alphas[i])))
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(TagColors.series(i, alphas[i])))
                         Spacer(Modifier.width(6.dp))
                         Text(
                             name,
@@ -648,7 +648,7 @@ private fun Sources(rows: List<Pair<String, Int>>) {
                 lineHeight = 16.sp, color = TagColors.Outline
             )
         )
-        rows.forEach { (label, n) ->
+        rows.forEachIndexed { rank, (label, n) ->
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -661,7 +661,7 @@ private fun Sources(rows: List<Pair<String, Int>>) {
                     )
                 }
                 Spacer(Modifier.height(5.dp))
-                Box(Modifier.fillMaxWidth(n / maxN.toFloat()).height(4.dp).clip(CircleShape).background(TagColors.Lime))
+                Box(Modifier.fillMaxWidth(n / maxN.toFloat()).height(4.dp).clip(CircleShape).background(TagColors.series(rank)))
             }
         }
     }
