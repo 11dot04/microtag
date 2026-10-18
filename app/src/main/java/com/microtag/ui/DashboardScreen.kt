@@ -131,6 +131,7 @@ private enum class DashSheet { Streaks, Calendar }
 fun DashboardScreen(
     prefs: MicrotagPrefs,
     onOpenInspect: () -> Unit,
+    onOpenPin: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onOpenStats: () -> Unit,
     onOpenLogs: () -> Unit,
@@ -377,6 +378,9 @@ fun DashboardScreen(
             // ---- music pair (one interlocked shape) + VPN
             TileTone(2) { MusicPair(Modifier.cell(0f, b3, 2f, 2f), songNext, ambient) }
             TileTone(1) { BigTile(Modifier.cell(2f, b3, 2f, 2f), R.drawable.ic_vpn, "ProtonVPN", "SESSIONS", proton) }
+
+            // ---- Pin: opens its own screen. Not a toggle; pinning is something you do, not a source.
+            TileTone(0) { PinTile(Modifier.cell(0f, b3 + 2f, 4f, 1f), onOpenPin) }
         }
         Spacer(Modifier.height(40.dp))
         }
@@ -479,6 +483,18 @@ private fun MicroTile(
         Row(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             TagLabel(bold, light, fg, Modifier.weight(1f), size, inline = inline)
             TagIcon(icon, fg, size = 28.dp)
+        }
+    }
+}
+
+/** Opens the Pin screen. */
+@Composable
+private fun PinTile(modifier: Modifier, onClick: () -> Unit) {
+    TagTile(modifier, TagShapes.Pill, TileState.Static, onClick) { fg ->
+        Row(Modifier.fillMaxSize().padding(start = 16.dp, end = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+            TagIcon(R.drawable.ic_pin, fg, size = 28.dp)
+            Spacer(Modifier.width(10.dp))
+            TagLabel("Pin", "Keep a code up", fg, Modifier.weight(1f))
         }
     }
 }
