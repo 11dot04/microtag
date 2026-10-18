@@ -166,6 +166,23 @@ class InspectDetailActivity : ComponentActivity() {
         finish()
     }
 
+    /** The pin glyph on any card, and the buttons on a pinned card. */
+    private fun pinAction(p: InspectPayload, action: String) {
+        val app = applicationContext
+        when (action) {
+            "pin" -> PinEngine.pin(app, p.copyValue.ifBlank { p.bigText })
+            "unpin" -> {
+                p.unit.toIntOrNull()?.let { PinEngine.unpin(app, it) }
+                finish()
+            }
+            "extend" -> {
+                val id = p.unit.toIntOrNull() ?: return
+                val updated = PinEngine.extend(app, id, 60 * 60_000L) ?: return
+                payload = p.copy(nums = listOf(updated.createdAt.toDouble(), updated.expiresAt.toDouble()))
+            }
+        }
+    }
+
     private fun runResolve(p: InspectPayload) {
         if (busy.isNotEmpty()) return
         busy = "RESOLVE"
@@ -277,7 +294,8 @@ class InspectDetailActivity : ComponentActivity() {
                     onCheck = { runCheck(p) },
                     onResolve = { runResolve(p) },
                     onEvent = { openEvent(p.eventId) },
-                    dragModifier = drag
+                    dragModifier = drag,
+                    onPin = { action -> pinAction(p, action) }
                 )
             }
         }
