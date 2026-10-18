@@ -45,6 +45,7 @@ object CapsuleParser {
     private const val ICON_VPN = "ic_capsule_vpn"
     private const val ICON_OTP = "ic_otp"
     private const val ICON_DOWNLOAD = "ic_download"
+    private const val ICON_UPLOAD = "ic_upload"
 
     private val stravaPacePattern = Regex("""\b\d{1,2}:\d{2}\s?/\s?(?:km|mi)\b""", RegexOption.IGNORE_CASE)
 
@@ -60,12 +61,14 @@ object CapsuleParser {
     private val otpPackages = setOf(
         // SMS / RCS
         "com.google.android.apps.messaging", "com.samsung.android.messaging", "com.android.mms",
-        "com.android.messaging", "com.oneplus.mms", "com.oplus.mms", "com.miui.mms", "com.asus.message",
+        "com.android.messaging", "com.oneplus.mms", "com.oplus.mms", "com.coloros.mms", "com.vivo.mms", "com.vivo.message",
+        "com.huawei.message", "com.miui.mms", "com.asus.message", "com.google.android.apps.googlevoice",
         "com.motorola.messaging", "com.sonyericsson.conversations", "com.truecaller",
         "com.microsoft.android.smsorganizer", "com.simplemobiletools.smsmessenger", "com.textra",
         "com.jb.gosms", "com.handcent.nextsms", "org.smssecure.smssecure",
         // Chat apps that deliver verification codes
-        "com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger", "org.telegram.messenger.web",
+        "com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger", "org.telegram.messenger.web", "org.thoughtcrime.securesms",
+        "com.facebook.orca", "com.facebook.mlite", "com.skype.raider", "jp.naver.line.android", "com.viber.voip",
         // Mail
         "com.google.android.gm", "com.google.android.gm.lite", "com.microsoft.office.outlook",
         "com.android.email", "ch.protonmail.android", "com.yahoo.mobile.client.android.mail", "com.fsck.k9",
@@ -75,6 +78,44 @@ object CapsuleParser {
 
     private fun isMessaging(pkg: String) =
         pkg in otpPackages || pkg.contains("messaging") || smsSegment.containsMatchIn(pkg)
+
+    /** Everything a notification can say, including the body, the line list and MessagingStyle messages. */
+    private fun fullText(extras: Bundle): String {
+        val parts = ArrayList<String>()
+        for (key in listOf(
+            Notification.EXTRA_TITLE, Notification.EXTRA_TEXT, Notification.EXTRA_SUB_TEXT,
+            Notification.EXTRA_BIG_TEXT, Notification.EXTRA_SUMMARY_TEXT, Notification.EXTRA_INFO_TEXT
+        )) extras.getCharSequence(key)?.toString()?.let { if (it.isNotBlank()) parts.add(it) }
+        extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.forEach { if (it.isNotBlank()) parts.add(it.toString()) }
+        // MessagingStyle (Google Messages, WhatsApp, Telegram): the code can be in an earlier message of the thread.
+        try {
+            @Suppress("DEPRECATION")
+            extras.getParcelableArray(Notification.EXTRA_MESSAGES)?.forEach { m ->
+                (m as? Bundle)?.getCharSequence("text")?.toString()?.let { if (it.isNotBlank()) parts.add(it) }
+            }
+        } catch (_: Exception) {
+        }
+        return parts.distinct().joinToString(" ")
+    }
+
+    /** An app that is not a messenger, but whose notification clearly carries a code (a bank app, a game launcher...). */
+    private fun carriesCode(extras: Bundle): Boolean = OtpExtractor.isCodeMessage(fullText(extras))
+
+    // ---- uploads and downloads share the system progress bar; the wording and the app tell them apart ----
+    private val uploadWords = Regex("""(?i)\b(?:upload(?:ing|ed)?|back(?:ing)?[ -]?up|sending|saving to (?:cloud|drive)|sync(?:ing)? (?:to|with) (?:cloud|drive))\b""")
+    private val downloadWords = Regex("""(?i)\b(?:download(?:ing|ed)?|restor(?:e|ing)|receiving|installing|updating|fetching)\b""")
+    private val uploadPackages = setOf(
+        "com.google.android.apps.photos", "com.google.android.apps.docs", "com.dropbox.android",
+        "com.microsoft.skydrive", "com.amazon.clouddrive.photos", "com.mega.android", "com.synology.dsphoto"
+    )
+
+    private fun isUpload(pkg: String, extras: Bundle): Boolean {
+        val text = fullText(extras)
+        val up = uploadWords.containsMatchIn(text)
+        val down = downloadWords.containsMatchIn(text)
+        if (down && !up) return false
+        return up || pkg in uploadPackages
+    }
 
     /**
      * Which dashboard tile owns this notification, decided from package/extras alone so the
@@ -91,7 +132,8 @@ object CapsuleParser {
         isDiscord(pkg) -> MicrotagPrefs.KEY_DISCORD
         isWeather(pkg) -> TagKeys.WEATHER
         isMessaging(pkg) -> MicrotagPrefs.KEY_OTP
-        extras.containsKey(Notification.EXTRA_PROGRESS) -> MicrotagPrefs.KEY_DOWNLOADS
+        extras.containsKey(Notification.EXTRA_PROGRESS) -> if (isUpload(pkg, extras)) TagKeys.UPLOADS else MicrotagPrefs.KEY_DOWNLOADS
+        carriesCode(extras) -> MicrotagPrefs.KEY_OTP
         else -> null
     }
 
@@ -130,13 +172,14 @@ object CapsuleParser {
             isAmbient(pkg) -> parseAmbientMusic(notif, title, text)
             // The calendar provider drives countdowns when it's readable; the notification is a fallback.
             isCalendar(pkg) -> if (ctx.calendarProviderActive) null else parseCalendar(notif, title, text, ctx)
-            pkg == "com.android.bluetooth" || pkg == "com.android.systemui" -> parseSystemUi(notif, title, text, combined)
+            pkg == "com.android.bluetooth" || pkg == "com.android.systemui" -> parseSystemUi(pkg, notif, title, text, combined)
             pkg == "ch.protonvpn.android" -> parseProtonVpn(notif, title, text)
             isStrava(pkg) -> parseStrava(notif, combined, title, text, ctx)
             isDiscord(pkg) -> parseDiscord(notif, combined, title, text)
             isWeather(pkg) -> parseWeather(combined, title, text)
-            isMessaging(pkg) -> parseOtp(otpHaystack(extras, combined), title, text)
-            extras.containsKey(Notification.EXTRA_PROGRESS) -> parseProgress(notif, title, text)
+            isMessaging(pkg) -> parseOtp(fullText(extras).ifBlank { combined }, title, text)
+            extras.containsKey(Notification.EXTRA_PROGRESS) -> parseProgress(notif, title, text, isUpload(pkg, extras))
+            carriesCode(extras) -> parseOtp(fullText(extras), title, text)
             else -> null
         }
         // Fill in the tile from routing when the branch didn't set one itself (system UI does).
@@ -235,13 +278,14 @@ object CapsuleParser {
         )
     }
 
-    private fun parseSystemUi(notif: Notification, title: String, text: String, combined: String): ParsedCapsule? {
+    private fun parseSystemUi(pkg: String, notif: Notification, title: String, text: String, combined: String): ParsedCapsule? {
         return when {
             combined.contains("battery", ignoreCase = true) || combined.contains("charging", ignoreCase = true) -> {
                 val pct = Regex("""\d+%""").find(combined)?.value ?: "Power"
                 ParsedCapsule(pct, title, text, ICON_BOLT, timeoutSeconds = 5)
             }
-            combined.contains("bluetooth", ignoreCase = true) || combined.contains("connected to", ignoreCase = true) -> {
+            // "Connected to" alone is too loose (Wi-Fi, casting): only the Bluetooth app or the word itself.
+            pkg == "com.android.bluetooth" || combined.contains("bluetooth", ignoreCase = true) -> {
                 val device = title.replace("Connected to ", "", ignoreCase = true).take(10)
                 ParsedCapsule(device, "Bluetooth", text, ICON_BLUETOOTH, timeoutSeconds = 5, actions = notif.actions?.toList() ?: emptyList(), tile = TagKeys.BLUETOOTH)
             }
@@ -414,94 +458,11 @@ object CapsuleParser {
         )
     }
 
-    /** Title, text and, when present, the expanded body and line list, since SMS apps often put the code there. */
-    private fun otpHaystack(extras: Bundle, combined: String): String {
-        val big = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString().orEmpty()
-        val lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.joinToString(" ").orEmpty()
-        return listOf(combined, big, lines).filter { it.isNotBlank() }.distinct().joinToString(" ")
-    }
-
-    // Words that say "this number is a login / verification code".
-    private val otpKeyword = Regex(
-        """(?i)\b(?:otp|one[- ]?time|verification|verify|passcode|pass code|password|security code|auth(?:entication)? code|login code|log-?in|sign-?in|2fa|pin|code|token)\b"""
-    )
-
-    // A candidate: 4 to 8 digits, or 3+3 split by a space or hyphen, optionally Google's "G-" prefix.
-    private val otpCandidate = Regex("""(?<![\w.,])(?:G-)?(\d{3}[ -]\d{3}|\d{4,8})(?!\w|[.,]\d)""")
-
-    // Words just before a number that mean it is something else (amount, order, promo, postcode...).
-    private val notCodeBefore = Regex(
-        """(?i)(?:promo(?:tion)?|coupon|referral|discount|voucher|zip|postal|pin ?code|area code|order|tracking|booking|invoice|ref(?:erence)?|a/c|acct|account(?: no\.?| number)?|card|amount|amt|rs\.?|inr|usd|eur|₹|\$|€|£|balance|bal)[^\d]{0,12}$"""
-    )
-    private val isJustBefore = Regex("""(?i)(?:\bis|:|=)\s*$""")
-    private val validIsAfter = Regex("""(?i)^\s*(?:is|was)\s+(?:your|the|a|an|valid)|^\s*(?:to (?:verify|log|sign|confirm|complete)|will expire|expires)""")
-
-    /** Pulls the code out of an SMS/chat/mail notification, or null if it does not read like one. */
-    internal fun extractOtp(haystack: String): String? {
-        val lowerHaystack = haystack.lowercase()
-        
-        // 1. Broadly check if the message is OTP-related anywhere in the text
-        val isOtpMessage = listOf(
-            "otp", "code", "pin", "passcode", "password", 
-            "verification", "verify", "token", "2fa"
-        ).any { lowerHaystack.contains(it) }
-
-        if (!isOtpMessage) return null
-
-        var best: String? = null
-        var bestScore = 0
-
-        // 2. Find all 4 to 8 digit sequences (ignoring typical years if not explicitly identified as a code)
-        for (m in otpCandidate.findAll(haystack)) {
-            val digits = m.groupValues[1].filter { it.isDigit() }
-            if (digits.length !in 4..8) continue
-
-            val before = haystack.substring(0, m.range.first).trim()
-            val after = haystack.substring(m.range.last + 1).trim()
-
-            // Disqualify if immediately preceded by currency or account markers
-            val immediateBefore = before.takeLast(15)
-            if (notCodeBefore.containsMatchIn(immediateBefore)) continue
-            
-            // Disqualify if it looks like a currency amount (e.g., ends in "/-")
-            if (after.startsWith("/-")) continue
-
-            val looksLikeYear = digits.length == 4 && (digits.startsWith("19") || digits.startsWith("20"))
-            
-            var score = 1
-            
-            // Boost score if common prefix/suffix patterns are directly adjacent
-            if (isJustBefore.containsMatchIn(immediateBefore)) score += 3 // e.g. "is 4875"
-            if (validIsAfter.containsMatchIn(after.take(20))) score += 3 // e.g. "832332 is your"
-            
-            // If it's a year-like number, it MUST have strong adjacent context to be considered
-            if (looksLikeYear && score < 4) continue
-
-            if (score > bestScore) {
-                bestScore = score
-                best = digits
-            }
-        }
-
-        // 3. Fallback: If it's definitively an OTP message but no adjacent markers boosted the score,
-        // just grab the first valid 4-8 digit number that wasn't disqualified.
-        if (best == null && isOtpMessage) {
-             val fallbackMatch = otpCandidate.find(haystack)
-             if (fallbackMatch != null) {
-                 val digits = fallbackMatch.groupValues[1].filter { it.isDigit() }
-                 val before = haystack.substring(0, fallbackMatch.range.first).takeLast(15)
-                 if (digits.length in 4..8 && !notCodeBefore.containsMatchIn(before)) {
-                     best = digits
-                 }
-             }
-        }
-
-        return best
-    }
-
+    /** Kept for the tests: the code in [haystack], or null. */
+    internal fun extractOtp(haystack: String): String? = OtpExtractor.extract(haystack)
 
     private fun parseOtp(combined: String, title: String, text: String): ParsedCapsule? {
-        val code = extractOtp(combined) ?: return null
+        val code = OtpExtractor.extract(combined) ?: return null
 
         return ParsedCapsule(
             pillText = code,
@@ -519,7 +480,8 @@ object CapsuleParser {
         )
     }
 
-    private fun parseProgress(notif: Notification, title: String, text: String): ParsedCapsule? {
+    /** Downloads and uploads (backups, cloud sync) both show a system progress bar; they get their own icon and tile. */
+    private fun parseProgress(notif: Notification, title: String, text: String, upload: Boolean): ParsedCapsule? {
         val max = notif.extras.getInt(Notification.EXTRA_PROGRESS_MAX, 0)
         val progress = notif.extras.getInt(Notification.EXTRA_PROGRESS, 0)
         if (max <= 0 || progress >= max) return null
@@ -527,10 +489,11 @@ object CapsuleParser {
         val pct = ((progress.toDouble() / max) * 100).toInt()
         return ParsedCapsule(
             pillText = "$pct%",
-            title = title.ifBlank { "In Progress" },
+            title = title.ifBlank { if (upload) "Uploading" else "Downloading" },
             content = text.ifBlank { "$progress / $max completed" },
-            iconName = ICON_DOWNLOAD,
-            timeoutSeconds = 4
+            iconName = if (upload) ICON_UPLOAD else ICON_DOWNLOAD,
+            timeoutSeconds = 4,
+            tile = if (upload) TagKeys.UPLOADS else MicrotagPrefs.KEY_DOWNLOADS
         )
     }
 }
