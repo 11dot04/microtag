@@ -89,6 +89,18 @@ object InspectEngine {
         }
     }
 
+    /** Blocking: [rawText] read as one particular kind (see [PriorityLogic.kind]), or null when it can't be. */
+    fun resolveAs(context: Context, rawText: String, kind: String): InspectResult? {
+        val text = Detectors.normalize(rawText)
+        if (text.isEmpty()) return null
+        return try {
+            Detectors.resolveKind(text, Source.SELECTION, envFor(context), kind)
+        } catch (t: Throwable) {
+            Log.w(TAG, "resolveAs failed: ${t.message}")
+            null
+        }
+    }
+
     fun inspect(context: Context, rawText: String, source: Source) {
         PillPrefs.attach(context)
         val app = context.applicationContext
@@ -126,6 +138,7 @@ object InspectEngine {
 
         var result: InspectResult? = null
         var used = ""
+        val priority = PriorityStore.state
         for (c in candidates) {
             val r = try {
                 c.resolve()
@@ -157,7 +170,10 @@ object InspectEngine {
             timeoutSeconds = result.timeoutSeconds,
             iconName = result.iconName,
             customIcon = result.swatch?.let { swatchIcon(it) },
-            detailPayload = result.toPayload()
+            detailPayload = result.toPayload().copy(
+                origin = text, kind = PriorityLogic.kind(used),
+                alts = PriorityLogic.alternatives(candidates, used, priority)
+            )
         )
         log(app, source, Decision.PROMOTED, "$used -> ${result.domain}", result.pill, result.iconName, text)
     }
