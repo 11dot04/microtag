@@ -1,6 +1,8 @@
 package com.microtag.ui
 
+import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path as NativePath
 import android.graphics.Rect
 import android.graphics.Typeface
 import androidx.compose.animation.AnimatedVisibility
@@ -96,13 +98,19 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
-
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.foundation.layout.width
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.abs
 // ==========================================================
 // THE MONOLITH
-// The first screen is one flat poster. The count is a single huge numeral, bleeding off the right edge,
-// over a dot-matrix skyline of today's activity (one column per hour). Scroll, and the numeral shrinks and docks
-// into a compact counter while the tiles take over. A strip of tiles peeks below the poster so you know to scroll.
-// Pausing floods the poster out to dark and turns the numeral into an outline.
+// The count is one huge numeral set on its side, reading up the left edge of the page, with a couple of
+// flat diagonal bands overprinted across its foot (where numeral and band overlap, the colours mix).
+// A tiny annotation column and a vertical hour-by-hour readout sit to its right. There is no coloured slab:
+// the poster is the page. Scroll, and the numeral swings upright and shrinks into the dock while the tiles take
+// over. Pausing outlines the numeral.
 // ==========================================================
 
 private const val NUMERAL_LS = -0.02f   // em; tune to taste for the hero font
@@ -122,6 +130,29 @@ private fun numeralInk(typeface: Typeface?, text: String): Rect {
 
 private fun smooth(t: Float) = t * t * (3f - 2f * t)
 
+/** The numeral lies along the left edge: its length fills most of the poster, its thickness stays modest. */
+private fun fitSize(
+    l100: Float, h100: Float, wPx: Float, posterPx: Float, margin: Float, bottomMargin: Float, controlsBottom: Float
+): Float {
+    val availLen = min(posterPx * 0.62f, posterPx - bottomMargin - controlsBottom).coerceAtLeast(1f)
+    val availThick = (wPx * 0.42f - margin).coerceAtLeast(1f)
+    return min(availLen / l100 * 100f, availThick / h100 * 100f)
+}
+
+/** Where the numeral sits in the poster state (rotated -90°, starting at the bottom-left and reading upward). */
+private class NumeralGeo(val size: Float, val capH: Float, val length: Float, val x0: Float, val y0: Float)
+
+private fun numeralGeo(
+    typeface: Typeface?, count: Int, wPx: Float, posterPx: Float, margin: Float, bottomMargin: Float, controlsBottom: Float
+): NumeralGeo {
+    val ink = numeralInk(typeface, count.toString())
+    val l100 = (ink.right - ink.left).toFloat().coerceAtLeast(1f)
+    val h100 = (ink.bottom - ink.top).toFloat().coerceAtLeast(1f)
+    val size = fitSize(l100, h100, wPx, posterPx, margin, bottomMargin, controlsBottom)
+    val capH = h100 * size / 100f
+    return NumeralGeo(size, capH, l100 * size / 100f, margin + capH, posterPx - bottomMargin)
+}
+
 // ----------------------------------------------------------
 // THE POSTER (scrolls with the page)
 // ----------------------------------------------------------
@@ -139,25 +170,62 @@ fun MonolithPoster(
     active: Boolean = true
 ) {
     val context = LocalContext.current
-    val bg by animateColorAsState(if (paused) TagColors.PausedPoster else TagColors.Lime, tween(500), label = "posterBg")
-    val fg by animateColorAsState(if (paused) TagColors.White else TagColors.OnLime, tween(500), label = "posterFg")
+    val density = LocalDensity.current
+    val ink = TagColors.White
     val versionName = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "dev"
     }
-    val date = remember { SimpleDateFormat("dd.MM.yy", Locale.US).format(Date()) }
+    val date = remember { SimpleDateFormat("dd—MM—yy", Locale.US).format(Date()) }
+    val today = remember(hourly) { hourly.sum() }
+    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    BoxWithConstraints(Modifier.fillMaxWidth().height(height).background(bg)) {
-        // The lit columns stop where the numeral stops, which leaves the space above it calm.
+    BoxWithConstraints(Modifier.fillMaxWidth().height(height)) {
         val typeface = remember { heroTypeface(context) }
         val wPx = constraints.maxWidth.toFloat()
         val posterPx = constraints.maxHeight.toFloat()
-        val litCap = remember(count, wPx, posterPx, typeface) {
-            val ink = numeralInk(typeface, count.toString())
-            val iw = (ink.right - ink.left).toFloat().coerceAtLeast(1f)
-            val ih = (ink.bottom - ink.top).toFloat().coerceAtLeast(1f)
-            min(1.0f * wPx / iw * 100f, posterPx * 0.56f / ih * 100f) * ih / 100f
+        val margin = with(density) { 20.dp.toPx() }
+        val bottomMargin = with(density) { 28.dp.toPx() }
+        val controlsBottom = with(density) { (statusTop + 132.dp).toPx() }
+        val geo = remember(count, wPx, posterPx, typeface, controlsBottom) {
+            numeralGeo(typeface, count, wPx, posterPx, margin, bottomMargin, controlsBottom)
         }
-        DotField(count, hourly, paused, fg, litCap, active, Modifier.fillMaxSize())
+
+        PosterArt(geo, hourly, paused, active, margin, Modifier.fillMaxSize())
+
+        // The annotation column, to the right of the numeral and level with its far end.
+        val axisX = wPx - margin - with(density) { 64.dp.toPx() }
+        val metaX = geo.x0 + with(density) { 16.dp.toPx() }
+        val metaTop = geo.y0 - geo.length
+        val metaWidth = with(density) { (axisX - with(density) { 34.dp.toPx() } - metaX).coerceAtLeast(60f).toDp() }
+        Column(
+            Modifier
+                .offset { IntOffset(metaX.roundToInt(), metaTop.roundToInt()) }
+                .width(metaWidth),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                "—" + today.toString().padStart(2, '0'),
+                modifier = Modifier.clearAndSetSemantics { },
+                style = mono(16, ink, FontWeight.Bold, 0f)
+            )
+            MicroLabel("Today", color = TagColors.Outline)
+            Spacer(Modifier.height(8.dp))
+            MicroLabel("Interceptions", color = ink, bold = true)
+            MicroLabel("So far", color = TagColors.Outline)
+            Spacer(Modifier.height(8.dp))
+            MicroLabel("( $date )", color = TagColors.Outline)
+            MicroLabel("V$versionName", color = TagColors.Outline)
+            if (paused) {
+                Spacer(Modifier.height(6.dp))
+                MicroLabel("Paused", color = TagColors.Lime, bold = true)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                MicroGlyph(Micro.Asterisk, size = 14.dp, color = TagColors.Outline)
+                MicroGlyph(Micro.Slashes, size = 14.dp, color = TagColors.Outline)
+                MicroGlyph(Micro.DotGrid, size = 14.dp, color = TagColors.Outline)
+            }
+        }
 
         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
             Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
@@ -165,7 +233,7 @@ fun MonolithPoster(
             Image(
                 painter = painterResource(R.drawable.ic_tag_wordmark),
                 contentDescription = "TAG",
-                colorFilter = ColorFilter.tint(fg),
+                colorFilter = ColorFilter.tint(ink),
                 modifier = Modifier.height(30.dp).aspectRatio(778f / 293f)
             )
 
@@ -195,7 +263,6 @@ fun MonolithPoster(
                     )
                 }
             }
-
         }
     }
 }
@@ -205,6 +272,7 @@ private fun mono(size: Int, color: Color, weight: FontWeight, spacing: Float) = 
     letterSpacing = spacing.sp, color = color
 )
 
+/** The poster has no slab behind it any more, so the buttons are raised surfaces; paused, the segments light up. */
 @Composable
 private fun ControlSegment(
     shape: Shape,
@@ -218,21 +286,28 @@ private fun ControlSegment(
         Modifier
             .height(54.dp)
             .clip(shape)
-            .background(if (paused) TagColors.Lime else TagColors.Black)
+            .background(if (paused) TagColors.Lime else TagColors.Surface)
             .clickable { view.tick(Tick.Press); onClick() }
             .padding(horizontal = padH),
         contentAlignment = Alignment.Center
-    ) { content(if (paused) TagColors.OnLime else TagColors.Lime) }
+    ) { content(if (paused) TagColors.OnLime else TagColors.AccentText) }
 }
 
-/** 24 columns, one per hour. Lit dots rise from the bottom in proportion to that hour's interceptions. */
+/**
+ * The micrographic furniture of the poster: registration marks around the numeral, and a vertical
+ * hour-by-hour readout (hour 0 at the numeral's foot, 23 at the top, so time reads upward like the numeral).
+ * Each row is up to eight dots; the current hour pulses.
+ */
 @Composable
-private fun DotField(count: Int, hourly: IntArray, paused: Boolean, fg: Color, litCapPx: Float, active: Boolean, modifier: Modifier) {
+private fun PosterArt(
+    geo: NumeralGeo, hourly: IntArray, paused: Boolean, active: Boolean, marginPx: Float, modifier: Modifier
+) {
     val ripple = remember { Animatable(1f) }
-    var lastCount by remember { mutableIntStateOf(count) }
-    LaunchedEffect(count) {
-        if (count != lastCount) {
-            lastCount = count
+    val total = hourly.sum()
+    var lastTotal by remember { mutableIntStateOf(total) }
+    LaunchedEffect(total) {
+        if (total != lastTotal) {
+            lastTotal = total
             if (TagMotion.enabled) {
                 ripple.snapTo(0f)
                 ripple.animateTo(1f, tween(1300, easing = FastOutSlowInEasing))
@@ -246,50 +321,70 @@ private fun DotField(count: Int, hourly: IntArray, paused: Boolean, fg: Color, l
         label = "pulse"
     )
     val nowHour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
+    val labelPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG) }
 
     Canvas(modifier) {
-        val cols = 24
-        val margin = 20.dp.toPx()
-        val bottomPad = 28.dp.toPx()
-        val step = (size.width - 2 * margin) / (cols - 1)
-        val rows = ((size.height - bottomPad - 24.dp.toPx()) / step).toInt().coerceAtLeast(4)
+        val ink = TagColors.White
+        val accent = TagColors.Lime
+        val mark = TagColors.Outline
+        val step = 14.dp.toPx()
+        val axisX = size.width - marginPx - 64.dp.toPx()
+        val bottomY = geo.y0
         val maxHour = max(1, hourly.max())
-        val capRows = min(rows * 0.82f, max(2f, litCapPx / step))
-        val pulseNow = if (active) pulse else 1f
+        val maxDots = 8
+        val dotStep = 6.dp.toPx()
         val dot = 3.dp.toPx()
-        val originX = margin + nowHour * step
-        val originY = size.height - bottomPad
-        val maxR = hypot(max(originX, size.width - originX), originY)
-        val base = fg.copy(alpha = 0.14f)
-        val lit = if (paused) TagColors.Lime else fg
+        val pulseNow = if (active) pulse else 1f
+        val lit = if (paused) TagColors.Dim else ink
 
-        for (c in 0 until cols) {
-            val litRows = if (hourly[c] <= 0) 0 else max(1, (hourly[c] / maxHour.toFloat() * capRows).roundToInt())
-            val x = margin + c * step
-            for (r in 0 until rows) {
-                val y = size.height - bottomPad - r * step
+        // ruler down the left of the bars, with hour labels
+        microTicks(Offset(axisX - 4.dp.toPx(), bottomY), 24, -step, vertical = true, color = mark, length = 4.dp.toPx(), major = 6, dir = -1f)
+        labelPaint.textSize = 10.sp.toPx()
+        labelPaint.textAlign = Paint.Align.RIGHT
+        labelPaint.typeface = Typeface.MONOSPACE
+        labelPaint.color = mark.toArgb()
+        drawIntoCanvas { c ->
+            for (h in listOf(0, 6, 12, 18, 23)) {
+                c.nativeCanvas.drawText("%02d".format(h), axisX - 18.dp.toPx(), bottomY - h * step + 4.dp.toPx(), labelPaint)
+            }
+        }
+
+        for (h in 0 until 24) {
+            val y = bottomY - h * step
+            val litDots = if (hourly[h] <= 0) 0 else max(1, (hourly[h] / maxHour.toFloat() * maxDots).roundToInt())
+            val dRow = abs(h - nowHour) / 24f
+            val w = if (ripple.value < 1f) exp(-((dRow - ripple.value) * (dRow - ripple.value)) / 0.004f) else 0f
+            for (i in 0 until maxDots) {
+                val x = axisX + i * dotStep
                 var s = dot
-                var color = base
-                if (r < litRows) { color = lit.copy(alpha = 0.95f); s = dot * 1.25f }
-                if (c == nowHour && r == max(litRows - 1, 0)) {
-                    // the current hour's marker
-                    color = if (paused) TagColors.Lime.copy(alpha = pulseNow) else fg.copy(alpha = pulseNow)
+                var color = ink.copy(alpha = 0.14f)
+                if (i < litDots) { color = lit.copy(alpha = 0.95f); s = dot * 1.25f }
+                if (h == nowHour && i == max(litDots - 1, 0)) {
+                    color = (if (paused) accent else accent).copy(alpha = pulseNow)
                     s = dot * 1.7f
                 }
-                if (ripple.value < 1f) {
-                    val d = hypot(x - originX, y - originY) / maxR
-                    val w = exp(-((d - ripple.value) * (d - ripple.value)) / 0.004f)
-                    s *= 1f + 1.4f * w
-                    color = color.copy(alpha = min(1f, color.alpha + 0.6f * w))
-                }
+                s *= 1f + 1.4f * w
+                color = color.copy(alpha = min(1f, color.alpha + 0.6f * w))
                 drawRect(color, Offset(x - s / 2, y - s / 2), Size(s, s))
             }
         }
+
+        // registration marks around the numeral's bounding box, and an arrow for the way it reads
+        val left = marginPx
+        val right = geo.x0
+        val top = geo.y0 - geo.length
+        val g = 9.dp.toPx()
+        val sz = 9.dp.toPx()
+        microGlyph(Micro.Cross, Offset(left - g, top - g), sz, mark)
+        microGlyph(Micro.Cross, Offset(left - g, geo.y0 + g), sz, mark)
+        microGlyph(Micro.Cross, Offset(right + g, geo.y0 + g), sz, mark)
+        microGlyph(Micro.ArrowUp, Offset((left + right) / 2f, top - 16.dp.toPx()), 12.dp.toPx(), mark)
+        microGlyph(Micro.Register, Offset(axisX + 3 * dotStep, bottomY - 23 * step - 22.dp.toPx()), 12.dp.toPx(), mark)
     }
 }
 
 // ----------------------------------------------------------
-// THE OVERLAY (fixed to the screen: numeral, dock bar, gear)
+// THE OVERLAY (fixed to the screen: bands, numeral, dock, gear)
 // ----------------------------------------------------------
 
 @Composable
@@ -307,10 +402,6 @@ fun MonolithOverlay(
     val density = LocalDensity.current
     val view = LocalView.current
     val typeface = remember { heroTypeface(context) }
-    val captionMeta = remember {
-        val v = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "dev"
-        SimpleDateFormat("dd.MM.yy", Locale.US).format(Date()) + "  —  V" + v
-    }
 
     // The numeral spins up from zero and lands with a detent (haptic tick plus a spring kick).
     // That runs on every launch and every return from the background, not just the first
@@ -357,7 +448,6 @@ fun MonolithOverlay(
         lastCount = count
     }
     val topDp = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val posterFg = if (paused) TagColors.White else TagColors.OnLime
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wPx = constraints.maxWidth.toFloat()
@@ -365,6 +455,7 @@ fun MonolithOverlay(
         val margin = with(density) { 20.dp.toPx() }
         val bottomMargin = with(density) { 28.dp.toPx() }
         val statusTop = with(density) { topDp.toPx() }
+        val controlsBottom = statusTop + with(density) { 132.dp.toPx() }
         val dockInk = with(density) { 30.dp.toPx() }
         val dockDist = collapseDistance
 
@@ -383,18 +474,15 @@ fun MonolithOverlay(
             }
         }
 
-        // The numeral's ink box at 100px, then sized so it fills the width (and a little more) or 56% of the poster.
-        // Size from the final number so the numeral doesn't breathe while it spins up.
         // Everything on screen is drawn from `shown`, the same value the roll animation is keyed to.
-        // Drawing `digits` put the new number on screen for one frame before the roll began.
+        // The size comes from the final number so the numeral doesn't breathe while it spins up.
         val ink = remember(shown, typeface) { numeralInk(typeface, shown) }
         val inkSize = remember(count, typeface) { numeralInk(typeface, count.toString()) }
-        val inkW100 = (inkSize.right - inkSize.left).toFloat().coerceAtLeast(1f)
-        val inkH100 = (inkSize.bottom - inkSize.top).toFloat().coerceAtLeast(1f)
-        val fitW = 1.0f * wPx / inkW100 * 100f
-        val fitH = posterPx * 0.56f / inkH100 * 100f
+        val l100 = (inkSize.right - inkSize.left).toFloat().coerceAtLeast(1f)
+        val h100 = (inkSize.bottom - inkSize.top).toFloat().coerceAtLeast(1f)
+        val targetSize = fitSize(l100, h100, wPx, posterPx, margin, bottomMargin, controlsBottom)
         val sizePx by animateFloatAsState(
-            targetValue = min(fitW, fitH),
+            targetValue = targetSize,
             animationSpec = if (TagMotion.enabled) spring(dampingRatio = 0.55f, stiffness = 140f) else snap(),
             label = "numeralSize"
         )
@@ -402,64 +490,86 @@ fun MonolithOverlay(
         fun dockProgress(): Float = smooth((scroll.value / dockDist).coerceIn(0f, 1f))
 
         val paint = remember { Paint(Paint.ANTI_ALIAS_FLAG) }
-        val captionPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG) }
+        val bandPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL } }
+        val overlapPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL } }
+        val band1 = remember { NativePath() }
+        val band2 = remember { NativePath() }
+        val glyph = remember { NativePath() }
+        val tmp = remember { NativePath() }
+        val matrix = remember { Matrix() }
         val accent = TagColors.Lime.toArgb()
-        val onPoster = posterFg.toArgb()
-        val white = TagColors.White.toArgb()
 
-        // the numeral
+        // Where the numeral is at dock progress p: its origin (the start of its baseline), turn and scale.
+        // At p = 0 it lies on its side (-90°) at the foot of the poster; at p = 1 it is upright in the dock.
+        class Pose(val ox: Float, val oy: Float, val angle: Float, val scale: Float)
+        fun poseAt(p: Float, kickScale: Float): Pose {
+            val capH = h100 * sizePx / 100f
+            val x0 = margin + capH
+            val y0 = posterPx - bottomMargin
+            val dockX = margin
+            val dockY = statusTop + with(density) { 12.dp.toPx() } + dockInk
+            val sEnd = dockInk / capH
+            return Pose(
+                ox = x0 + (dockX - x0) * p,
+                oy = y0 + (dockY - y0) * p,
+                angle = -90f * (1f - p),
+                scale = (1f + (sEnd - 1f) * p) * (1f + (kickScale - 1f) * (1f - p))
+            )
+        }
+
+        // the bands and the numeral
         Canvas(Modifier.fillMaxSize()) {
             val p = dockProgress()
             val s0 = sizePx
-            val inkH = inkH100 * s0 / 100f
+            val capH = h100 * s0 / 100f
             val inkLeft = ink.left * s0 / 100f
-            val sEnd = dockInk / inkH
-            val sc = (1f + (sEnd - 1f) * p) * (1f + (kick.value - 1f) * (1f - p))
-            val baseline = (posterPx - bottomMargin) + ((statusTop + 12.dp.toPx() + dockInk) - (posterPx - bottomMargin)) * p
+            val pose = poseAt(p, kick.value)
+            val rolling = roll.value < 1f
+
+            // --- two flat diagonal bands at the foot of the poster; they scroll away with it
+            val sy = -scroll.value.toFloat()
+            val baseY = posterPx * 0.93f + sy
+            fun band(path: NativePath, ax: Float, len: Float, bw: Float) {
+                path.rewind()
+                path.moveTo(ax, baseY)
+                path.lineTo(ax + len, baseY - len)
+                path.lineTo(ax + len + bw, baseY - len)
+                path.lineTo(ax + bw, baseY)
+                path.close()
+            }
+            band(band1, -wPx * 0.10f, wPx * 0.46f, wPx * 0.22f)
+            band(band2, wPx * 0.18f, wPx * 0.30f, wPx * 0.09f)
+            val bandAlpha = (1f - p) * (if (paused) 0.22f else 1f)
+            val c1 = TagColors.Lime
+            val c2 = if (TagColors.HasTones) TagColors.Secondary else TagColors.Lime.copy(alpha = 0.55f)
 
             drawIntoCanvas { canvas ->
                 val n = canvas.nativeCanvas
-
-                // The caption sits directly on the numeral and fades as the numeral docks.
-                val capAlpha = (1f - p * 3f).coerceIn(0f, 1f)
-                if (capAlpha > 0f) {
-                    val top = baseline - inkH * sc
-                    val sz = 11.sp.toPx()
-                    val gap = 14.dp.toPx()
-                    captionPaint.textSize = sz
-                    captionPaint.letterSpacing = 0.08f
-                    captionPaint.style = Paint.Style.FILL
-                    captionPaint.color = if (paused) white else onPoster
-                    captionPaint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-                    captionPaint.alpha = (255 * capAlpha).toInt()
-                    n.drawText("INTERCEPTIONS SO FAR", margin, top - gap, captionPaint)
-                    captionPaint.typeface = Typeface.MONOSPACE
-                    captionPaint.alpha = (150 * capAlpha).toInt()
-                    n.drawText(captionMeta, margin, top - gap - sz * 1.5f, captionPaint)
-                    if (paused) {
-                        captionPaint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-                        captionPaint.color = accent
-                        captionPaint.alpha = (255 * capAlpha).toInt()
-                        n.drawText("PAUSED", margin, top - gap - sz * 3f, captionPaint)
-                    }
+                if (bandAlpha > 0.01f) {
+                    bandPaint.color = c1.toArgb(); bandPaint.alpha = (c1.alpha * 255 * bandAlpha).toInt()
+                    n.drawPath(band1, bandPaint)
+                    bandPaint.color = c2.toArgb(); bandPaint.alpha = (c2.alpha * 255 * bandAlpha).toInt()
+                    n.drawPath(band2, bandPaint)
                 }
+
                 paint.typeface = typeface
                 paint.textSize = s0
                 paint.letterSpacing = NUMERAL_LS
+                val numeralColor = TagColors.White
                 if (paused) {
                     paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 3.dp.toPx() / sc
+                    paint.strokeWidth = 3.dp.toPx() / pose.scale
                     paint.color = accent
                 } else {
                     paint.style = Paint.Style.FILL
-                    paint.color = lerp(Color(onPoster), Color(white), p).toArgb()
+                    paint.color = numeralColor.toArgb()
                 }
                 n.save()
-                n.translate(margin, baseline)
-                n.scale(sc, sc)
+                n.translate(pose.ox, pose.oy)
+                n.rotate(pose.angle)
+                n.scale(pose.scale, pose.scale)
                 var x = -inkLeft
-                val rolling = roll.value < 1f
-                val adv = inkH * 1.25f
+                val adv = capH * 1.25f
                 shown.forEachIndexed { i, ch ->
                     val str = ch.toString()
                     val w = paint.measureText(str)
@@ -468,7 +578,7 @@ fun MonolithOverlay(
                     if (rolling && old != ch) {
                         val e = roll.value
                         n.save()
-                        n.clipRect(x - 4f, -inkH * 1.35f, x + w + 4f, inkH * 0.35f)
+                        n.clipRect(x - 4f, -capH * 1.35f, x + w + 4f, capH * 0.35f)
                         val baseAlpha = paint.alpha
                         if (old != null) {
                             paint.alpha = (baseAlpha * (1f - e).coerceIn(0f, 1f)).toInt()
@@ -484,21 +594,52 @@ fun MonolithOverlay(
                     x += w
                 }
                 n.restore()
+
+                // --- overprint: where numeral and band overlap, the two colours mix
+                if (!paused && !rolling && bandAlpha > 0.05f) {
+                    paint.style = Paint.Style.FILL
+                    glyph.rewind()
+                    paint.getTextPath(shown, 0, shown.length, -inkLeft, 0f, glyph)
+                    matrix.reset()
+                    matrix.postScale(pose.scale, pose.scale)
+                    matrix.postRotate(pose.angle)
+                    matrix.postTranslate(pose.ox, pose.oy)
+                    glyph.transform(matrix)
+                    fun overlap(band: NativePath, fill: Color) {
+                        tmp.set(glyph)
+                        if (!tmp.op(band, NativePath.Op.INTERSECT)) return
+                        val mixed = if (TagColors.IsLight) {
+                            // multiply, like ink printed over ink
+                            Color(numeralColor.red * fill.red, numeralColor.green * fill.green, numeralColor.blue * fill.blue)
+                        } else {
+                            lerp(fill, numeralColor, 0.55f)
+                        }
+                        overlapPaint.color = mixed.toArgb()
+                        overlapPaint.alpha = (255 * bandAlpha).toInt()
+                        n.drawPath(tmp, overlapPaint)
+                    }
+                    overlap(band1, c1)
+                    overlap(band2, c2)
+                }
             }
         }
 
-        // Tap the numeral for the stats. The hit box tracks the numeral through the dock animation.
-        val inkWBox = inkW100 / inkH100
+        // Tap the numeral for the stats. The hit box tracks the numeral (turn and all) through the dock animation.
+        val lengthRatio = l100 / h100
         fun box(): IntArray {
-            val p = dockProgress()
-            val s0 = sizePx
-            val inkH = inkH100 * s0 / 100f
-            val sEnd = dockInk / inkH
-            val sc = 1f + (sEnd - 1f) * p
-            val baseline = (posterPx - bottomMargin) + ((statusTop + 12f * density.density + dockInk) - (posterPx - bottomMargin)) * p
-            val w = min(inkWBox * inkH * sc, wPx - margin).coerceAtLeast(1f)
-            val h = (inkH * sc).coerceAtLeast(1f)
-            return intArrayOf(margin.roundToInt(), (baseline - h).roundToInt(), w.roundToInt(), h.roundToInt())
+            val pose = poseAt(dockProgress(), 1f)
+            val capH = h100 * sizePx / 100f * pose.scale
+            val len = capH * lengthRatio
+            val a = Math.toRadians(pose.angle.toDouble())
+            val ca = kotlin.math.cos(a).toFloat()
+            val sa = kotlin.math.sin(a).toFloat()
+            var minX = Float.MAX_VALUE; var minY = Float.MAX_VALUE; var maxX = -Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+            for ((lx, ly) in listOf(0f to 0f, len to 0f, 0f to -capH, len to -capH)) {
+                val sx = pose.ox + lx * ca - ly * sa
+                val sy = pose.oy + lx * sa + ly * ca
+                minX = min(minX, sx); maxX = max(maxX, sx); minY = min(minY, sy); maxY = max(maxY, sy)
+            }
+            return intArrayOf(minX.roundToInt(), minY.roundToInt(), (maxX - minX).roundToInt().coerceAtLeast(1), (maxY - minY).roundToInt().coerceAtLeast(1))
         }
         Box(
             Modifier
@@ -515,7 +656,7 @@ fun MonolithOverlay(
         )
 
         // dock caption
-        val dockInkW = with(density) { (inkWBox * dockInk).toDp() }
+        val dockInkW = with(density) { (lengthRatio * dockInk).toDp() }
         Text(
             "INTERCEPTIONS",
             modifier = Modifier
@@ -538,16 +679,12 @@ fun MonolithOverlay(
                     .clickable(enabled = dockShown) { view.tick(Tick.Press); onTogglePause() },
                 contentAlignment = Alignment.Center
             ) {
-                TagIcon(if (paused) R.drawable.ic_play else R.drawable.ic_pause, if (paused) TagColors.Lime else TagColors.White, size = 24.dp)
+                TagIcon(if (paused) R.drawable.ic_play else R.drawable.ic_pause, if (paused) TagColors.AccentText else TagColors.White, size = 24.dp)
             }
             Box(
                 Modifier.size(48.dp).clip(CircleShape).clickable { view.tick(Tick.Press); onSettings() },
                 contentAlignment = Alignment.Center
-            ) {
-                // Two layers cross-fade with the dock, so the gear is readable on both the poster and the black bar.
-                Box(Modifier.graphicsLayer { alpha = 1f - dockProgress() }) { TagIcon(R.drawable.ic_settings, posterFg, size = 32.dp) }
-                Box(Modifier.graphicsLayer { alpha = dockProgress() }) { TagIcon(R.drawable.ic_settings, TagColors.White, size = 32.dp) }
-            }
+            ) { TagIcon(R.drawable.ic_settings, TagColors.White, size = 32.dp) }
         }
     }
 }
