@@ -97,7 +97,7 @@ class MicrotagNotificationService : NotificationListenerService() {
     /** One interception per capsule session. Transient chips (OTP, songs, DMs) count each new headline. */
     private fun countsAsNew(key: String, tile: String?, timeoutSeconds: Int, headlineChanged: Boolean): Boolean {
         if (!capsuleIds.containsKey(key)) return true
-        return timeoutSeconds > 0 && headlineChanged && tile != MicrotagPrefs.KEY_DOWNLOADS
+        return timeoutSeconds > 0 && headlineChanged && tile != MicrotagPrefs.KEY_DOWNLOADS && tile != TagKeys.UPLOADS
     }
 
     /** OTP codes still come through at night; everything else waits. */
@@ -129,8 +129,8 @@ class MicrotagNotificationService : NotificationListenerService() {
             powerReceiverRegistered = true
         }
         startSideSources()
-        // Pins don't survive a reboot as notifications; put the live ones back. (Merged from V1)
-        com.microtag.inspect.PinEngine.restore(applicationContext)
+        // Pins survive a reboot: put back whatever is still pinned.
+        try { com.microtag.inspect.PinEngine.restore(applicationContext) } catch (e: Exception) { Log.w(TAG, "Pin restore failed", e) }
     }
 
     override fun onListenerDisconnected() {
@@ -155,6 +155,7 @@ class MicrotagNotificationService : NotificationListenerService() {
             powerReceiverRegistered = false
         }
         setRingerWatching(false)
+        BluetoothWatcher.stop()
         CalendarCountdown.stop()
         super.onDestroy()
     }
@@ -165,6 +166,7 @@ class MicrotagNotificationService : NotificationListenerService() {
         ShizukuBridge.init(applicationContext)
         CalendarCountdown.start(applicationContext)
         setRingerWatching(prefs.isAppEnabled(TagKeys.SOUND_MODE))
+        BluetoothWatcher.refresh(applicationContext)
     }
 
     private fun setRingerWatching(on: Boolean) {
@@ -229,6 +231,7 @@ class MicrotagNotificationService : NotificationListenerService() {
                     MicrotagPrefs.KEY_CLIPBOARD -> ShizukuBridge.refresh()
                     TagKeys.CALENDAR -> CalendarCountdown.refresh()
                     TagKeys.SOUND_MODE -> setRingerWatching(enabled)
+                    TagKeys.BLUETOOTH -> BluetoothWatcher.refresh(applicationContext)
                 }
                 if (enabled) pollActiveNotifications()
             }
@@ -377,7 +380,8 @@ class MicrotagNotificationService : NotificationListenerService() {
                 timeoutSeconds = match.timeoutSeconds,
                 iconName = match.iconName,
                 sourcePackage = pkg,
-                sourceIntent = notif.contentIntent
+                sourceIntent = notif.contentIntent,
+                showAppName = namesApp(match.tile)
             )
             return
         }
@@ -456,7 +460,8 @@ class MicrotagNotificationService : NotificationListenerService() {
                 chronometerTargetMillis = parsed.chronometerTargetMillis,
                 actions = parsed.actions,
                 sourcePackage = if (isSystem) null else pkg,
-                sourceIntent = if (isSystem) systemTap(pkg, "${parsed.title} ${parsed.content}") else notif.contentIntent
+                sourceIntent = if (isSystem) systemTap(pkg, "${parsed.title} ${parsed.content}") else notif.contentIntent,
+                showAppName = namesApp(parsed.tile)
             )
             return
         }
@@ -480,6 +485,13 @@ class MicrotagNotificationService : NotificationListenerService() {
             logDecision(sbn, "NONE", Decision.IGNORED, "no rule, parser or fallback matched")
         }
     }
+
+    /**
+     * The card names its source app only where the pill itself can't say it: a streak (which app?) and a transfer
+     * (which app is downloading or backing up?). A Discord, Strava or VPN pill already carries its own icon.
+     */
+    private fun namesApp(tile: String?): Boolean =
+        tile == TagKeys.STREAKS || tile == MicrotagPrefs.KEY_DOWNLOADS || tile == TagKeys.UPLOADS
 
     private fun remember(key: String, pkg: String, tile: String?) {
         pkgs[key] = pkg
@@ -578,7 +590,8 @@ class MicrotagNotificationService : NotificationListenerService() {
             timeoutSeconds = 15,
             actions = sbn.notification.actions?.toList() ?: emptyList(),
             sourcePackage = sbn.packageName,
-            sourceIntent = sbn.notification.contentIntent
+            sourceIntent = sbn.notification.contentIntent,
+            showAppName = false
         )
         return true
     }
@@ -606,7 +619,8 @@ class MicrotagNotificationService : NotificationListenerService() {
             notificationId = id,
             timeoutSeconds = 10,
             sourcePackage = sbn.packageName,
-            sourceIntent = sbn.notification.contentIntent
+            sourceIntent = sbn.notification.contentIntent,
+            showAppName = false
         )
         return true
     }
