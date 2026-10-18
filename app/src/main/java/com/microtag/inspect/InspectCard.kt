@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -216,9 +217,35 @@ fun InspectCard(
     onResolve: () -> Unit = {},
     onEvent: () -> Unit = {},
     dragModifier: Modifier = Modifier,
-    onPin: ((String) -> Unit)? = null
+    onPin: ((String) -> Unit)? = null,
+    onSwitch: ((String) -> Unit)? = null
 ) {
     val c = CardCtx(p, cardAccent(p), busy, flash, onCopy, onShare, onOpen, onCheck, onResolve, onEvent, dragModifier, onPin)
+    androidx.compose.foundation.layout.Column {
+        CardBody(c, modifier)
+        val pick = onSwitch
+        if (pick != null && p.alts.isNotEmpty()) AltChips(p.alts, c.accent, pick)
+    }
+}
+
+/** "Or read it as ..." under a card whose text could be something else too. Choosing one is a quiet vote for it. */
+@Composable
+private fun AltChips(alts: List<String>, accent: Color, onPick: (String) -> Unit) {
+    androidx.compose.foundation.layout.Row(
+        Modifier
+            .padding(top = 10.dp)
+            .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+    ) {
+        androidx.compose.material3.Text("OR", style = mono(10f, Color.White.copy(alpha = 0.65f), 1.4f, FontWeight.Bold))
+        alts.forEach { kind -> ActionPill(PriorityLogic.label(kind).uppercase(), accent, filled = false) { onPick(kind) } }
+    }
+}
+
+@Composable
+private fun CardBody(c: CardCtx, modifier: Modifier) {
+    val p = c.p
     when (p.domain) {
         "PINNED" -> PinnedCard(c, modifier)
         "FOOD" -> FoodCard(c, modifier)
