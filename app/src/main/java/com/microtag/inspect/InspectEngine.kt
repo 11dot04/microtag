@@ -69,6 +69,26 @@ object InspectEngine {
         }
     }
 
+    /** The detectors' environment (locale, clock, cached rates, dictionary), for screens that run detectors themselves. */
+    fun envFor(context: Context): Env {
+        val app = context.applicationContext
+        PillPrefs.attach(app)
+        loadColourNames(app)
+        return Env(Locale.getDefault(), Clock.systemDefaultZone(), ratesFor(app), dictionary)
+    }
+
+    /** Blocking (call off the main thread): the first result for [rawText], or null. Used by Screenshot Inspect to show cards itself. */
+    fun resolveBlocking(context: Context, rawText: String, source: Source = Source.SELECTION): InspectResult? {
+        val text = Detectors.normalize(rawText)
+        if (text.isEmpty()) return null
+        return try {
+            Detectors.resolve(text, source, envFor(context))
+        } catch (t: Throwable) {
+            Log.w(TAG, "resolve failed: ${t.message}")
+            null
+        }
+    }
+
     fun inspect(context: Context, rawText: String, source: Source) {
         PillPrefs.attach(context)
         val app = context.applicationContext
@@ -90,7 +110,7 @@ object InspectEngine {
 
         val candidates = Detectors.candidates(text, source, env)
         if (candidates.isEmpty()) {
-            if (source == Source.SELECTION) toast(app, "Nothing to inspect here")
+            if (source == Source.SELECTION) toast(app, "Nothing to inspect here") else PinEngine.offerPin(app, text)
             return
         }
 
@@ -122,7 +142,7 @@ object InspectEngine {
 
         if (result == null || (source == Source.CLIPBOARD && result.status == Status.ERROR)) {
             if (showedLoading) MicrotagReminder.cancelCapsule(app, id)
-            if (source == Source.SELECTION) toast(app, "Nothing to inspect here")
+            if (source == Source.SELECTION) toast(app, "Nothing to inspect here") else PinEngine.offerPin(app, text)
             log(app, source, Decision.SKIPPED, "no candidate produced a result", null, null, text)
             return
         }
