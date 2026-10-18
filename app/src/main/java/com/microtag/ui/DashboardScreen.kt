@@ -79,6 +79,10 @@ import androidx.compose.ui.unit.em
 import androidx.core.content.res.ResourcesCompat
 import kotlin.math.roundToInt
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.runtime.snapshotFlow
@@ -250,7 +254,30 @@ fun DashboardScreen(
         }
         LaunchedEffect(lightBackdrop) { onBackdropChange(lightBackdrop) }
 
-      Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
+      // No header band. As the poster docks, the content itself fades out under the status bar and the
+      // numeral, so there is no solid strip and no edge where the header ends and the tiles begin.
+      val fadePx = with(density) { 72.dp.toPx() }
+      Column(
+          Modifier
+              .fillMaxSize()
+              .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+              .drawWithContent {
+                  drawContent()
+                  val p = (scroll.value / collapse).coerceIn(0f, 1f)
+                  if (p > 0f) {
+                      val end = dockBarPx + fadePx
+                      val hidden = Color.Black.copy(alpha = 1f - p)
+                      drawRect(
+                          Brush.verticalGradient(
+                              colorStops = arrayOf(0f to hidden, (dockBarPx * 0.8f / end) to hidden, 1f to Color.Black),
+                              startY = 0f, endY = end
+                          ),
+                          blendMode = BlendMode.DstIn
+                      )
+                  }
+              }
+              .verticalScroll(scroll)
+      ) {
         MonolithPoster(
             height = posterH,
             count = count,
@@ -317,8 +344,8 @@ fun DashboardScreen(
             // ---- Micro Tags: small, single-purpose chips
             TagFrame("Micro Tags", TagColors.Outline, Modifier.cell(0f, b, 4f, 3f, outset = 6.dp), labelBias = 0.55f)
             TileTone(1) { MicroTile(Modifier.cell(0f, b, 2f, 1f), R.drawable.ic_upi_rupee, "UPI", "Credit", upi) }
-            TileTone(0) { IconTile(Modifier.cell(2f, b), R.drawable.ic_download, download) }
-            TileTone(2) { IconTile(Modifier.cell(3f, b), R.drawable.ic_upload, upload) }
+            TileTone(1, always = true) { IconTile(Modifier.cell(2f, b), R.drawable.ic_download, download) }
+            TileTone(1, always = true) { IconTile(Modifier.cell(3f, b), R.drawable.ic_upload, upload) }
             TileTone(2) { MicroTile(Modifier.cell(0f, b + 1f, 2f, 1f), R.drawable.ic_otp, "OTP", "2FA", otp) }
             TileTone(1) { MicroTile(Modifier.cell(2f, b + 1f, 2f, 1f), R.drawable.ic_print, "Print", "in\nProgress", print, inline = true) }
             TileTone(0) { MicroTile(Modifier.cell(0f, b + 2f, 2f, 1f), R.drawable.ic_clipboard, "Clipboard", "Context", clipboard) }
