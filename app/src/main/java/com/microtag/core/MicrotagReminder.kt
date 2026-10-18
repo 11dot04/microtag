@@ -208,7 +208,9 @@ object MicrotagReminder {
         /** Hide the text on the lock screen (a pin can hold a password or a code). */
         secret: Boolean = false,
         /** Runs when the user swipes the notification away, never when it times out or the app cancels it. */
-        deleteIntent: PendingIntent? = null
+        deleteIntent: PendingIntent? = null,
+        /** Whether the card names the source app. Off where the icon already says it; kept for streaks, downloads and uploads. */
+        showAppName: Boolean = true
     ) {
         createNotificationChannel(context)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -289,7 +291,7 @@ object MicrotagReminder {
         }
 
         // Name the app the capsule is about, unless the title already says it.
-        if (!sourcePackage.isNullOrBlank() && sourcePackage != context.packageName) {
+        if (showAppName && !sourcePackage.isNullOrBlank() && sourcePackage != context.packageName) {
             val label = appLabel(context, sourcePackage)
             if (label.isNotBlank() && !title.contains(label, ignoreCase = true)) builder.setSubText(label)
         }
