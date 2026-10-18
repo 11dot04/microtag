@@ -1,6 +1,7 @@
 package com.microtag.inspect
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import com.microtag.ui.TagColors
 
@@ -14,12 +15,17 @@ import com.microtag.ui.TagColors
 // Every label pill is the same warm paper colour; the accent shows up in the OPEN pill, the art and the flash.
 // ==========================================================
 
-/** Warm off-white used for neutral pills and quiet text. */
+/**
+ * Neutral pills and quiet text. These are read when a card is drawn, never cached, so they follow the
+ * palette: on Lime they are the original warm off-whites, on any other palette they are tints of that
+ * palette's ink on its base.
+ */
 object Paper {
-    val Ink = Color(0xFFE6E1D6)
-    val Line = Color(0xFFCFCABF)
-    val Mute = Color(0xFF8E8A82)
-    val Hair = Color(0x16FFFFFF)
+    private val lime get() = TagColors.Id == "lime"
+    val Ink: Color get() = if (lime) Color(0xFFE6E1D6) else lerp(TagColors.White, TagColors.Black, 0.08f)
+    val Line: Color get() = if (lime) Color(0xFFCFCABF) else lerp(TagColors.White, TagColors.Black, 0.20f)
+    val Mute: Color get() = if (lime) Color(0xFF8E8A82) else lerp(TagColors.White, TagColors.Black, 0.52f)
+    val Hair: Color get() = if (lime) Color(0x16FFFFFF) else TagColors.White.copy(alpha = 0.09f)
 }
 
 val WarnCoral = Color(0xFFE2865F)
@@ -61,14 +67,30 @@ fun pillTint(p: InspectPayload): Color = when (p.status) {
 }
 
 /**
- * The card's surface. Black, except for the colour card on a dark colour (one that would sink into black):
- * that card is filled with the colour itself and uses white ink.
+ * The card's surface: the palette's base colour. Except for the colour card on a colour that would sink
+ * into it (under about 3:1): that card is filled with the colour itself instead.
+ *
+ * [Black] is a getter on purpose. It used to be a val, which captured whatever palette was active the first
+ * time a card was drawn and kept it for the life of the process, so changing the theme only recoloured the text.
  */
 internal object Surface {
-    val Black = TagColors.Black.copy(alpha = 0.97f)
-    /** Below this luminance a colour has under about 3:1 against black. */
-    const val DARK_LUMINANCE = 0.11f
+    val Black: Color get() = TagColors.Black.copy(alpha = 0.97f)
 
-    fun isFilled(c: Color): Boolean = c.luminance() < DARK_LUMINANCE
+    private fun contrast(a: Color, b: Color): Float {
+        val la = a.luminance()
+        val lb = b.luminance()
+        return (maxOf(la, lb) + 0.05f) / (minOf(la, lb) + 0.05f)
+    }
+
+    /** True when [c] has under about 3:1 against the card surface. On black that is the old "dark colour" test. */
+    fun isFilled(c: Color): Boolean = contrast(c, TagColors.Black) < 3.2f
+
     fun forColour(c: Color): Color = if (isFilled(c)) c.copy(alpha = 1f) else Black
+
+    /** The ink that reads on a filled colour card: the palette's light or dark end, whichever contrasts more. */
+    fun inkOn(fill: Color): Color {
+        val a = TagColors.White
+        val b = TagColors.Black
+        return if (contrast(fill, a) >= contrast(fill, b)) a else b
+    }
 }
