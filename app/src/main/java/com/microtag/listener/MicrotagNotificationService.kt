@@ -129,6 +129,8 @@ class MicrotagNotificationService : NotificationListenerService() {
             powerReceiverRegistered = true
         }
         startSideSources()
+        // Pins don't survive a reboot as notifications; put the live ones back. (Merged from V1)
+        com.microtag.inspect.PinEngine.restore(applicationContext)
     }
 
     override fun onListenerDisconnected() {
