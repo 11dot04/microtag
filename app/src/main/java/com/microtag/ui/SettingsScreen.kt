@@ -182,6 +182,13 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
 
 @Composable
 private fun Block(label: String, items: List<Item>) {
+    // Each block's switches wear their own accent: permissions the main one, battery the second, look and feel the third.
+    val tone = when (label) { "Battery" -> 1; "Look and feel" -> 2; else -> 0 }
+    TileTone(tone) { BlockBody(label, items) }
+}
+
+@Composable
+private fun BlockBody(label: String, items: List<Item>) {
     Text(
         label.uppercase(),
         modifier = Modifier.padding(start = 4.dp, top = 8.dp),
@@ -287,7 +294,7 @@ private fun PalettePicker(selected: String, onPick: (TagPalette) -> Unit) {
                 Row(
                     Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(20.dp))
                 ) {
-                    listOf(p.surface to 1f, p.ink to 1f, p.accent to 2.4f).plus(p.extras.map { it to 1f }).plus(p.paper to 1f)
+                    listOf(p.surface to 1f, p.ink to 1f, p.accent to 2.4f).plus(p.supporting.map { it to 1f }).plus(p.paper to 1f)
                         .forEach { (c, w) -> Box(Modifier.weight(w).fillMaxHeight().background(c)) }
                 }
                 Row(
