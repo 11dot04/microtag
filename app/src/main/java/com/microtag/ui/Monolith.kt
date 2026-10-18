@@ -407,17 +407,6 @@ fun MonolithOverlay(
         val onPoster = posterFg.toArgb()
         val white = TagColors.White.toArgb()
 
-        // Dock bar: solid where the poster collapses beneath it, then a short fade.
-        val barH = topDp + 72.dp
-        val solid = ((topDp + 48.dp).value / barH.value).coerceIn(0f, 1f)
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(barH)
-                .graphicsLayer { alpha = smooth(((scroll.value / dockDist - 0.45f) / 0.55f).coerceIn(0f, 1f)) }
-                .background(Brush.verticalGradient(0f to TagColors.Black, solid to TagColors.Black, 1f to Color.Transparent))
-        )
-
         // the numeral
         Canvas(Modifier.fillMaxSize()) {
             val p = dockProgress()
