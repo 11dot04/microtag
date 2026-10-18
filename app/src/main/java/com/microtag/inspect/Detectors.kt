@@ -21,6 +21,7 @@ object Detectors {
         all += UpiDetector.candidates(t, source)
         all += IfscDetector.candidates(t, source)
         all += PinCodeDetector.candidates(t, source)
+        all += FoodDetector.candidates(t, source)
         all += NumberDetector.candidates(t, source, env)
         all += NumberFromWordsDetector.candidates(t, source, env)
         all += ColourNameDetector.candidates(t, source)
