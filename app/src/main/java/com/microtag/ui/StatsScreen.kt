@@ -517,7 +517,7 @@ private fun Heatmap(grid: Array<IntArray>, selected: Set<Int>, modifier: Modifie
             val g = gap.toPx()
             val lw = labelW.toPx()
             val c = cell.toPx()
-            val accent = TagColors.tone(1)
+            val accent = TagColors.patch(1)
             val label = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 10.sp, color = TagColors.Outline)
             for (r in 0 until 7) {
                 val y = r * (c + g)
@@ -661,7 +661,7 @@ private fun Sources(rows: List<Pair<String, Int>>) {
                     )
                 }
                 Spacer(Modifier.height(5.dp))
-                Box(Modifier.fillMaxWidth(n / maxN.toFloat()).height(4.dp).clip(CircleShape).background(TagColors.series(rank)))
+                Box(Modifier.fillMaxWidth(n / maxN.toFloat()).height(4.dp).clip(CircleShape).background(TagColors.patch(rank)))
             }
         }
     }
