@@ -202,7 +202,13 @@ object MicrotagReminder {
         /** The app this capsule is about. Its name is shown on the card and tapping opens it. */
         sourcePackage: String? = null,
         /** The original notification's own tap action, so a tap lands where the source would have. */
-        sourceIntent: PendingIntent? = null
+        sourceIntent: PendingIntent? = null,
+        /** False posts an ordinary ongoing notification: no status-bar chip. Pins use it once their chip window is over. */
+        promote: Boolean = true,
+        /** Hide the text on the lock screen (a pin can hold a password or a code). */
+        secret: Boolean = false,
+        /** Runs when the user swipes the notification away, never when it times out or the app cancels it. */
+        deleteIntent: PendingIntent? = null
     ) {
         createNotificationChannel(context)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -301,15 +307,24 @@ object MicrotagReminder {
         if (contentPendingIntent != null) {
             builder.setContentIntent(contentPendingIntent)
         }
+        deleteIntent?.let { builder.setDeleteIntent(it) }
+        if (secret) {
+            builder.setVisibility(Notification.VISIBILITY_PRIVATE)
+            builder.setPublicVersion(
+                Notification.Builder(context, CHANNEL_ID).setContentTitle("Pinned note").setSmallIcon(finalIcon).build()
+            )
+        }
 
         if (timeoutSeconds > 0) {
             builder.setTimeoutAfter(timeoutSeconds * 1000L)
         }
 
         // 4. Attach Live Status Promotion
-        applyShortCriticalText(builder, currentPillText)
-        applyPromotedOngoing(builder)
-        builder.extras.putString("oplus.liveNotificationType", "capsule")
+        if (promote) {
+            applyShortCriticalText(builder, currentPillText)
+            applyPromotedOngoing(builder)
+            builder.extras.putString("oplus.liveNotificationType", "capsule")
+        }
 
         manager.notify(notificationId, builder.build())
     }
