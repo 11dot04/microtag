@@ -13,7 +13,7 @@ internal interface PillStore {
  */
 internal object PillConfig {
     class Choice(val value: String, val label: String)
-    class Option(val key: String, val default: String, val choices: List<Choice>)
+    class Option(val key: String, val default: String, val choices: List<Choice>, val heading: String = "PILL SHOWS")
 
     @Volatile var store: PillStore? = null
 
@@ -37,7 +37,11 @@ internal object PillConfig {
         // IFSC: BANK = "HDFC Bank", CODE = "HDFC0000001", BRANCH = "Mumbai".
         Option("IFSC", "BANK", listOf(Choice("BANK", "Bank"), Choice("CODE", "Code"), Choice("BRANCH", "Branch"))),
         // DEFINE: GLOSS = a short gist of the meaning, IPA = how it sounds, WORD = the word itself.
-        Option("DEFINE", "GLOSS", listOf(Choice("GLOSS", "Gist"), Choice("IPA", "Sound"), Choice("WORD", "Word")))
+        Option("DEFINE", "GLOSS", listOf(Choice("GLOSS", "Gist"), Choice("IPA", "Sound"), Choice("WORD", "Word"))),
+        // PINPROMPT: OFF = never, ON = offer a "Pin it?" pill when a short code is copied (a pill you didn't ask for, so opt-in).
+        Option("PINPROMPT", "OFF", listOf(Choice("OFF", "Off"), Choice("ON", "Offer to pin")), heading = "WHEN YOU COPY A CODE"),
+        // PINEXPIRY: how long a new pin lasts. The status-bar chip only ever shows for the first 30 minutes (see PinLogic).
+        Option("PINEXPIRY", "H1", listOf(Choice("M30", "30 min"), Choice("H1", "1 hour"), Choice("H3", "3 hours"), Choice("CLEARED", "Until cleared")), heading = "A PIN LASTS")
     )
 
     private val byKey = options.associateBy { it.key }
