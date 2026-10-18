@@ -280,6 +280,7 @@ object TagColors {
     private var secondaryOverride by mutableStateOf<Color?>(null)
     private var tertiaryOverride by mutableStateOf<Color?>(null)
     private var materialYouOn = false
+    private var multicolourOn by mutableStateOf(false)
 
     /** The accent. The palette's own, or the system accent when Material You is on. */
     val Lime: Color get() = accentOverride ?: palette.accent
@@ -294,6 +295,13 @@ object TagColors {
     val Tertiary: Color get() = tertiaryOverride ?: palette.tertiary ?: Lime
     /** True when this palette (or Material You) really has more than one accent to hand out. */
     val HasTones: Boolean get() = secondaryOverride != null || palette.secondary != null
+
+    /** The "Multicolour tiles" setting. Off by default: one accent carries the layout, the others punctuate. */
+    val Multicolour: Boolean get() = multicolourOn
+    fun useMulticolour(on: Boolean) { multicolourOn = on }
+
+    /** Decorative variety: the i-th accent when Multicolour is on, otherwise the primary. */
+    fun patch(i: Int): Color = if (multicolourOn) tone(i % 3) else Lime
 
     /** 0 = accent, 1 = secondary, 2 = tertiary. */
     fun tone(i: Int): Color = when (i) {
@@ -666,10 +674,15 @@ enum class TileState { Off, On, Static, Signal }
 /** Which accent switched-on tiles and switches below this point use: 0 accent, 1 secondary, 2 tertiary. */
 val LocalTileTone = compositionLocalOf { 0 }
 
-/** Gives everything inside it the chosen accent. A palette with a single accent shows no difference. */
+/**
+ * Gives everything inside it the chosen accent, but only when "Multicolour tiles" is on, unless
+ * `always` is set (small fixed accents such as the upload/download pair). A palette with a single
+ * accent shows no difference.
+ */
 @Composable
-fun TileTone(tone: Int, content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalTileTone provides tone, content = content)
+fun TileTone(tone: Int, always: Boolean = false, content: @Composable () -> Unit) {
+    val effective = if (always || TagColors.Multicolour) tone else 0
+    CompositionLocalProvider(LocalTileTone provides effective, content = content)
 }
 
 private fun fillOf(state: TileState, tone: Int): Color = when (state) {
