@@ -250,14 +250,8 @@ fun DashboardScreen(
             }
         }
 
-        // Status bar icons follow whatever is behind them: the accent poster at the top, the palette's
-        // base once you scroll (or while paused, when the poster is a quiet tone of the base).
-        val lightBackdrop by remember(paused) {
-            derivedStateOf {
-                if (paused || scroll.value >= posterPx * 0.3f) TagColors.IsLight
-                else TagColors.Lime.luminance() > 0.5f
-            }
-        }
+        // The poster is the page itself now (no accent slab), so the status bar icons follow the palette's base.
+        val lightBackdrop = TagColors.IsLight
         LaunchedEffect(lightBackdrop) { onBackdropChange(lightBackdrop) }
 
       // No header band. As the poster docks, the content itself fades out under the status bar and the
