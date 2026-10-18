@@ -37,6 +37,7 @@ object ShizukuBridge {
     private var clipboardRunning = false
     private var lastClip = ""
     private var lastClipAt = 0L
+    private var grantsDone = false
     private const val DEDUPE_MS = 2000L
 
     private val connection = object : ServiceConnection {
@@ -117,6 +118,8 @@ object ShizukuBridge {
             return
         }
 
+        grantPermissions(ctx)
+
         val svc = service
         if (svc == null || !svc.asBinder().pingBinder()) {
             service = null
@@ -153,6 +156,53 @@ object ShizukuBridge {
             Log.w(TAG, "clipboard toggle failed: ${e.message}")
             clipboardRunning = false
         }
+    }
+
+    /**
+     * Permissions Android only lets the shell grant, done once per process while Shizuku is available:
+     *  - Reading sensitive notifications. Since Android 15 a listener sees "Sensitive notification content hidden"
+     *    instead of a one-time code unless this app op is allowed. Without it OTP chips have nothing to read.
+     *  - Bluetooth: connecting devices' names and battery, for the earbuds chip.
+     * The result is in logcat under MicrotagShizuku.
+     */
+    private fun grantPermissions(ctx: Context) {
+        if (grantsDone) return
+        grantsDone = true
+        val pkg = ctx.packageName
+        Thread {
+            val log = StringBuilder()
+            var ran = false
+            for (op in listOf("RECEIVE_SENSITIVE_NOTIFICATIONS", "android:receive_sensitive_notifications")) {
+                val out = shell("cmd appops set --user 0 $pkg $op allow")
+                if (out != null) ran = true
+                log.append("appops set $op: ${out?.trim().orEmpty().ifBlank { "ok" }}\n")
+            }
+            val state = shell("cmd appops get $pkg RECEIVE_SENSITIVE_NOTIFICATIONS")
+            log.append("appops get: ${state?.trim().orEmpty()}\n")
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                val out = shell("pm grant $pkg android.permission.BLUETOOTH_CONNECT")
+                if (out != null) ran = true
+                log.append("pm grant BLUETOOTH_CONNECT: ${out?.trim().orEmpty().ifBlank { "ok" }}\n")
+            }
+            Log.i(TAG, "Permission grants:\n$log")
+            // Nothing ran at all (no shell): try again next time rather than giving up for this process.
+            if (!ran) grantsDone = false
+        }.start()
+    }
+
+    /** Runs a shell command through Shizuku. Output (stdout and stderr) or null when it could not be run. */
+    private fun shell(command: String): String? = try {
+        val m = Shizuku::class.java.getDeclaredMethod(
+            "newProcess", Array<String>::class.java, Array<String>::class.java, String::class.java
+        )
+        m.isAccessible = true
+        val process = m.invoke(null, arrayOf("sh", "-c", command), null, null) as Process
+        val out = process.inputStream.bufferedReader().readText() + process.errorStream.bufferedReader().readText()
+        process.waitFor()
+        out
+    } catch (e: Throwable) {
+        Log.w(TAG, "shell failed: ${e.message}")
+        null
     }
 
     private fun bind(ctx: Context) {
