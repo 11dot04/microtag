@@ -34,6 +34,8 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.BiasAlignment
@@ -137,13 +139,23 @@ data class TagPalette(
     /** Light tile colour for sitting on the accent poster (onboarding), and the ink that reads on it. */
     val paper: Color,
     val paperInk: Color,
-    /** Supporting colours for the moments that can carry more than one (onboarding tiles, previews, the credits poster). */
+    /**
+     * Second and third accents, like Material You's secondary and tertiary. A palette without them is
+     * single-accent on purpose (Lime). Dashboard tiles, chart series, log stripes and switches take
+     * their colour from these when they exist.
+     */
+    val secondary: Color? = null,
+    val tertiary: Color? = null,
+    /** Extra colours for moments that want more than three (the onboarding pile, previews). */
     val extras: List<Color> = emptyList(),
     /** Optional font roles, as res/font base names (see TagFonts). Null keeps Montserrat. */
     val display: String? = null,
     val mono: String? = null
 ) {
     val isLight: Boolean get() = base.luminance() > 0.5f
+
+    /** Everything beyond the primary accent, for previews and the onboarding pile. */
+    val supporting: List<Color> get() = if (extras.isNotEmpty()) extras else listOfNotNull(secondary, tertiary)
 }
 
 object TagPalettes {
@@ -165,6 +177,7 @@ object TagPalettes {
         surface = Color(0xFFE8E1D2), pausedPoster = Color(0xFFDCD4C2),
         outline = Color(0xFF7C8D89), dim = Color(0xFF7A8683),
         paper = Color(0xFFF2EDE2), paperInk = Color(0xFF0E4A4B),
+        secondary = Color(0xFFB8862B), tertiary = Color(0xFFB5543C),
         display = "bodoni_moda", mono = "dm_mono"
     )
 
@@ -176,6 +189,7 @@ object TagPalettes {
         surface = Color(0xFF211A19), pausedPoster = Color(0xFF241C1B),
         outline = Color(0xFFB7AA90), dim = Color(0xFF7A6F60),
         paper = Color(0xFFEADFC6), paperInk = Color(0xFF15100F),
+        secondary = Color(0xFFE3B15C), tertiary = Color(0xFFB5607F),
         display = "gfs_didot", mono = "dm_mono"
     )
 
@@ -187,7 +201,8 @@ object TagPalettes {
         accentText = Color(0xFFB8310F),
         surface = Color(0xFFE2DDD4), pausedPoster = Color(0xFFD8D2C7),
         outline = Color(0xFF8B867D), dim = Color(0xFF858078),
-        paper = Color(0xFFECE8E1), paperInk = Color(0xFF121212)
+        paper = Color(0xFFECE8E1), paperInk = Color(0xFF121212),
+        secondary = Color(0xFF1F5A6B), tertiary = Color(0xFFE6B22E)
     )
 
     /** Espresso with soft sage. Dark. */
@@ -197,7 +212,8 @@ object TagPalettes {
         accent = Color(0xFFA9B6A1), onAccent = Color(0xFF2A211C),
         surface = Color(0xFF342A24), pausedPoster = Color(0xFF392E27),
         outline = Color(0xFFB9B2A2), dim = Color(0xFF85796D),
-        paper = Color(0xFFF1EBDD), paperInk = Color(0xFF2A211C)
+        paper = Color(0xFFF1EBDD), paperInk = Color(0xFF2A211C),
+        secondary = Color(0xFFD49A7C), tertiary = Color(0xFFC9C48A)
     )
 
     /** Warm black, orange-red, cyan and yellow: a bold split-complementary set. Dark. */
@@ -209,6 +225,7 @@ object TagPalettes {
         outline = Color(0xFFBDB1A2), dim = Color(0xFF7C7166),
         signal = Color(0xFFF2B227),
         paper = Color(0xFFF6E6D8), paperInk = Color(0xFF1A1717),
+        secondary = Color(0xFF08A4C4), tertiary = Color(0xFFF2B227),
         extras = listOf(Color(0xFF08A4C4), Color(0xFFF2B227), Color(0xFFF6E6D8))
     )
 
@@ -221,6 +238,7 @@ object TagPalettes {
         outline = Color(0xFF8FA5A1), dim = Color(0xFF6B7F7B),
         signal = Color(0xFFF2C14E),
         paper = Color(0xFFFDD2DA), paperInk = Color(0xFF14201F),
+        secondary = Color(0xFFDDA83E), tertiary = Color(0xFFCEDDE8),
         extras = listOf(Color(0xFF2D4A47), Color(0xFFDDA83E), Color(0xFF8B3A3F), Color(0xFFCEDDE8)),
         display = "playfair_display", mono = "dm_mono"
     )
@@ -234,6 +252,7 @@ object TagPalettes {
         outline = Color(0xFF7FA38B), dim = Color(0xFF5E7C68),
         signal = Color(0xFFFF7A59),
         paper = Color(0xFFE4F2E0), paperInk = Color(0xFF0D1A14),
+        secondary = Color(0xFF4FD1A5), tertiary = Color(0xFFE5F28A),
         extras = listOf(Color(0xFF4FD1A5), Color(0xFFE5F28A), Color(0xFF2E7D5B))
     )
 
@@ -246,6 +265,7 @@ object TagPalettes {
         outline = Color(0xFF8A7FA8), dim = Color(0xFF8A82A0),
         signal = Color(0xFFD9480F),
         paper = Color(0xFFF4F0FA), paperInk = Color(0xFF231A3A),
+        secondary = Color(0xFFC44FB8), tertiary = Color(0xFF3F6BD1),
         extras = listOf(Color(0xFFF0A6E0), Color(0xFFA9C1FF), Color(0xFFD9CCFF)),
         display = "instrument_serif"
     )
@@ -257,6 +277,8 @@ object TagPalettes {
 object TagColors {
     private var palette by mutableStateOf(TagPalettes.Lime)
     private var accentOverride by mutableStateOf<Color?>(null)
+    private var secondaryOverride by mutableStateOf<Color?>(null)
+    private var tertiaryOverride by mutableStateOf<Color?>(null)
     private var materialYouOn = false
 
     /** The accent. The palette's own, or the system accent when Material You is on. */
@@ -266,6 +288,38 @@ object TagColors {
     /** Whatever reads on top of the accent. */
     val OnLime: Color
         get() = accentOverride?.let { if (it.luminance() > 0.4f) Color(0xFF000000) else Color(0xFFF6F6F6) } ?: palette.onAccent
+
+    /** Second and third accents. Fall back to the primary when a palette has none. */
+    val Secondary: Color get() = secondaryOverride ?: palette.secondary ?: Lime
+    val Tertiary: Color get() = tertiaryOverride ?: palette.tertiary ?: Lime
+    /** True when this palette (or Material You) really has more than one accent to hand out. */
+    val HasTones: Boolean get() = secondaryOverride != null || palette.secondary != null
+
+    /** 0 = accent, 1 = secondary, 2 = tertiary. */
+    fun tone(i: Int): Color = when (i) {
+        1 -> Secondary
+        2 -> Tertiary
+        else -> Lime
+    }
+
+    /** Whatever reads best on top of tone(i): the dark end or the light end of the palette. */
+    fun onTone(i: Int): Color {
+        if (i == 0) return OnLime
+        val bg = tone(i)
+        val dark = if (palette.base.luminance() < palette.ink.luminance()) palette.base else palette.ink
+        val light = if (dark == palette.base) palette.ink else palette.base
+        fun contrast(a: Color, b: Color): Float {
+            val la = a.luminance(); val lb = b.luminance()
+            return (maxOf(la, lb) + 0.05f) / (minOf(la, lb) + 0.05f)
+        }
+        return if (contrast(bg, dark) >= contrast(bg, light)) dark else light
+    }
+
+    /**
+     * The colour of the i-th series in a chart or list. A multi-accent palette gives each series its
+     * own accent; a single-accent one keeps one colour and steps the alpha instead.
+     */
+    fun series(i: Int, alpha: Float = 1f): Color = if (HasTones) tone(i % 3) else Lime.copy(alpha = alpha)
 
     /** The accent as small text on the base. */
     val AccentText: Color get() = accentOverride ?: palette.accentText
@@ -284,7 +338,7 @@ object TagColors {
     /** Whatever reads on top of [Signal]: dark on a bright warning colour, light on a deep one. */
     val OnSignal: Color
         get() = if (palette.signal.luminance() > 0.4f) Color(0xFF14110F) else Color(0xFFF6F6F6)
-    val Extras: List<Color> get() = palette.extras
+    val Extras: List<Color> get() = palette.supporting
     val Name: String get() = palette.name
     val Paper: Color get() = palette.paper
     val PaperInk: Color get() = palette.paperInk
@@ -295,10 +349,17 @@ object TagColors {
         val p = TagPalettes.byId(id)
         palette = p
         materialYouOn = materialYou
-        accentOverride = if (materialYou && Build.VERSION.SDK_INT >= 31) {
-            // Light palettes need the darker tone of the system accent to stay readable.
-            Color(context.getColor(if (p.isLight) android.R.color.system_accent1_700 else android.R.color.system_accent1_200))
-        } else null
+        if (materialYou && Build.VERSION.SDK_INT >= 31) {
+            // The system gives three accents, and so do we. Light palettes need the darker tones to stay readable.
+            val light = p.isLight
+            accentOverride = Color(context.getColor(if (light) android.R.color.system_accent1_700 else android.R.color.system_accent1_200))
+            secondaryOverride = Color(context.getColor(if (light) android.R.color.system_accent2_700 else android.R.color.system_accent2_200))
+            tertiaryOverride = Color(context.getColor(if (light) android.R.color.system_accent3_700 else android.R.color.system_accent3_200))
+        } else {
+            accentOverride = null
+            secondaryOverride = null
+            tertiaryOverride = null
+        }
         TagFonts.apply(context, p)
     }
 
@@ -602,22 +663,31 @@ fun TagFrame(label: String, color: Color, modifier: Modifier = Modifier, labelBi
 
 enum class TileState { Off, On, Static, Signal }
 
-private fun fillOf(state: TileState): Color = when (state) {
-    TileState.On -> TagColors.Lime
+/** Which accent switched-on tiles and switches below this point use: 0 accent, 1 secondary, 2 tertiary. */
+val LocalTileTone = compositionLocalOf { 0 }
+
+/** Gives everything inside it the chosen accent. A palette with a single accent shows no difference. */
+@Composable
+fun TileTone(tone: Int, content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalTileTone provides tone, content = content)
+}
+
+private fun fillOf(state: TileState, tone: Int): Color = when (state) {
+    TileState.On -> TagColors.tone(tone)
     TileState.Off -> TagColors.Black
     TileState.Static -> TagColors.White
     TileState.Signal -> TagColors.Signal
 }
 
-private fun fgOf(state: TileState): Color = when (state) {
+private fun fgOf(state: TileState, tone: Int): Color = when (state) {
     TileState.Off -> TagColors.White
-    TileState.On -> TagColors.OnLime
+    TileState.On -> TagColors.onTone(tone)
     TileState.Static -> TagColors.Black
     TileState.Signal -> TagColors.OnSignal
 }
 
-private fun edgeOf(state: TileState): Color =
-    if (state == TileState.Off) TagColors.Outline else fillOf(state)
+private fun edgeOf(state: TileState, tone: Int): Color =
+    if (state == TileState.Off) TagColors.Outline else fillOf(state, tone)
 
 /** The one decelerating curve used for reveals and transitions. */
 object TagEase { val Reveal = CubicBezierEasing(0.2f, 0f, 0f, 1f) }
@@ -677,6 +747,7 @@ fun TagTile(
     val view = LocalView.current
     val ctx = LocalContext.current
     val density = LocalDensity.current
+    val tone = LocalTileTone.current
     val systemScale = remember {
         Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
     }
@@ -718,8 +789,8 @@ fun TagTile(
     val toCentre = hypot(tileSize.width / 2f - o.x, tileSize.height / 2f - o.y)
     val crossAt = (toCentre / far + FLOOD_EDGE * 0.5f) / (1f + FLOOD_EDGE)
     val mix = if (base == target) 1f else ((t - (crossAt - 0.1f)) / 0.2f).coerceIn(0f, 1f)
-    val fg = lerp(fgOf(base), fgOf(target), mix)
-    val edgeColor = lerp(edgeOf(base), edgeOf(target), mix)
+    val fg = lerp(fgOf(base, tone), fgOf(target, tone), mix)
+    val edgeColor = lerp(edgeOf(base, tone), edgeOf(target, tone), mix)
 
     val shader = remember { RuntimeShader(FLOOD_AGSL) }
 
@@ -756,7 +827,7 @@ fun TagTile(
             .drawBehind {
                 val p = reveal.value
                 if (p >= 1f) {
-                    drawRect(fillOf(target))
+                    drawRect(fillOf(target, tone))
                 } else {
                     val origin2 = if (origin.isSpecified) origin else center
                     val far2 = hypot(maxOf(origin2.x, size.width - origin2.x), maxOf(origin2.y, size.height - origin2.y))
@@ -765,8 +836,8 @@ fun TagTile(
                     shader.setFloatUniform("prog", p)
                     shader.setFloatUniform("grain", FLOOD_GRAIN_PX)
                     shader.setFloatUniform("band", FLOOD_EDGE)
-                    shader.setColorUniform("fromColor", fillOf(base).toArgb())
-                    shader.setColorUniform("toColor", fillOf(target).toArgb())
+                    shader.setColorUniform("fromColor", fillOf(base, tone).toArgb())
+                    shader.setColorUniform("toColor", fillOf(target, tone).toArgb())
                     drawRect(ShaderBrush(shader))
                 }
             }
@@ -843,8 +914,8 @@ fun TagSwitch(
     checked: Boolean,
     onChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    trackOn: Color = TagColors.Lime,
-    thumbOn: Color = TagColors.OnLime,
+    trackOn: Color = TagColors.tone(LocalTileTone.current),
+    thumbOn: Color = TagColors.onTone(LocalTileTone.current),
     trackOff: Color = TagColors.White,
     thumbOff: Color = TagColors.Black
 ) {
