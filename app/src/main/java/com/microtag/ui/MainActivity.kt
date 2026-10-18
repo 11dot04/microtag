@@ -117,7 +117,10 @@ class MainActivity : ComponentActivity() {
                             )
                             Screen.Inspect -> InspectScreen(onBack = { screen = Screen.Dashboard }, onOpenPriority = { screen = Screen.Priority })
                             Screen.Priority -> PriorityScreen(onBack = { screen = Screen.Inspect })
-                            Screen.Pin -> PinScreen(onBack = { screen = Screen.Dashboard })
+                            // PinScreen isn't finished yet. Until it is, this placeholder keeps the build green and the
+                            // Pin tile working. When it is ready, swap this one line for
+                            // PinScreen(onBack = { screen = Screen.Dashboard }) and delete PinScreenPlaceholder below.
+                            Screen.Pin -> PinScreenPlaceholder(onBack = { screen = Screen.Dashboard })
                             Screen.Stats -> StatsScreen(prefs = prefs, onBack = { screen = Screen.Dashboard })
                             Screen.Logs -> LogsScreen(onBack = { screen = Screen.Dashboard })
                             Screen.Settings -> SettingsScreen(
@@ -130,5 +133,28 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+}
+
+/** Stand-in for the unfinished PinScreen. */
+@androidx.compose.runtime.Composable
+private fun PinScreenPlaceholder(onBack: () -> Unit) {
+    SubScreen(onBack = onBack) {
+        androidx.compose.material3.Text(
+            "Pin",
+            style = androidx.compose.ui.text.TextStyle(
+                fontFamily = TagFonts.display, fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                fontSize = androidx.compose.ui.unit.TextUnit(56f, androidx.compose.ui.unit.TextUnitType.Sp),
+                color = TagColors.White, fontSynthesis = TagFonts.NoSynthesis
+            )
+        )
+        androidx.compose.material3.Text(
+            "Coming soon.",
+            style = androidx.compose.ui.text.TextStyle(
+                fontFamily = Montserrat, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                fontSize = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp),
+                color = TagColors.Outline
+            )
+        )
     }
 }
