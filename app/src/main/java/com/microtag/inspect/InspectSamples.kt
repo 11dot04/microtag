@@ -71,6 +71,16 @@ object InspectSamples {
         )
     )
 
+    /** A pinned note, for the demo card. Its id is -1, so the card's buttons have nothing to act on. */
+    fun pinned(): InspectResult {
+        val now = System.currentTimeMillis()
+        return InspectResult(
+            domain = "PINNED", pill = "B2-41", title = "Parked at B2-41", cardTitle = "Pinned", cardText = "Parked at B2-41",
+            copyText = "Parked at B2-41", big = "Parked at B2-41", iconName = "ic_pin",
+            nums = listOf(now.toDouble(), (now + 3_600_000L).toDouble()), unit = "-1"
+        )
+    }
+
     /** A live Wikipedia lookup (blocking: call off the main thread), or the same card without a photo if offline. */
     fun wiki(live: Boolean = true): InspectResult {
         val found = if (live) resolve("Leonhard Euler") else null
