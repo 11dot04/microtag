@@ -95,6 +95,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import com.microtag.core.MicrotagPrefs
 import com.microtag.core.MicrotagReminder
+import com.microtag.listener.BluetoothWatcher
 import com.microtag.listener.MicrotagLogActivity
 
 // ==========================================================
@@ -182,6 +183,10 @@ fun DashboardScreen(
 
     val calendarPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) calendar.set(true)
+    }
+
+    val bluetoothPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) bluetooth.set(true)
     }
 
     val perms = rememberPermissions()
@@ -365,7 +370,14 @@ fun DashboardScreen(
 
             // ---- earbuds + sound mode
             TileTone(1) {
-                TagTile(Modifier.cell(0f, b2, 2f, 2f), TagShapes.Circle, bluetooth.state, bluetooth::toggle) { fg ->
+                TagTile(
+                    Modifier.cell(0f, b2, 2f, 2f), TagShapes.Circle, bluetooth.state,
+                    onClick = {
+                        if (!bluetooth.on && !BluetoothWatcher.hasPermission(context)) {
+                            bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                        } else bluetooth.toggle()
+                    }
+                ) { fg ->
                     TagIcon(R.drawable.ic_earbuds, fg, Modifier.align(Alignment.Center), 84.dp)
                 }
             }
