@@ -279,65 +279,77 @@ fun DashboardScreen(
         val b2 = b + 3f      // earbuds / sound mode
         val b3 = b2 + 2f     // music / VPN
 
+        // Tones: 0 accent, 1 secondary, 2 tertiary. Neighbouring tiles never share one, so a palette with
+        // three accents reads as a patchwork; a single-accent palette (Lime) looks exactly as before.
         TagGrid {
             // ---- rows 0-1: Discord + Inspect
-            TagFrame("Inspect", TagColors.Lime, Modifier.cell(2, 0, 2, 2, outset = 6.dp))
-            BigTile(Modifier.cell(0, 0, 2, 2), R.drawable.ic_discord, "Discord", "CALLS", discord)
+            TagFrame("Inspect", TagColors.tone(2), Modifier.cell(2, 0, 2, 2, outset = 6.dp))
+            TileTone(0) { BigTile(Modifier.cell(0, 0, 2, 2), R.drawable.ic_discord, "Discord", "CALLS", discord) }
             InspectTile(Modifier.cell(2, 0), R.drawable.ic_inspect_calc, onOpenInspect)
             InspectTile(Modifier.cell(3, 0), R.drawable.ic_inspect_colour, onOpenInspect)
             InspectTile(Modifier.cell(2, 1), R.drawable.ic_inspect_convert, onOpenInspect)
             InspectTile(Modifier.cell(3, 1), R.drawable.ic_inspect_define, onOpenInspect)
 
             // ---- weather (top) / streaks (under it) / strava
-            WeatherTile(
-                Modifier.cell(0f, 2f, 2f, 1f + p),
-                // Pill when closed, settles to the standard tile radius as it opens.
-                RoundedCornerShape((100f + (26f - 100f) * p.coerceIn(0f, 1f)).dp),
-                weather, weatherOpen, weatherIdx, intervalLabels,
-                onIndex = { weatherIdx = it; settings.weatherIntervalMin = WeatherSteps[it] },
-                onOpenChange = { weatherOpen = it }
-            )
-            PillTile(
-                Modifier.cell(0f, 3f + p, 2f + 2f * widen, 1f), null, "Streaks", null, streaks,
-                chevron = true, onChevron = { sheet = DashSheet.Streaks }
-            )
-            StravaTile(
-                Modifier.cell(2, 2, 2, 2), strava, stravaOpen, { stravaOpen = !stravaOpen },
-                stravaMetric, { stravaMetric = it; settings.stravaMetric = it }
-            )
+            TileTone(2) {
+                WeatherTile(
+                    Modifier.cell(0f, 2f, 2f, 1f + p),
+                    // Pill when closed, settles to the standard tile radius as it opens.
+                    RoundedCornerShape((100f + (26f - 100f) * p.coerceIn(0f, 1f)).dp),
+                    weather, weatherOpen, weatherIdx, intervalLabels,
+                    onIndex = { weatherIdx = it; settings.weatherIntervalMin = WeatherSteps[it] },
+                    onOpenChange = { weatherOpen = it }
+                )
+            }
+            TileTone(0) {
+                PillTile(
+                    Modifier.cell(0f, 3f + p, 2f + 2f * widen, 1f), null, "Streaks", null, streaks,
+                    chevron = true, onChevron = { sheet = DashSheet.Streaks }
+                )
+            }
+            TileTone(1) {
+                StravaTile(
+                    Modifier.cell(2, 2, 2, 2), strava, stravaOpen, { stravaOpen = !stravaOpen },
+                    stravaMetric, { stravaMetric = it; settings.stravaMetric = it }
+                )
+            }
 
             // ---- Micro Tags: small, single-purpose chips
             TagFrame("Micro Tags", TagColors.Outline, Modifier.cell(0f, b, 4f, 3f, outset = 6.dp), labelBias = 0.55f)
-            MicroTile(Modifier.cell(0f, b, 2f, 1f), R.drawable.ic_upi_rupee, "UPI", "Credit", upi)
-            IconTile(Modifier.cell(2f, b), R.drawable.ic_download, download)
-            IconTile(Modifier.cell(3f, b), R.drawable.ic_upload, upload)
-            MicroTile(Modifier.cell(0f, b + 1f, 2f, 1f), R.drawable.ic_otp, "OTP", "2FA", otp)
-            MicroTile(Modifier.cell(2f, b + 1f, 2f, 1f), R.drawable.ic_print, "Print", "in\nProgress", print, inline = true)
-            MicroTile(Modifier.cell(0f, b + 2f, 2f, 1f), R.drawable.ic_clipboard, "Clipboard", "Context", clipboard)
-            PillTile(
-                Modifier.cell(2f, b + 2f, 2f, 1f), R.drawable.ic_calendar_countdown, "Events", null, calendar,
-                shape = TagShapes.Rect, chevron = true,
-                onToggle = {
-                    if (!calendar.on && !hasCalendarPermission(context)) {
-                        calendarPermission.launch(Manifest.permission.READ_CALENDAR)
-                    } else calendar.toggle()
-                },
-                onChevron = { sheet = DashSheet.Calendar }
-            )
+            TileTone(1) { MicroTile(Modifier.cell(0f, b, 2f, 1f), R.drawable.ic_upi_rupee, "UPI", "Credit", upi) }
+            TileTone(0) { IconTile(Modifier.cell(2f, b), R.drawable.ic_download, download) }
+            TileTone(2) { IconTile(Modifier.cell(3f, b), R.drawable.ic_upload, upload) }
+            TileTone(2) { MicroTile(Modifier.cell(0f, b + 1f, 2f, 1f), R.drawable.ic_otp, "OTP", "2FA", otp) }
+            TileTone(1) { MicroTile(Modifier.cell(2f, b + 1f, 2f, 1f), R.drawable.ic_print, "Print", "in\nProgress", print, inline = true) }
+            TileTone(0) { MicroTile(Modifier.cell(0f, b + 2f, 2f, 1f), R.drawable.ic_clipboard, "Clipboard", "Context", clipboard) }
+            TileTone(2) {
+                PillTile(
+                    Modifier.cell(2f, b + 2f, 2f, 1f), R.drawable.ic_calendar_countdown, "Events", null, calendar,
+                    shape = TagShapes.Rect, chevron = true,
+                    onToggle = {
+                        if (!calendar.on && !hasCalendarPermission(context)) {
+                            calendarPermission.launch(Manifest.permission.READ_CALENDAR)
+                        } else calendar.toggle()
+                    },
+                    onChevron = { sheet = DashSheet.Calendar }
+                )
+            }
 
             // ---- earbuds + sound mode
-            TagTile(Modifier.cell(0f, b2, 2f, 2f), TagShapes.Circle, bluetooth.state, bluetooth::toggle) { fg ->
-                TagIcon(R.drawable.ic_earbuds, fg, Modifier.align(Alignment.Center), 84.dp)
+            TileTone(1) {
+                TagTile(Modifier.cell(0f, b2, 2f, 2f), TagShapes.Circle, bluetooth.state, bluetooth::toggle) { fg ->
+                    TagIcon(R.drawable.ic_earbuds, fg, Modifier.align(Alignment.Center), 84.dp)
+                }
             }
-            PillTile(Modifier.cell(2f, b2, 2f, 1f), R.drawable.ic_sound, "Sound", "Mode", sound)
+            TileTone(0) { PillTile(Modifier.cell(2f, b2, 2f, 1f), R.drawable.ic_sound, "Sound", "Mode", sound) }
             RingerSelector(
                 Modifier.cell(2f, b2 + 1f, 2f, 1f), enabled = sound.on, modes = ringerModes,
                 onChange = { ringerModes = it; settings.ringerModes = it }
             )
 
             // ---- music pair (one interlocked shape) + VPN
-            MusicPair(Modifier.cell(0f, b3, 2f, 2f), songNext, ambient)
-            BigTile(Modifier.cell(2f, b3, 2f, 2f), R.drawable.ic_vpn, "ProtonVPN", "SESSIONS", proton)
+            TileTone(2) { MusicPair(Modifier.cell(0f, b3, 2f, 2f), songNext, ambient) }
+            TileTone(1) { BigTile(Modifier.cell(2f, b3, 2f, 2f), R.drawable.ic_vpn, "ProtonVPN", "SESSIONS", proton) }
         }
         Spacer(Modifier.height(40.dp))
         }
@@ -490,7 +502,7 @@ private fun WeatherTile(
     onIndex: (Int) -> Unit, onOpenChange: (Boolean) -> Unit
 ) {
     TagTile(modifier, shape, t.state, t::toggle) { fg ->
-        val face = if (t.on) TagColors.Lime else TagColors.Black
+        val face = if (t.on) TagColors.tone(LocalTileTone.current) else TagColors.Black
         AnimatedContent(
             targetState = open,
             modifier = Modifier.fillMaxSize(),
@@ -527,7 +539,7 @@ private fun StravaTile(
     metric: String, onMetric: (String) -> Unit
 ) {
     TagTile(modifier, TagShapes.Big, t.state, t::toggle) { fg ->
-        val face = if (t.on) TagColors.Lime else TagColors.Black
+        val face = if (t.on) TagColors.tone(LocalTileTone.current) else TagColors.Black
         if (!open) {
             TagIcon(R.drawable.ic_strava, fg, Modifier.align(Alignment.TopStart).padding(20.dp), 32.dp)
             BigLabel("Strava", "WORKOUTS", fg, Modifier.align(Alignment.BottomEnd).padding(20.dp))
