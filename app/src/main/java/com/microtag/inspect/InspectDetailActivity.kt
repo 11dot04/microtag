@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.CalendarContract
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -202,6 +203,27 @@ class InspectDetailActivity : ComponentActivity() {
         }.start()
     }
 
+    /** The user chose another reading of the same text: show it, and count it as a quiet vote for that reading. */
+    private fun runSwitch(p: InspectPayload, kind: String) {
+        if (busy.isNotEmpty() || p.origin.isBlank()) return
+        busy = "SWITCH"
+        val app = applicationContext
+        Thread {
+            val r = InspectEngine.resolveAs(app, p.origin, kind)
+            runOnUiThread {
+                busy = ""
+                if (isFinishing) return@runOnUiThread
+                if (r == null) {
+                    Toast.makeText(app, "Nothing to show for that", Toast.LENGTH_SHORT).show()
+                    return@runOnUiThread
+                }
+                if (p.kind.isNotBlank()) PriorityStore.vote(kind, p.kind)
+                val alts = (p.alts - kind + listOfNotNull(p.kind.ifBlank { null })).distinct()
+                payload = r.toPayload().copy(origin = p.origin, kind = kind, alts = alts)
+            }
+        }.start()
+    }
+
     private fun runCheck(p: InspectPayload) {
         if (busy.isNotEmpty()) return
         busy = "CHECK"
@@ -295,7 +317,8 @@ class InspectDetailActivity : ComponentActivity() {
                     onResolve = { runResolve(p) },
                     onEvent = { openEvent(p.eventId) },
                     dragModifier = drag,
-                    onPin = { action -> pinAction(p, action) }
+                    onPin = { action -> pinAction(p, action) },
+                    onSwitch = { kind -> runSwitch(p, kind) }
                 )
             }
         }
