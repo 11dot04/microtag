@@ -65,6 +65,7 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
         Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 22.dp, top = 20.dp, bottom = 16.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 LabelPill(labelFor(p), if (filled) ink.copy(alpha = 0.9f) else pillTint(p))
+                PinGlyph(c)
                 Spacer(Modifier.weight(1f))
                 if (hex.length == 6) Barcode(hex, ink.copy(alpha = 0.9f), Modifier.width(92.dp).height(26.dp))
             }
