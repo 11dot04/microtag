@@ -72,6 +72,11 @@ class TagSettings(context: Context) {
         get() = sp.getBoolean("haptics", true)
         set(v) = sp.edit { putBoolean("haptics", v) }
 
+    /** Give neighbouring dashboard tiles different accents (needs a palette with more than one). */
+    var multicolour: Boolean
+        get() = sp.getBoolean("multicolour", false)
+        set(v) = sp.edit { putBoolean("multicolour", v) }
+
     /** Id of the chosen TagPalette ("lime", "atelier", "rouge", "vermilion", "sage"). */
     var palette: String
         get() = sp.getString("palette", "lime") ?: "lime"
