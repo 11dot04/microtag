@@ -343,8 +343,10 @@ private fun LogCard(e: MicrotagLog.Entry, meta: AppMeta?, expanded: Boolean, onT
             .background(TagColors.Surface)
             .drawBehind {
                 // status stripe: accent for promoted, a faint grey for everything else
+                // custom rules take the secondary accent, fallbacks the tertiary, parser captures the main one
+                val stripe = when (e.path) { "RULE" -> 1; "FALLBACK" -> 2; else -> 0 }
                 drawRect(
-                    if (e.decision == Decision.PROMOTED) TagColors.Lime else TagColors.Outline.copy(alpha = 0.35f),
+                    if (e.decision == Decision.PROMOTED) TagColors.tone(stripe) else TagColors.Outline.copy(alpha = 0.35f),
                     size = androidx.compose.ui.geometry.Size(4.dp.toPx(), size.height)
                 )
             }
