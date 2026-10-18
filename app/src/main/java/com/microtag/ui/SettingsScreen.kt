@@ -97,6 +97,7 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
 
     var palette by remember { mutableStateOf(settings.palette) }
     var materialYou by remember { mutableStateOf(settings.materialYou) }
+    var multicolour by remember { mutableStateOf(settings.multicolour) }
     var reducedMotion by remember { mutableStateOf(settings.reducedMotion) }
     var haptics by remember { mutableStateOf(settings.haptics) }
     var nightPause by remember { mutableStateOf(settings.nightPause) }
@@ -162,6 +163,11 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
                     materialYou = it
                     settings.materialYou = it
                     TagColors.useMaterialYou(context, it)
+                }),
+                Item("Multicolour tiles", "Give neighbouring tiles different accents. Needs a palette with more than one.", multicolour, {
+                    multicolour = it
+                    settings.multicolour = it
+                    TagColors.useMulticolour(it)
                 }),
                 Item("Reduce motion", "Skip the springs, flood fills and entrances.", reducedMotion, {
                     reducedMotion = it
