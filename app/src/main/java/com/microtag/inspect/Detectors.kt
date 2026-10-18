@@ -28,7 +28,21 @@ object Detectors {
         all += DefineDetector.candidates(t, source, env)
         all += EntityDetector.candidates(t, source)
         all += ReadingDetector.candidates(t, source)
-        return all.sortedByDescending { it.score }
+        // Close contenders are ordered by the user's priority list; a clear winner is never overruled.
+        return PriorityLogic.arrange(all, PriorityStore.state)
+    }
+
+    /** The first result of one kind of reading (a card's "or read it as..." chips), ignoring the usual order. */
+    fun resolveKind(text: String, source: Source, env: Env, kind: String): InspectResult? {
+        for (c in candidates(text, source, env).filter { PriorityLogic.kind(it.name) == kind }) {
+            val r = try {
+                c.resolve()
+            } catch (_: Exception) {
+                null
+            }
+            if (r != null) return r
+        }
+        return null
     }
 
     /** The first candidate that produces a result, or null. Slow candidates may hit the network. */
