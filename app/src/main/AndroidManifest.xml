@@ -85,6 +85,45 @@
             </intent-filter>
         </activity>
 
+        <!-- Screenshot Inspect: share an image to Microtag -->
+        <activity
+            android:name=".inspect.ImageInspectActivity"
+            android:exported="true"
+            android:label="Inspect with Microtag"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
+
+        <!-- Pin: Quick Settings tile, the invisible activity that reads the clipboard for it, and the pin buttons -->
+        <service
+            android:name=".inspect.PinTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_pin"
+            android:label="Pin clipboard"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <activity
+            android:name=".inspect.PinClipboardActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <receiver
+            android:name=".inspect.PinReceiver"
+            android:exported="false" />
+
         <activity android:name=".listener.MicrotagLogActivity" android:exported="false" />
 
         <!-- Capsule Action Receiver -->
