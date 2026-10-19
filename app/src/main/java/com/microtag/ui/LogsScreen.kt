@@ -158,6 +158,7 @@ fun LogsScreen(onBack: () -> Unit) {
         }
     ) {
         item { Spacer(Modifier.height(12.dp)) }
+        item { MicroStrip(3, "Logs") }
         item {
             FitText(
                 AnnotatedString("Logs"),
@@ -251,14 +252,7 @@ fun LogsScreen(onBack: () -> Unit) {
             contentType = { r -> if (r is LogRow.Header) 0 else 1 }
         ) { row ->
             when (row) {
-                is LogRow.Header -> Text(
-                    row.label,
-                    modifier = Modifier.padding(top = 14.dp, start = 4.dp),
-                    style = TextStyle(
-                        fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-                        letterSpacing = 1.2.sp, color = TagColors.AccentText
-                    )
-                )
+                is LogRow.Header -> MicroHeader(row.label, Modifier.padding(top = 14.dp, start = 4.dp))
                 is LogRow.Item -> {
                     val id = System.identityHashCode(row.entry)
                     LogCard(row.entry, meta[row.entry.pkg], id in expanded) {
