@@ -193,10 +193,11 @@ fun MonolithPoster(
         PosterArt(geo, hourly, paused, active, margin, Modifier.fillMaxSize())
 
         // The annotation column, to the right of the numeral and level with its far end.
-        val axisX = wPx - margin - with(density) { 64.dp.toPx() }
+        // The hour ruler is a slim strip on the right edge (ticks reach 24dp, labels sit left of them).
+        val axisX = wPx - margin - with(density) { 24.dp.toPx() }
         val metaX = geo.x0 + with(density) { 16.dp.toPx() }
         val metaTop = geo.y0 - geo.length
-        val metaWidth = with(density) { (axisX - with(density) { 34.dp.toPx() } - metaX).coerceAtLeast(60f).toDp() }
+        val metaWidth = with(density) { (axisX - with(density) { 30.dp.toPx() } - metaX).coerceAtLeast(60f).toDp() }
         Column(
             Modifier
                 .offset { IntOffset(metaX.roundToInt(), metaTop.roundToInt()) }
@@ -210,10 +211,10 @@ fun MonolithPoster(
             )
             MicroLabel("Today", color = TagColors.Outline)
             Spacer(Modifier.height(8.dp))
-            MicroLabel("Interceptions", color = ink, bold = true)
-            MicroLabel("So far", color = TagColors.Outline)
+            MicroLabel("Interceptions", color = ink, bold = true, wrap = false)
+            MicroLabel("So far", color = TagColors.Outline, wrap = false)
             Spacer(Modifier.height(8.dp))
-            MicroLabel("( $date )", color = TagColors.Outline)
+            MicroLabel("( $date )", color = TagColors.Outline, wrap = false)
             MicroLabel("V$versionName", color = TagColors.Outline)
             if (paused) {
                 Spacer(Modifier.height(6.dp))
@@ -328,44 +329,39 @@ private fun PosterArt(
         val accent = TagColors.Lime
         val mark = TagColors.Outline
         val step = 14.dp.toPx()
-        val axisX = size.width - marginPx - 64.dp.toPx()
+        // A hairline ruler down the right margin. Each hour is one tick that grows leftward in proportion to
+        // that hour's interceptions; the current hour's tick is the accent and pulses. Hour 0 is at the numeral's
+        // foot and 23 at the top, so time reads upward like the numeral does.
+        val lineX = size.width - marginPx
         val bottomY = geo.y0
         val maxHour = max(1, hourly.max())
-        val maxDots = 8
-        val dotStep = 6.dp.toPx()
-        val dot = 3.dp.toPx()
+        val minTick = 3.dp.toPx()
+        val maxTick = 24.dp.toPx()
         val pulseNow = if (active) pulse else 1f
-        val lit = if (paused) TagColors.Dim else ink
+        val stroke = 1.2.dp.toPx()
 
-        // ruler down the left of the bars, with hour labels
-        microTicks(Offset(axisX - 4.dp.toPx(), bottomY), 24, -step, vertical = true, color = mark, length = 4.dp.toPx(), major = 6, dir = -1f)
+        drawLine(mark.copy(alpha = 0.35f), Offset(lineX, bottomY + 4.dp.toPx()), Offset(lineX, bottomY - 23 * step - 4.dp.toPx()), stroke)
+        for (h in 0 until 24) {
+            val y = bottomY - h * step
+            val dRow = abs(h - nowHour) / 24f
+            val w = if (ripple.value < 1f) exp(-((dRow - ripple.value) * (dRow - ripple.value)) / 0.004f) else 0f
+            val v = if (hourly[h] <= 0) 0f else hourly[h] / maxHour.toFloat()
+            val len = (minTick + v * (maxTick - minTick)) * (1f + 0.6f * w)
+            val isNow = h == nowHour
+            val color = when {
+                isNow -> accent.copy(alpha = pulseNow)
+                v > 0f -> (if (paused) TagColors.Dim else ink).copy(alpha = 0.55f)
+                else -> mark.copy(alpha = 0.28f)
+            }
+            drawLine(color, Offset(lineX, y), Offset(lineX - len - (if (isNow) 3.dp.toPx() else 0f), y), if (isNow) stroke * 1.6f else stroke)
+        }
         labelPaint.textSize = 10.sp.toPx()
         labelPaint.textAlign = Paint.Align.RIGHT
         labelPaint.typeface = Typeface.MONOSPACE
         labelPaint.color = mark.toArgb()
         drawIntoCanvas { c ->
-            for (h in listOf(0, 6, 12, 18, 23)) {
-                c.nativeCanvas.drawText("%02d".format(h), axisX - 18.dp.toPx(), bottomY - h * step + 4.dp.toPx(), labelPaint)
-            }
-        }
-
-        for (h in 0 until 24) {
-            val y = bottomY - h * step
-            val litDots = if (hourly[h] <= 0) 0 else max(1, (hourly[h] / maxHour.toFloat() * maxDots).roundToInt())
-            val dRow = abs(h - nowHour) / 24f
-            val w = if (ripple.value < 1f) exp(-((dRow - ripple.value) * (dRow - ripple.value)) / 0.004f) else 0f
-            for (i in 0 until maxDots) {
-                val x = axisX + i * dotStep
-                var s = dot
-                var color = ink.copy(alpha = 0.14f)
-                if (i < litDots) { color = lit.copy(alpha = 0.95f); s = dot * 1.25f }
-                if (h == nowHour && i == max(litDots - 1, 0)) {
-                    color = (if (paused) accent else accent).copy(alpha = pulseNow)
-                    s = dot * 1.7f
-                }
-                s *= 1f + 1.4f * w
-                color = color.copy(alpha = min(1f, color.alpha + 0.6f * w))
-                drawRect(color, Offset(x - s / 2, y - s / 2), Size(s, s))
+            for (h in listOf(0, 12, 23)) {
+                c.nativeCanvas.drawText("%02d".format(h), lineX - maxTick - 10.dp.toPx(), bottomY - h * step + 4.dp.toPx(), labelPaint)
             }
         }
 
@@ -379,7 +375,7 @@ private fun PosterArt(
         microGlyph(Micro.Cross, Offset(left - g, geo.y0 + g), sz, mark)
         microGlyph(Micro.Cross, Offset(right + g, geo.y0 + g), sz, mark)
         microGlyph(Micro.ArrowUp, Offset((left + right) / 2f, top - 16.dp.toPx()), 12.dp.toPx(), mark)
-        microGlyph(Micro.Register, Offset(axisX + 3 * dotStep, bottomY - 23 * step - 22.dp.toPx()), 12.dp.toPx(), mark)
+        microGlyph(Micro.Register, Offset(lineX - 8.dp.toPx(), bottomY - 23 * step - 22.dp.toPx()), 12.dp.toPx(), mark)
     }
 }
 
