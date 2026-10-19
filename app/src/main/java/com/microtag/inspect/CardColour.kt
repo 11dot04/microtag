@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +28,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -66,6 +68,8 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
     val rgb = p.rows.firstOrNull { it.first == "RGB" }?.second.orEmpty()
     val hsl = p.rows.firstOrNull { it.first == "HSL" }?.second.orEmpty()
     val verdict = p.rows.firstOrNull { it.first == "Readable with" }?.second.orEmpty()
+    // "Black text suitable · 17.9:1" is set as two lines: the verdict, then the ratio.
+    val verdictText = verdict.split(" · ").let { if (it.size == 2) "${it[0]},\n${it[1]} contrast" else verdict }
     val verdictInk = if (filled) ink else if (verdict.contains("black", ignoreCase = true)) Color.Black else Color.White
     val hex = p.bigText.removePrefix("#").uppercase()
     val hexColour = if (c.flash == p.bigText) c.accent else ink
@@ -198,6 +202,21 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
                 }
             }
 
+            // The steps, as two paint chips low in the name zone. Tap to copy.
+            for ((i, step) in listOf("LIGHTER" to tint, "DARKER" to shade).withIndex()) {
+                val on = if (step.second.luminance() > 0.45f) Color.Black else Color.White
+                Box(
+                    Modifier.offset(d(92f + i * 176f), d(338f)).size(d(166f), d(66f))
+                        .background(step.second).border(androidx.compose.ui.unit.Dp.Hairline, ink.copy(alpha = 0.5f))
+                        .plainClick { c.onCopy(hexOf(step.second)) }
+                ) {
+                    Column(Modifier.fillMaxSize().padding(horizontal = d(10f), vertical = d(8f)), verticalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
+                        Text(step.first, style = mono(10f * u, on.copy(alpha = 0.8f), 1f, FontWeight.Bold), maxLines = 1, softWrap = false)
+                        Text(hexOf(step.second).removePrefix("#"), style = mono(15f * u, on, 0.4f, FontWeight.Bold), maxLines = 1, softWrap = false)
+                    }
+                }
+            }
+
             // Barcode numbers, printed on the white strips.
             Box(Modifier.offset(d(92f), d(568f)).width(d(150f))) {
                 Text(left, style = mono(14f * u, Color.Black, 0.3f, FontWeight.Bold), maxLines = 1, softWrap = false)
@@ -223,17 +242,17 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
 
             // The contrast verdict.
             if (verdict.isNotBlank()) {
-                Box(Modifier.offset(d(78f), d(746f)).width(d(238f)).plainClick { c.onCopy(verdict) }) {
+                Box(Modifier.offset(d(72f), d(748f)).width(d(246f)).plainClick { c.onCopy(verdict) }) {
                     Text(
-                        verdict, style = sans(23f * u, FontWeight.Bold, verdictInk).copy(textAlign = TextAlign.End, lineHeight = (28f * u).sp),
+                        verdictText, style = sans(25f * u, FontWeight.Bold, verdictInk).copy(textAlign = TextAlign.End, lineHeight = (31f * u).sp),
                         maxLines = 3, modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
 
             // Gauge labels: the lighter step above, the darker below, and where the colour sits.
-            Text("+", style = mono(14f * u, ink.copy(alpha = 0.8f), 0f, FontWeight.Bold), modifier = Modifier.offset(d(401f), d(612f)))
-            Text("−", style = mono(14f * u, ink.copy(alpha = 0.8f), 0f, FontWeight.Bold), modifier = Modifier.offset(d(401f), d(836f)))
+            Text("+", style = mono(20f * u, ink.copy(alpha = 0.85f), 0f, FontWeight.Bold), modifier = Modifier.offset(d(399f), d(606f)))
+            Text("−", style = mono(20f * u, ink.copy(alpha = 0.85f), 0f, FontWeight.Bold), modifier = Modifier.offset(d(399f), d(826f)))
             Text(
                 "L${(lightness(colour) * 100).toInt()}", style = mono(12f * u, ink.copy(alpha = 0.7f), 0.4f, FontWeight.Bold),
                 modifier = Modifier.offset(d(386f), d(866f)), maxLines = 1, softWrap = false
@@ -244,7 +263,7 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
             Box(Modifier.offset(d(462f), d(655f)).width(d(430f)).plainClick { c.onCopy(p.bigText) }) {
                 FitText(
                     AnnotatedString(hex),
-                    TextStyle(fontFamily = DisplayFont, fontSize = (118f * u).sp, color = hexColour),
+                    TextStyle(fontFamily = PostFont, fontSize = (118f * u).sp, color = hexColour),
                     Modifier.fillMaxWidth(), minSize = 30.sp
                 )
             }
@@ -315,22 +334,22 @@ private fun DrawScope.glyphStrip(x: Float, y: Float, w: Float, h: Float, colour:
     drawRect(colour, Offset(x, y), Size(w, h), style = Stroke(hair))
     val gy = y + h / 2f
     val s = h * 0.34f
-    var gx = x + h * 0.55f
+    var gx = x + h * 0.45f
     // boot
     drawPath(Path().apply {
         moveTo(gx, gy - s); lineTo(gx, gy + s); lineTo(gx + s * 1.5f, gy + s); lineTo(gx + s * 1.5f, gy + s * 0.2f); lineTo(gx + s * 0.5f, gy + s * 0.2f); lineTo(gx + s * 0.5f, gy - s)
         close()
     }, colour, style = Stroke(hair * 0.9f))
-    gx += s * 2.3f
+    gx += s * 2.1f
     asterisk(Offset(gx + s * 0.6f, gy), s * 0.9f, colour, hair * 0.9f)
-    gx += s * 2.2f
+    gx += s * 2.1f
     drawRoundRect(colour, Offset(gx, gy - s), Size(s * 1.1f, s * 2f), CornerRadius(s * 0.5f), style = Stroke(hair * 0.9f))
-    gx += s * 2.0f
+    gx += s * 1.8f
     drawLine(colour, Offset(gx + s * 0.4f, gy + s), Offset(gx + s * 0.4f, gy - s), hair * 0.9f)
     drawLine(colour, Offset(gx - s * 0.2f, gy - s * 0.3f), Offset(gx + s * 0.4f, gy - s), hair * 0.9f)
     drawLine(colour, Offset(gx + s * 1.0f, gy - s * 0.3f), Offset(gx + s * 0.4f, gy - s), hair * 0.9f)
     // the pill
-    val pw = w * 0.5f
+    val pw = w * 0.40f
     drawRoundRect(colour, Offset(x + w - pw - h * 0.12f, y + h * 0.12f), Size(pw, h * 0.76f), CornerRadius(h * 0.38f), style = Stroke(hair))
 }
 
