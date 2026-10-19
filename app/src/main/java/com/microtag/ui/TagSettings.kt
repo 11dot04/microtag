@@ -72,6 +72,11 @@ class TagSettings(context: Context) {
         get() = sp.getBoolean("haptics", true)
         set(v) = sp.edit { putBoolean("haptics", v) }
 
+    /** "native", "light", "dark" or "system" (see Appearance). */
+    var appearance: String
+        get() = sp.getString("appearance", "native") ?: "native"
+        set(v) = sp.edit { putString("appearance", v) }
+
     /** Give neighbouring dashboard tiles different accents (needs a palette with more than one). */
     var multicolour: Boolean
         get() = sp.getBoolean("multicolour", false)
