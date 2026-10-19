@@ -17,6 +17,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -276,14 +279,54 @@ fun MicroStrip(code: Int, name: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** A tiny ON / OFF readout with a dot (solid when on, a ring when off) for the corner of a tile. */
+/** A tile's state as a bare dot: solid when on, a ring when off. No text, so it can't collide with the subtitle. */
 @Composable
 fun MicroStatus(on: Boolean, color: Color, modifier: Modifier = Modifier) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Canvas(Modifier.size(8.dp).clearAndSetSemantics { }) {
-            if (on) drawCircle(color, size.minDimension / 2.4f)
-            else drawCircle(color, size.minDimension / 2.4f, style = Stroke(1.2.dp.toPx()))
+    Canvas(modifier.size(10.dp).clearAndSetSemantics { }) {
+        val r = size.minDimension / 2.6f
+        if (on) drawCircle(color, r) else drawCircle(color, r, style = Stroke(1.4.dp.toPx()))
+    }
+}
+
+/**
+ * A 24-cell strip for a daily window, one cell per hour, lit across the hours inside [startMin]..[endMin]
+ * (minutes after midnight; the window may cross midnight). Hour marks sit underneath and the current hour is
+ * picked out. Decoration with a job: it shows at a glance when the night pause is in force.
+ */
+@Composable
+fun MicroHoursBar(startMin: Int, endMin: Int, modifier: Modifier = Modifier, nowMin: Int? = null) {
+    val lit = TagColors.AccentText
+    val off = TagColors.Outline
+    val labelPaint = androidx.compose.runtime.remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG) }
+    Canvas(modifier.fillMaxWidth().height(38.dp).clearAndSetSemantics { }) {
+        val cells = 24
+        val gap = 2.dp.toPx()
+        val cell = (size.width - gap * (cells - 1)) / cells
+        val barH = 12.dp.toPx()
+        fun inWindow(minute: Int): Boolean = when {
+            startMin == endMin -> false
+            startMin < endMin -> minute in startMin until endMin
+            else -> minute >= startMin || minute < endMin
         }
-        MicroLabel(if (on) "On" else "Off", color = color)
+        for (h in 0 until cells) {
+            val x = h * (cell + gap)
+            val on = inWindow(h * 60 + 30)
+            drawRect(if (on) lit else off.copy(alpha = 0.28f), Offset(x, 0f), Size(cell, barH))
+        }
+        if (nowMin != null) {
+            val x = (nowMin / 60f) * (cell + gap)
+            drawLine(TagColors.White, Offset(x, -2.dp.toPx()), Offset(x, barH + 2.dp.toPx()), 1.5.dp.toPx())
+        }
+        labelPaint.textSize = 10.sp.toPx()
+        labelPaint.typeface = android.graphics.Typeface.MONOSPACE
+        labelPaint.color = off.toArgb()
+        drawIntoCanvas { c ->
+            for (h in listOf(0, 6, 12, 18)) {
+                labelPaint.textAlign = android.graphics.Paint.Align.LEFT
+                c.nativeCanvas.drawText("%02d".format(h), h * (cell + gap), barH + 15.dp.toPx(), labelPaint)
+            }
+            labelPaint.textAlign = android.graphics.Paint.Align.RIGHT
+            c.nativeCanvas.drawText("24", size.width, barH + 15.dp.toPx(), labelPaint)
+        }
     }
 }
