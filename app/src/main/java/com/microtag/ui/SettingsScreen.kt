@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
@@ -110,6 +111,7 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
 
     SubScreen(onBack, spacing = 10.dp) {
         Spacer(Modifier.height(12.dp))
+        MicroStrip(5, "Settings")
         FitText(
             AnnotatedString("Settings"),
             TextStyle(
@@ -190,19 +192,13 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
 private fun Block(label: String, items: List<Item>) {
     // Each block's switches wear their own accent: permissions the main one, battery the second, look and feel the third.
     val tone = when (label) { "Battery" -> 1; "Look and feel" -> 2; else -> 0 }
-    TileTone(tone) { BlockBody(label, items) }
+    val index = when (label) { "Permissions" -> 1; "Battery" -> 2; "Look and feel" -> 4; "Intro" -> 5; "About" -> 6; else -> null }
+    TileTone(tone) { BlockBody(label, items, index) }
 }
 
 @Composable
-private fun BlockBody(label: String, items: List<Item>) {
-    Text(
-        label.uppercase(),
-        modifier = Modifier.padding(start = 4.dp, top = 8.dp),
-        style = TextStyle(
-            fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-            letterSpacing = 1.2.sp, color = TagColors.AccentText
-        )
-    )
+private fun BlockBody(label: String, items: List<Item>, index: Int?) {
+    MicroHeader(label, Modifier.padding(start = 4.dp, top = 8.dp), index)
     Column(
         Modifier.then(
             if (TagMotion.enabled) Modifier.animateContentSize(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow))
@@ -268,14 +264,7 @@ private fun SettingRow(item: Item, shape: Shape) {
 private fun PalettePicker(selected: String, onPick: (TagPalette) -> Unit) {
     val context = LocalContext.current
     val view = LocalView.current
-    Text(
-        "PALETTE",
-        modifier = Modifier.padding(start = 4.dp, top = 8.dp),
-        style = TextStyle(
-            fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-            letterSpacing = 1.2.sp, color = TagColors.AccentText
-        )
-    )
+    MicroHeader("Palette", Modifier.padding(start = 4.dp, top = 8.dp), 3)
     val state = rememberCarouselState { TagPalettes.All.size }
     HorizontalMultiBrowseCarousel(
         state = state,
@@ -324,6 +313,11 @@ private fun PalettePicker(selected: String, onPick: (TagPalette) -> Unit) {
                         )
                     )
                 }
+                MicroLabel(
+                    "#%06X".format(p.accent.toArgb() and 0xFFFFFF),
+                    modifier = Modifier.padding(start = 6.dp, bottom = 4.dp),
+                    color = p.ink.copy(alpha = 0.55f), wrap = false
+                )
             }
             if (on) {
                 // The chosen palette wears a ring in its own ink.
