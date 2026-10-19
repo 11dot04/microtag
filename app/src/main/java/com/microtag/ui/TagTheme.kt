@@ -34,6 +34,9 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.SideEffect
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -274,27 +277,110 @@ object TagPalettes {
     fun byId(id: String?): TagPalette = All.firstOrNull { it.id == id } ?: Lime
 }
 
+/** How a palette's own light or dark nature is treated. */
+enum class Appearance(val id: String, val label: String) {
+    Native("native", "Original"),     // each palette as designed
+    Light("light", "Light"),          // every palette on a light base
+    Dark("dark", "Dark"),             // every palette on a dark base
+    System("system", "System");       // follow the phone
+
+    fun next(): Appearance = values()[(ordinal + 1) % values().size]
+
+    companion object {
+        fun fromId(id: String?): Appearance = values().firstOrNull { it.id == id } ?: Native
+    }
+}
+
+private fun contrastRatio(a: Color, b: Color): Float {
+    val la = a.luminance()
+    val lb = b.luminance()
+    return (maxOf(la, lb) + 0.05f) / (minOf(la, lb) + 0.05f)
+}
+
+/** Nudges [c] toward black or white (whichever helps) until it has at least [min]:1 against [against]. */
+private fun fitContrast(c: Color, against: Color, min: Float): Color {
+    if (contrastRatio(c, against) >= min) return c
+    val target = if (against.luminance() > 0.5f) Color.Black else Color.White
+    var out = c
+    for (i in 1..14) {
+        out = lerp(c, target, i * 0.07f)
+        if (contrastRatio(out, against) >= min) break
+    }
+    return out
+}
+
+/**
+ * The opposite-brightness version of a palette: base and ink trade places (a cream-and-teal palette becomes
+ * deep teal-black with cream ink), and every accent is nudged until it still reads on its new base. Fonts,
+ * name and id are kept, so a serif palette stays serif in the dark.
+ */
+fun TagPalette.inverted(): TagPalette {
+    val newBase = ink
+    val newInk = base
+    val dark = if (newBase.luminance() < newInk.luminance()) newBase else newInk
+    val light = if (dark == newBase) newInk else newBase
+    val newAccent = fitContrast(accent, newBase, 4.5f)
+    return copy(
+        base = newBase,
+        ink = newInk,
+        accent = newAccent,
+        onAccent = if (contrastRatio(newAccent, dark) >= contrastRatio(newAccent, light)) dark else light,
+        accentText = fitContrast(accentText, newBase, 4.5f),
+        surface = lerp(newBase, newInk, 0.06f),
+        pausedPoster = lerp(newBase, newInk, 0.09f),
+        outline = lerp(newBase, newInk, 0.55f),
+        dim = lerp(newBase, newInk, 0.40f),
+        signal = fitContrast(signal, newBase, 3f),
+        secondary = secondary?.let { fitContrast(it, newBase, 3f) },
+        tertiary = tertiary?.let { fitContrast(it, newBase, 3f) },
+        extras = extras.map { fitContrast(it, newBase, 2f) },
+        paper = light,
+        paperInk = dark
+    )
+}
+
+/** What a palette looks like under the current Appearance setting. */
+fun TagPalettes.resolve(p: TagPalette, appearance: Appearance, systemDark: Boolean): TagPalette {
+    val wantDark = when (appearance) {
+        Appearance.Native -> return p
+        Appearance.Light -> false
+        Appearance.Dark -> true
+        Appearance.System -> systemDark
+    }
+    return if (wantDark == !p.isLight) p else p.inverted()
+}
+
+private class SysTones(val a200: Color, val a700: Color, val b200: Color, val b700: Color, val c200: Color, val c700: Color)
+
 object TagColors {
-    private var palette by mutableStateOf(TagPalettes.Lime)
-    private var accentOverride by mutableStateOf<Color?>(null)
-    private var secondaryOverride by mutableStateOf<Color?>(null)
-    private var tertiaryOverride by mutableStateOf<Color?>(null)
+    private var basePalette by mutableStateOf(TagPalettes.Lime)
+    private var appearance by mutableStateOf(Appearance.Native)
+    private var systemDark by mutableStateOf(true)
+    // Cached until the palette, the appearance or the phone's mode changes.
+    private val resolved by derivedStateOf { TagPalettes.resolve(basePalette, appearance, systemDark) }
+    private val palette: TagPalette get() = resolved
+    private var sys by mutableStateOf<SysTones?>(null)
     private var materialYouOn = false
     private var multicolourOn by mutableStateOf(false)
 
+    // Material You's three accents: the light tones (200) suit dark bases, the dark tones (700) light bases.
+    private val sysAccent: Color? get() = sys?.let { if (palette.isLight) it.a700 else it.a200 }
+    private val sysSecondary: Color? get() = sys?.let { if (palette.isLight) it.b700 else it.b200 }
+    private val sysTertiary: Color? get() = sys?.let { if (palette.isLight) it.c700 else it.c200 }
+
     /** The accent. The palette's own, or the system accent when Material You is on. */
-    val Lime: Color get() = accentOverride ?: palette.accent
+    val Lime: Color get() = sysAccent ?: palette.accent
     val Accent: Color get() = Lime
 
     /** Whatever reads on top of the accent. */
     val OnLime: Color
-        get() = accentOverride?.let { if (it.luminance() > 0.4f) Color(0xFF000000) else Color(0xFFF6F6F6) } ?: palette.onAccent
+        get() = sysAccent?.let { if (it.luminance() > 0.4f) Color(0xFF000000) else Color(0xFFF6F6F6) } ?: palette.onAccent
 
     /** Second and third accents. Fall back to the primary when a palette has none. */
-    val Secondary: Color get() = secondaryOverride ?: palette.secondary ?: Lime
-    val Tertiary: Color get() = tertiaryOverride ?: palette.tertiary ?: Lime
+    val Secondary: Color get() = sysSecondary ?: palette.secondary ?: Lime
+    val Tertiary: Color get() = sysTertiary ?: palette.tertiary ?: Lime
     /** True when this palette (or Material You) really has more than one accent to hand out. */
-    val HasTones: Boolean get() = secondaryOverride != null || palette.secondary != null
+    val HasTones: Boolean get() = sys != null || palette.secondary != null
 
     /** The "Multicolour tiles" setting. Off by default: one accent carries the layout, the others punctuate. */
     val Multicolour: Boolean get() = multicolourOn
@@ -330,7 +416,7 @@ object TagColors {
     fun series(i: Int, alpha: Float = 1f): Color = if (HasTones) tone(i % 3) else Lime.copy(alpha = alpha)
 
     /** The accent as small text on the base. */
-    val AccentText: Color get() = accentOverride ?: palette.accentText
+    val AccentText: Color get() = sysAccent ?: palette.accentText
 
     val Black: Color get() = palette.base     // the base: page, off tiles, plates
     val White: Color get() = palette.ink      // ink: text, always-on tiles
@@ -348,30 +434,38 @@ object TagColors {
         get() = if (palette.signal.luminance() > 0.4f) Color(0xFF14110F) else Color(0xFFF6F6F6)
     val Extras: List<Color> get() = palette.supporting
     val Name: String get() = palette.name
+    /** res/font base names of this palette's display and mono faces, or null for Montserrat. */
+    val DisplayBase: String? get() = palette.display
+    val MonoBase: String? get() = palette.mono
     val Paper: Color get() = palette.paper
     val PaperInk: Color get() = palette.paperInk
     val IsLight: Boolean get() = palette.isLight
     val Id: String get() = palette.id
 
     fun usePalette(context: Context, id: String, materialYou: Boolean = materialYouOn) {
-        val p = TagPalettes.byId(id)
-        palette = p
+        basePalette = TagPalettes.byId(id)
         materialYouOn = materialYou
-        if (materialYou && Build.VERSION.SDK_INT >= 31) {
-            // The system gives three accents, and so do we. Light palettes need the darker tones to stay readable.
-            val light = p.isLight
-            accentOverride = Color(context.getColor(if (light) android.R.color.system_accent1_700 else android.R.color.system_accent1_200))
-            secondaryOverride = Color(context.getColor(if (light) android.R.color.system_accent2_700 else android.R.color.system_accent2_200))
-            tertiaryOverride = Color(context.getColor(if (light) android.R.color.system_accent3_700 else android.R.color.system_accent3_200))
-        } else {
-            accentOverride = null
-            secondaryOverride = null
-            tertiaryOverride = null
-        }
-        TagFonts.apply(context, p)
+        sys = if (materialYou && Build.VERSION.SDK_INT >= 31) {
+            SysTones(
+                Color(context.getColor(android.R.color.system_accent1_200)), Color(context.getColor(android.R.color.system_accent1_700)),
+                Color(context.getColor(android.R.color.system_accent2_200)), Color(context.getColor(android.R.color.system_accent2_700)),
+                Color(context.getColor(android.R.color.system_accent3_200)), Color(context.getColor(android.R.color.system_accent3_700))
+            )
+        } else null
+        TagFonts.apply(context, basePalette)
     }
 
-    fun useMaterialYou(context: Context, enabled: Boolean) = usePalette(context, palette.id, enabled)
+    fun useMaterialYou(context: Context, enabled: Boolean) = usePalette(context, basePalette.id, enabled)
+
+    /** Original, Light, Dark or System (see [Appearance]). */
+    fun useAppearance(id: String) { appearance = Appearance.fromId(id) }
+    val AppearanceId: String get() = appearance.id
+
+    /** Fed by TagTheme from the phone's own dark mode. */
+    fun setSystemDark(dark: Boolean) { if (systemDark != dark) systemDark = dark }
+
+    /** A palette as it would look right now, for previews (the palette picker). */
+    fun preview(p: TagPalette): TagPalette = TagPalettes.resolve(p, appearance, systemDark)
 }
 
 /** Global motion and haptics switches, driven from Settings. */
@@ -421,6 +515,17 @@ object TagFonts {
         val customMono = p.mono?.let { family(context, it) }
         monoFamily = customMono ?: Montserrat
         dataFamily = customMono ?: FontFamily.Monospace
+    }
+
+    /** A native Typeface from res/font for canvas drawing (the shared card): the first of [weights] that exists. */
+    fun typeface(context: Context, base: String?, weights: List<String> = listOf("black", "bold", "regular", "")): android.graphics.Typeface? {
+        if (base == null) return null
+        for (w in weights) {
+            val name = if (w.isEmpty()) base else "${base}_$w"
+            val id = context.resources.getIdentifier(name, "font", context.packageName)
+            if (id != 0) return androidx.core.content.res.ResourcesCompat.getFont(context, id)
+        }
+        return null
     }
 
     fun family(context: Context, base: String): ComposeFontFamily? {
@@ -510,6 +615,8 @@ fun TagLabel(
 
 @Composable
 fun TagTheme(content: @Composable () -> Unit) {
+    val systemDark = isSystemInDarkTheme()
+    SideEffect { TagColors.setSystemDark(systemDark) }
     // No dynamic colour of its own: the palette is the identity (Material You is an accent override).
     val scheme = if (TagColors.IsLight) {
         lightColorScheme(
