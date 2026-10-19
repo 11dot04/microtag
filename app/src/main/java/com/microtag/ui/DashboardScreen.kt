@@ -461,7 +461,7 @@ internal fun PermissionBanner(perms: Permissions) {
 private fun BigTile(modifier: Modifier, icon: Int, title: String, sub: String, t: PrefToggle) {
     TagTile(modifier, TagShapes.Big, t.state, t::toggle) { fg ->
         TagIcon(icon, fg, Modifier.align(Alignment.TopStart).padding(20.dp), 32.dp)
-        MicroStatus(t.on, fg.copy(alpha = 0.7f), Modifier.align(Alignment.BottomStart).padding(start = 22.dp, bottom = 24.dp))
+        MicroStatus(t.on, fg.copy(alpha = 0.7f), Modifier.align(Alignment.BottomStart).padding(start = 22.dp, bottom = 26.dp))
         BigLabel(title, sub, fg, Modifier.align(Alignment.BottomEnd).padding(20.dp))
     }
 }
@@ -592,7 +592,7 @@ private fun StravaTile(
         val face = if (t.on) TagColors.tone(LocalTileTone.current) else TagColors.Black
         if (!open) {
             TagIcon(R.drawable.ic_strava, fg, Modifier.align(Alignment.TopStart).padding(20.dp), 32.dp)
-            MicroStatus(t.on, fg.copy(alpha = 0.7f), Modifier.align(Alignment.BottomStart).padding(start = 22.dp, bottom = 24.dp))
+            MicroStatus(t.on, fg.copy(alpha = 0.7f), Modifier.align(Alignment.BottomStart).padding(start = 22.dp, bottom = 26.dp))
             BigLabel("Strava", "WORKOUTS", fg, Modifier.align(Alignment.BottomEnd).padding(20.dp))
         } else {
             // Heading and chevron share one row, and the chips split whatever height is left,
