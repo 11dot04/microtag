@@ -60,11 +60,13 @@ fun PinScreen(onBack: () -> Unit) {
 
     SubScreen(onBack, spacing = 10.dp) {
         Spacer(Modifier.height(12.dp))
+        MicroStrip(6, "Pin")
         FitText(
             AnnotatedString("Pin"),
             TextStyle(
-                fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 56.sp,
-                lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White
+                fontFamily = TagFonts.display, fontWeight = FontWeight.Black, fontSize = 56.sp,
+                lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White,
+                fontSynthesis = TagFonts.NoSynthesis
             ),
             Modifier.fillMaxWidth()
         )
@@ -74,7 +76,7 @@ fun PinScreen(onBack: () -> Unit) {
         )
         Spacer(Modifier.height(6.dp))
 
-        SectionLabel("Pinned now")
+        SectionLabel("Pinned now", 1)
         if (pins.isEmpty()) {
             Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(TagColors.Surface).padding(18.dp)) {
                 Text(
@@ -94,7 +96,7 @@ fun PinScreen(onBack: () -> Unit) {
             }
         }
 
-        SectionLabel("Settings")
+        SectionLabel("Settings", 2)
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(TagColors.Surface).padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -131,12 +133,8 @@ fun PinScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text.uppercase(),
-        modifier = Modifier.padding(start = 4.dp, top = 8.dp),
-        style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.2.sp, color = TagColors.Lime)
-    )
+private fun SectionLabel(text: String, index: Int? = null) {
+    MicroHeader(text, Modifier.padding(start = 4.dp, top = 8.dp), index)
 }
 
 @Composable
