@@ -355,9 +355,9 @@ private class SysTones(val a200: Color, val a700: Color, val b200: Color, val b7
 object TagColors {
     private var basePalette by mutableStateOf(TagPalettes.Lime)
     private var appearance by mutableStateOf(Appearance.Native)
-    private var systemDark by mutableStateOf(true)
+    private var _systemDark by mutableStateOf(true)
     // Cached until the palette, the appearance or the phone's mode changes.
-    private val resolved by derivedStateOf { TagPalettes.resolve(basePalette, appearance, systemDark) }
+    private val resolved by derivedStateOf { TagPalettes.resolve(basePalette, appearance, _systemDark) }
     private val palette: TagPalette get() = resolved
     private var sys by mutableStateOf<SysTones?>(null)
     private var materialYouOn = false
@@ -462,10 +462,10 @@ object TagColors {
     val AppearanceId: String get() = appearance.id
 
     /** Fed by TagTheme from the phone's own dark mode. */
-    fun setSystemDark(dark: Boolean) { if (systemDark != dark) systemDark = dark }
+    fun setSystemDark(dark: Boolean) { if (_systemDark != dark) _systemDark = dark }
 
     /** A palette as it would look right now, for previews (the palette picker). */
-    fun preview(p: TagPalette): TagPalette = TagPalettes.resolve(p, appearance, systemDark)
+    fun preview(p: TagPalette): TagPalette = TagPalettes.resolve(p, appearance, _systemDark)
 }
 
 /** Global motion and haptics switches, driven from Settings. */
