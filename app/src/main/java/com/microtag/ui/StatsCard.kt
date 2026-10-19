@@ -76,15 +76,17 @@ object StatsCard {
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(bitmap)
 
+        // Everything comes from the active palette: its base, ink and accent, and its display face when it has one.
         val accent = TagColors.Lime.toArgb()
-        val black = 0xFF000000.toInt()
-        val white = 0xFFF6F6F6.toInt()
-        val grey = 0xFFC3C9D4.toInt()
-        val faint = 0x44F6F6F6
+        val black = TagColors.Black.toArgb()      // the base colour (cream on a light palette)
+        val white = TagColors.White.toArgb()      // the ink
+        val grey = TagColors.Outline.toArgb()
+        val faint = TagColors.White.copy(alpha = 0.27f).toArgb()
 
-        val heavy = ResourcesCompat.getFont(context, R.font.montserrat_black)
+        val heavy = TagFonts.typeface(context, TagColors.DisplayBase) ?: ResourcesCompat.getFont(context, R.font.montserrat_black)
         val bold = ResourcesCompat.getFont(context, R.font.montserrat_bold)
         val medium = ResourcesCompat.getFont(context, R.font.montserrat_medium)
+        val mono = TagFonts.typeface(context, TagColors.MonoBase, listOf("medium", "regular", "")) ?: Typeface.MONOSPACE
 
         fun paint(color: Int, size: Float, face: Typeface?, spacingEm: Float = 0f) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color
@@ -94,6 +96,16 @@ object StatsCard {
         }
 
         c.drawColor(black)
+
+        // registration crosses in the four corners, like the rest of the app
+        val crossPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = grey; strokeWidth = 3f }
+        fun cross(x: Float, y: Float, r: Float = 14f) {
+            c.drawLine(x - r, y, x + r, y, crossPaint)
+            c.drawLine(x, y - r, x, y + r, crossPaint)
+        }
+        cross(36f, 36f); cross(w - 36f, 36f); cross(36f, h - 36f); cross(w - 36f, h - 36f)
+        val annotation = paint(grey, 26f, mono, 0.08f).apply { textAlign = Paint.Align.RIGHT }
+        c.drawText("TAG / STATS", w - 72f, 120f, annotation)
 
         // wordmark, in the accent
         ContextCompat.getDrawable(context, R.drawable.ic_tag_wordmark)?.mutate()?.let {
