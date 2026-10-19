@@ -8,8 +8,6 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <!-- Bluetooth chips: device name and battery of connecting accessories -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.RECEIVE_SENSITIVE_NOTIFICATIONS"
-        tools:ignore="ProtectedPermissions" />
 
     <queries>
         <intent>
