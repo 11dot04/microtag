@@ -74,26 +74,6 @@ import kotlin.math.sin
 //   - without a photo the same layout runs with a ghosted monogram where the photo would be
 // ==========================================================
 
-/** "Swiss mathematician (1707–1783)" -> kicker "Swiss mathematician", years "1707–1783". Years only when they exist. */
-internal fun splitYears(desc: String): Pair<String, String> {
-    Regex("""\s*\((?:born\s+|b\.\s*)?(\d{3,4})(?:\s*[–-]\s*(\d{3,4}|present))?\)""", RegexOption.IGNORE_CASE).find(desc)?.let { m ->
-        val years = m.groupValues[1] + if (m.groupValues[2].isNotEmpty()) "–" + m.groupValues[2] else ""
-        return desc.removeRange(m.range).trim() to years
-    }
-    Regex("""^(\d{4})\s+(.+)$""").find(desc)?.let { return it.groupValues[2] to it.groupValues[1] }
-    return desc to ""
-}
-
-private val danglers = setOf("in", "of", "the", "a", "an", "and", "for", "to", "on", "at", "by", "from", "with")
-
-/** "Swiss mathematician and physicist" -> "Swiss mathematician"; "Hill station in India" stays whole. At most four words, never ending on a joining word. */
-internal fun shortKicker(desc: String): String {
-    val first = desc.split(Regex("""\s*(?:,|;|\s[–—-]\s|\s+and\s+|\s+who\s+|\s+that\s+)""")).first().trim()
-    val ws = first.split(' ').filter { it.isNotEmpty() }.take(4).toMutableList()
-    while (ws.size > 1 && ws.last().lowercase() in danglers) ws.removeAt(ws.size - 1)
-    return ws.joinToString(" ")
-}
-
 /** Line height for the title block: tighter the more lines there are. */
 internal fun leadFor(lines: Int): Float = when {
     lines <= 2 -> 0.98f
@@ -108,25 +88,6 @@ internal fun cleanBlurb(title: String, body: String, person: Boolean): String {
     Regex("""\s*\([^()]*\d{3,4}[^()]*\)""").find(t)?.let { if (it.range.first < 120) t = t.removeRange(it.range) }
     if (person && t.startsWith(title) && t.length > title.length) t = WikiPill.surname(title) + t.substring(title.length)
     return t
-}
-
-/** The staggered pair: ("1707", "–1783") for years, ("48.86° N", "2.35° E") for places, or null. */
-internal fun staggerOf(years: String, fact: String): Pair<String, String>? {
-    if (years.isNotBlank()) {
-        val parts = years.split('–')
-        val a = parts[0]
-        val b = parts.getOrNull(1).orEmpty()
-        return a to when {
-            b.isBlank() -> ""
-            b.equals("present", true) -> "–NOW"
-            else -> "–$b"
-        }
-    }
-    if (fact.contains('|')) {
-        val f = fact.split('|')
-        return f[0] to f.getOrElse(1) { "" }
-    }
-    return null
 }
 
 private class Duo(val hue: Float) {
@@ -186,11 +147,12 @@ private fun DrawScope.photoStrip(img: ImageBitmap, left: Float, top: Float, visW
     if (ia > target) { ch = img.height; cw = (img.height * target).toInt() } else { cw = img.width; ch = (img.width / target).toInt() }
     val ox = (img.width - cw) / 2
     val oy = ((img.height - ch) * 0.1f).toInt()
-    val mainSrcW = (cw * visW / totW).toInt().coerceIn(1, cw - 1)
+    val mainSrcW = if (totW - visW < 1f) cw else (cw * visW / totW).toInt().coerceIn(1, cw - 1)
     drawImage(
         img, IntOffset(ox, oy), IntSize(mainSrcW, ch),
         IntOffset(left.roundToInt(), top.roundToInt()), IntSize(visW.roundToInt(), h.roundToInt()), colorFilter = filter
     )
+    if (totW - visW < 1f) return   // full width: no seam to draw
     drawImage(
         img, IntOffset(ox + mainSrcW, oy), IntSize(cw - mainSrcW, ch),
         IntOffset(0, top.roundToInt()), IntSize((totW - visW).roundToInt().coerceAtLeast(1), h.roundToInt()), colorFilter = filter
@@ -242,8 +204,16 @@ private fun Poster(c: CardCtx) {
 
         val bandTop = fy(0.346f)
         val bandH = fy(0.484f)
-        val bandLeft = fx(0.45f)
-        val bandTotal = fx(0.635f)
+        // The photo keeps its own shape. A portrait or square photo bleeds off the right edge and comes back as a seam
+        // on the left; a landscape one runs the full width as one piece. Never cropped to a portrait frame.
+        val natural: Dp? = photo?.let { bandH * (it.width.toFloat() / it.height) }
+        val fullWidth = natural != null && natural >= w * 0.9f
+        val bandLeft = if (fullWidth) 0.dp else fx(0.45f)
+        val bandTotal = when {
+            natural == null -> fx(0.635f)
+            fullWidth -> w
+            else -> maxOf(natural, fx(0.635f))
+        }
 
         // The name and what it is: one block, one size.
         val baseStyle = sans(1f, FontWeight.Normal, Color.White, 0.4f)
