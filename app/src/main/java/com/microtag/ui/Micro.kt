@@ -1,8 +1,16 @@
 package com.microtag.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -196,11 +204,14 @@ fun MicroLabel(
     modifier: Modifier = Modifier,
     color: Color = TagColors.Outline,
     bold: Boolean = false,
-    size: Int = 10
+    size: Int = 10,
+    wrap: Boolean = true
 ) {
     Text(
         text.uppercase(),
         modifier = modifier.clearAndSetSemantics { },
+        softWrap = wrap,
+        maxLines = if (wrap) Int.MAX_VALUE else 1,
         style = TextStyle(
             fontFamily = TagFonts.data,
             fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium,
@@ -210,4 +221,69 @@ fun MicroLabel(
             color = color
         )
     )
+}
+
+/**
+ * A section heading in the micrographic style: an optional two-digit index, the label, then a hairline
+ * that runs out to the edge and ends in a registration cross. The label stays readable text; the index
+ * and the rule are decoration.
+ */
+@Composable
+fun MicroHeader(label: String, modifier: Modifier = Modifier, index: Int? = null, color: Color = TagColors.AccentText) {
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        if (index != null) {
+            Text(
+                "%02d".format(index),
+                modifier = Modifier.clearAndSetSemantics { },
+                style = TextStyle(
+                    fontFamily = TagFonts.data, fontWeight = FontWeight.Medium, fontSize = 10.sp,
+                    letterSpacing = 0.6.sp, color = TagColors.Outline
+                )
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(
+            label.uppercase(),
+            style = TextStyle(
+                fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                letterSpacing = 1.2.sp, color = color
+            )
+        )
+        Spacer(Modifier.width(10.dp))
+        Canvas(Modifier.weight(1f).height(10.dp).clearAndSetSemantics { }) {
+            val y = size.height / 2f
+            val tail = 9.dp.toPx()
+            drawLine(TagColors.Outline.copy(alpha = 0.45f), Offset(0f, y), Offset(size.width - tail, y), 1.dp.toPx())
+            microGlyph(Micro.Cross, Offset(size.width - tail / 2f, y), 7.dp.toPx(), TagColors.Outline)
+        }
+    }
+}
+
+/** The line above a screen title: a cross, "TAG / NAME" on the left, the screen's number on the right. */
+@Composable
+fun MicroStrip(code: Int, name: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        MicroGlyph(Micro.Cross, size = 10.dp)
+        MicroLabel("TAG / $name")
+        Canvas(Modifier.weight(1f).height(1.dp).clearAndSetSemantics { }) {
+            drawLine(TagColors.Outline.copy(alpha = 0.3f), Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx())
+        }
+        MicroLabel("—" + code.toString().padStart(2, '0'), color = TagColors.White, bold = true)
+    }
+}
+
+/** A tiny ON / OFF readout with a dot (solid when on, a ring when off) for the corner of a tile. */
+@Composable
+fun MicroStatus(on: Boolean, color: Color, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Canvas(Modifier.size(8.dp).clearAndSetSemantics { }) {
+            if (on) drawCircle(color, size.minDimension / 2.4f)
+            else drawCircle(color, size.minDimension / 2.4f, style = Stroke(1.2.dp.toPx()))
+        }
+        MicroLabel(if (on) "On" else "Off", color = color)
+    }
 }
