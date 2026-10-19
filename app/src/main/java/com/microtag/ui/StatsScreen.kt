@@ -175,6 +175,7 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
         }
     ) {
         Spacer(Modifier.height(12.dp))
+        MicroStrip(2, "Stats")
         FitText(
             AnnotatedString("Interceptions"),
             TextStyle(
@@ -237,7 +238,7 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             }
         }
 
-        SectionLabel("WEEK AT A GLANCE")
+        SectionLabel("WEEK AT A GLANCE", 1)
         Text(
             "Tap a row to look at just that day.",
             style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = TagColors.Outline)
@@ -247,7 +248,7 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             selected = setOf(day)
         }
 
-        SectionLabel("TIME OF DAY")
+        SectionLabel("TIME OF DAY", 2)
         TimeOfDay(values)
 
         ByType(scoped)
@@ -483,15 +484,8 @@ private fun StatTile(caption: String, value: String, sub: String?, shape: Shape,
 }
 
 @Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text,
-        modifier = Modifier.padding(top = 8.dp),
-        style = TextStyle(
-            fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-            letterSpacing = 1.2.sp, color = TagColors.AccentText
-        )
-    )
+private fun SectionLabel(text: String, index: Int? = null) {
+    MicroHeader(text, Modifier.padding(top = 8.dp), index)
 }
 
 @Composable
@@ -605,7 +599,7 @@ private fun ByType(sessions: List<Session>) {
     if (rows.isEmpty()) return
     val maxN = rows.maxOf { it.second }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SectionLabel("BY TYPE")
+        SectionLabel("BY TYPE", 3)
         rows.forEach { (path, n) ->
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -640,7 +634,7 @@ private fun Sources(rows: List<Pair<String, Int>>) {
     }
     val maxN = rows.maxOf { it.second }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SectionLabel("TOP SOURCES")
+        SectionLabel("TOP SOURCES", 4)
         Text(
             "One notification is one interception, however many times it updates.",
             style = TextStyle(
