@@ -59,7 +59,9 @@ private class Item(
     val onChange: (Boolean) -> Unit = {},
     val onClick: (() -> Unit)? = null,
     /** Shown in accent at the end of an action row instead of the chevron (a time, a choice). */
-    val value: String? = null
+    val value: String? = null,
+    /** Draw the value in the quiet outline colour instead of the accent (e.g. "Missing"). */
+    val valueMuted: Boolean = false
 )
 
 
@@ -99,6 +101,7 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
     var palette by remember { mutableStateOf(settings.palette) }
     var materialYou by remember { mutableStateOf(settings.materialYou) }
     var multicolour by remember { mutableStateOf(settings.multicolour) }
+    var appearance by remember { mutableStateOf(settings.appearance) }
     var reducedMotion by remember { mutableStateOf(settings.reducedMotion) }
     var haptics by remember { mutableStateOf(settings.haptics) }
     var nightPause by remember { mutableStateOf(settings.nightPause) }
@@ -129,8 +132,22 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
                 Item("Notification listener", "Lets TAG see notifications. Opens system settings.", perms.hasListener, { perms.openListenerSettings() }),
                 Item("Post notifications", "Lets TAG show its chips.", perms.hasNotif, { perms.requestNotifications() }),
                 Item("Calendar", "For the events countdown.", perms.hasCalendar, { perms.requestCalendar() }),
+                Item("Nearby devices", "Lets the Bluetooth chip read a device's name.", perms.hasNearby, { perms.requestNearby() }),
                 Item("Shizuku", "Optional. Clipboard access in the background.", perms.hasShizuku, { perms.requestShizuku() })
-            )
+            ) + if (sensitiveNotificationsApply()) listOf(
+                // State only, no switch: it is granted through Shizuku (or adb), not from this screen.
+                Item(
+                    "Read sensitive notifications",
+                    when {
+                        perms.hasSensitive -> "Granted through Shizuku. OTP codes are readable."
+                        perms.hasShizuku -> "Not granted yet. Tap to copy the command that grants it."
+                        else -> "Needs Shizuku. Grant Shizuku first, then tap here."
+                    },
+                    onClick = { if (perms.hasShizuku || perms.hasSensitive) perms.copySensitiveCommand() else perms.requestShizuku() },
+                    value = if (perms.hasSensitive) "Granted" else "Missing",
+                    valueMuted = !perms.hasSensitive
+                )
+            ) else emptyList()
         )
         Block(
             "Battery",
@@ -153,6 +170,12 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
                 }))
             }
         )
+        if (nightPause) {
+            MicroHoursBar(
+                nightStart, nightEnd, Modifier.padding(horizontal = 4.dp),
+                nowMin = remember { Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) } }
+            )
+        }
         PalettePicker(selected = palette) { p ->
             palette = p.id
             settings.palette = p.id
@@ -166,6 +189,16 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
                     settings.materialYou = it
                     TagColors.useMaterialYou(context, it)
                 }),
+                Item(
+                    "Appearance", "Every palette, on a light or dark base. Tap to change.",
+                    onClick = {
+                        val next = Appearance.fromId(appearance).next()
+                        appearance = next.id
+                        settings.appearance = next.id
+                        TagColors.useAppearance(next.id)
+                    },
+                    value = Appearance.fromId(appearance).label
+                ),
                 Item("Multicolour tiles", "Give neighbouring tiles different accents. Needs a palette with more than one.", multicolour, {
                     multicolour = it
                     settings.multicolour = it
@@ -247,7 +280,10 @@ private fun SettingRow(item: Item, shape: Shape) {
             item.checked != null -> TagSwitch(checked = item.checked, onChange = item.onChange)
             item.onClick != null && item.value != null -> Text(
                 item.value,
-                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 17.sp, color = TagColors.Lime)
+                style = TextStyle(
+                    fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 17.sp,
+                    color = if (item.valueMuted) TagColors.Outline else TagColors.AccentText
+                )
             )
             item.onClick != null -> TagIcon(R.drawable.ic_chevron_right, TagColors.White, size = 24.dp)
         }
@@ -273,7 +309,7 @@ private fun PalettePicker(selected: String, onPick: (TagPalette) -> Unit) {
         itemSpacing = 6.dp,
         contentPadding = PaddingValues(0.dp)
     ) { i ->
-        val p = TagPalettes.All[i]
+        val p = TagColors.preview(TagPalettes.All[i])
         val on = p.id == selected
         val display = remember(p.id) { p.display?.let { TagFonts.family(context, it) } ?: Montserrat }
         val corner = RoundedCornerShape(28.dp)
