@@ -103,9 +103,11 @@ object StatsCard {
             c.drawLine(x - r, y, x + r, y, crossPaint)
             c.drawLine(x, y - r, x, y + r, crossPaint)
         }
-        cross(36f, 36f); cross(w - 36f, 36f); cross(36f, h - 36f); cross(w - 36f, h - 36f)
-        val annotation = paint(grey, 26f, mono, 0.08f).apply { textAlign = Paint.Align.RIGHT }
-        c.drawText("TAG / STATS", w - 72f, 120f, annotation)
+        if (TagColors.MicroOn) {
+            cross(36f, 36f); cross(w - 36f, 36f); cross(36f, h - 36f); cross(w - 36f, h - 36f)
+            val annotation = paint(grey, 26f, mono, 0.08f).apply { textAlign = Paint.Align.RIGHT }
+            c.drawText("TAG / STATS", w - 72f, 120f, annotation)
+        }
 
         // wordmark, in the accent
         ContextCompat.getDrawable(context, R.drawable.ic_tag_wordmark)?.mutate()?.let {
