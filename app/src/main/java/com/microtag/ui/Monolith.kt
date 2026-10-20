@@ -190,7 +190,7 @@ fun MonolithPoster(
             numeralGeo(typeface, count, wPx, posterPx, margin, bottomMargin, controlsBottom)
         }
 
-        PosterArt(geo, hourly, paused, active, margin, Modifier.fillMaxSize())
+        if (TagColors.MicroOn) PosterArt(geo, hourly, paused, active, margin, Modifier.fillMaxSize())
 
         // The annotation column, to the right of the numeral and level with its far end.
         // The hour ruler is a slim strip on the right edge (ticks reach 24dp, labels sit left of them).
@@ -198,7 +198,13 @@ fun MonolithPoster(
         val metaX = geo.x0 + with(density) { 16.dp.toPx() }
         val metaTop = geo.y0 - geo.length
         val metaWidth = with(density) { (axisX - with(density) { 30.dp.toPx() } - metaX).coerceAtLeast(60f).toDp() }
-        Column(
+        if (!TagColors.MicroOn) {
+            // Micrographics off: one plain caption in place of the annotation column.
+            Column(Modifier.offset { IntOffset(metaX.roundToInt(), metaTop.roundToInt()) }.width(metaWidth)) {
+                Text("INTERCEPTIONS", style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.sp, color = ink))
+                Text("so far", style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = TagColors.Outline))
+            }
+        } else Column(
             Modifier
                 .offset { IntOffset(metaX.roundToInt(), metaTop.roundToInt()) }
                 .width(metaWidth),
@@ -216,15 +222,16 @@ fun MonolithPoster(
             Spacer(Modifier.height(8.dp))
             MicroLabel("( $date )", color = TagColors.Outline, wrap = false)
             MicroLabel("V$versionName", color = TagColors.Outline)
+            MicroLabel("傍受", color = TagColors.White)
             if (paused) {
                 Spacer(Modifier.height(6.dp))
                 MicroLabel("Paused", color = TagColors.Lime, bold = true)
             }
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                MicroGlyph(Micro.Asterisk, size = 14.dp, color = TagColors.Outline)
+                PixelGlyph(Pixel.Bell, size = 14.dp, color = TagColors.Outline)
                 MicroGlyph(Micro.Slashes, size = 14.dp, color = TagColors.Outline)
-                MicroGlyph(Micro.DotGrid, size = 14.dp, color = TagColors.Outline)
+                PixelGlyph(Pixel.Bolt, size = 14.dp, color = TagColors.Outline)
             }
         }
 
