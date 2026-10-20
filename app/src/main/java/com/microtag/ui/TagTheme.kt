@@ -418,13 +418,14 @@ private fun baselineLight(dark: TagPalette) = dark.copy(
 object TagColors {
     private var basePalette by mutableStateOf(TagPalettes.Lime)
     private var appearance by mutableStateOf(Appearance.Native)
-    private var systemDark by mutableStateOf(true)
-    private var amoledOn by mutableStateOf(false)
-    private var microOn by mutableStateOf(true)
+    private var _systemDark by mutableStateOf(true)
+    private var _amoledOn by mutableStateOf(false)
+    private var _microOn by mutableStateOf(true)
+    
     // The Material palette's real colours (light, dark); baseline until the system's are read.
     private var materialLight by mutableStateOf(baselineLight(TagPalettes.Material))
     private var materialDark by mutableStateOf(TagPalettes.Material)
-    private var multicolourOn by mutableStateOf(false)
+    private var _multicolourOn by mutableStateOf(false)
 
     private fun resolve(p: TagPalette, a: Appearance, sysDark: Boolean): TagPalette {
         val base = if (p.id == "material") {
@@ -432,11 +433,11 @@ object TagColors {
             val dark = when (a) { Appearance.Light -> false; Appearance.Dark -> true; else -> sysDark }
             if (dark) materialDark else materialLight
         } else TagPalettes.resolve(p, a, sysDark)
-        return if (amoledOn) base.amoled() else base
+        return if (_amoledOn) base.amoled() else base
     }
 
     // Cached until the palette, the appearance, the AMOLED switch or the phone's mode changes.
-    private val resolved by derivedStateOf { resolve(basePalette, appearance, systemDark) }
+    private val resolved by derivedStateOf { resolve(basePalette, appearance, _systemDark) }
     private val palette: TagPalette get() = resolved
 
     /** The accent. */
@@ -453,19 +454,19 @@ object TagColors {
     val HasTones: Boolean get() = palette.secondary != null
 
     /** The "Micrographics" setting: tiny marks, rules and annotations. Everything decorative checks this. */
-    val MicroOn: Boolean get() = microOn
-    fun useMicro(on: Boolean) { microOn = on }
+    val MicroOn: Boolean get() = _microOn
+    fun useMicro(on: Boolean) { _microOn = on }
 
     /** Pure black on dark palettes. */
-    val AmoledOn: Boolean get() = amoledOn
-    fun useAmoled(on: Boolean) { amoledOn = on }
+    val AmoledOn: Boolean get() = _amoledOn
+    fun useAmoled(on: Boolean) { _amoledOn = on }
 
     /** The "Multicolour tiles" setting. Off by default: one accent carries the layout, the others punctuate. */
-    val Multicolour: Boolean get() = multicolourOn
-    fun useMulticolour(on: Boolean) { multicolourOn = on }
+    val Multicolour: Boolean get() = _multicolourOn
+    fun useMulticolour(on: Boolean) { _multicolourOn = on }
 
     /** Decorative variety: the i-th accent when Multicolour is on, otherwise the primary. */
-    fun patch(i: Int): Color = if (multicolourOn) tone(i % 3) else Lime
+    fun patch(i: Int): Color = if (_multicolourOn) tone(i % 3) else Lime
 
     /** 0 = accent, 1 = secondary, 2 = tertiary. */
     fun tone(i: Int): Color = when (i) {
@@ -536,10 +537,10 @@ object TagColors {
     val AppearanceId: String get() = appearance.id
 
     /** Fed by TagTheme from the phone's own dark mode. */
-    fun setSystemDark(dark: Boolean) { if (systemDark != dark) systemDark = dark }
+    fun setSystemDark(dark: Boolean) { if (_systemDark != dark) _systemDark = dark }
 
     /** A palette as it would look right now, for previews (the palette picker). */
-    fun preview(p: TagPalette): TagPalette = resolve(p, appearance, systemDark)
+    fun preview(p: TagPalette): TagPalette = resolve(p, appearance, _systemDark)
 }
 
 /** Global motion and haptics switches, driven from Settings. */
