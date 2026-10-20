@@ -79,6 +79,9 @@ import androidx.compose.ui.unit.em
 import androidx.core.content.res.ResourcesCompat
 import kotlin.math.roundToInt
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.draw.drawWithContent
@@ -120,7 +123,7 @@ class PrefToggle(private val prefs: MicrotagPrefs, private val key: String) {
 @Composable
 fun rememberToggle(prefs: MicrotagPrefs, key: String): PrefToggle = remember(key) { PrefToggle(prefs, key) }
 
-private enum class DashSheet { Streaks, Calendar }
+private enum class DashSheet { Streaks, Calendar, City }
 
 // ==========================================================
 // DASHBOARD
@@ -174,6 +177,8 @@ fun DashboardScreen(
     var weatherOpen by remember { mutableStateOf(false) }
     var stravaOpen by remember { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<DashSheet?>(null) }
+    var weatherAuto by remember { mutableStateOf(settings.weatherAuto) }
+    var weatherCity by remember { mutableStateOf(settings.weatherCity) }
     var weatherIdx by remember {
         mutableIntStateOf(WeatherSteps.indexOf(settings.weatherIntervalMin).coerceAtLeast(0))
     }
@@ -324,6 +329,9 @@ fun DashboardScreen(
                     // Pill when closed, settles to the standard tile radius as it opens.
                     RoundedCornerShape((100f + (26f - 100f) * p.coerceIn(0f, 1f)).dp),
                     weather, weatherOpen, weatherIdx, intervalLabels,
+                    auto = weatherAuto, city = weatherCity,
+                    onAuto = { weatherAuto = true; settings.weatherAuto = true },
+                    onPickCity = { sheet = DashSheet.City },
                     onIndex = { weatherIdx = it; settings.weatherIntervalMin = WeatherSteps[it] },
                     onOpenChange = { weatherOpen = it }
                 )
@@ -411,6 +419,11 @@ fun DashboardScreen(
     when (sheet) {
         DashSheet.Streaks -> StreaksSheet(settings) { sheet = null }
         DashSheet.Calendar -> CalendarSheet(settings) { sheet = null }
+        DashSheet.City -> CitySheet(settings) {
+            sheet = null
+            weatherAuto = settings.weatherAuto
+            weatherCity = settings.weatherCity
+        }
         null -> Unit
     }
 }
@@ -549,6 +562,7 @@ private fun PillTile(
 @Composable
 private fun WeatherTile(
     modifier: Modifier, shape: androidx.compose.ui.graphics.Shape, t: PrefToggle, open: Boolean, index: Int, labels: List<String>,
+    auto: Boolean, city: String, onAuto: () -> Unit, onPickCity: () -> Unit,
     onIndex: (Int) -> Unit, onOpenChange: (Boolean) -> Unit
 ) {
     TagTile(modifier, shape, t.state, t::toggle) { fg ->
@@ -568,19 +582,68 @@ private fun WeatherTile(
                     ChevronButton(false, fg) { onOpenChange(true) }
                 }
             } else {
-                Column(Modifier.fillMaxSize().padding(start = 18.dp, top = 2.dp, bottom = 12.dp, end = 12.dp)) {
+                Column(Modifier.fillMaxSize().padding(start = 18.dp, top = 2.dp, end = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TagLabel("Weather", null, fg, Modifier.weight(1f), 15.sp)
                         ChevronButton(true, fg) { onOpenChange(false) }
                     }
-                    // The dial is the content: as large as the tile allows.
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        TagDial(labels, index, onIndex, body = fg, face = face, modifier = Modifier.fillMaxHeight().aspectRatio(1f))
+                    // Where the weather comes from: the device (Auto) or a city picked by hand.
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        LocationChip(selected = auto, fg = fg, face = face, onClick = onAuto) { tint ->
+                            androidx.compose.foundation.Canvas(Modifier.size(12.dp)) {
+                                microGlyph(Micro.Target, center, size.minDimension, tint, 1.3.dp.toPx())
+                            }
+                            Text("Auto", style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = tint))
+                        }
+                        LocationChip(selected = !auto, fg = fg, face = face, onClick = onPickCity, modifier = Modifier.weight(1f)) { tint ->
+                            Text(
+                                city.ifBlank { "Set city" },
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                style = TextStyle(
+                                    fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp,
+                                    color = if (city.isBlank() && auto) tint.copy(alpha = 0.7f) else tint
+                                )
+                            )
+                        }
+                    }
+                    // The dial is far bigger than the room it has: pushed down until its centre sits on the
+                    // tile's bottom edge, so only its top half shows and the rest is clipped away.
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                        val d = minOf(maxWidth, maxHeight * 2f)
+                        TagDial(
+                            labels, index, onIndex, body = fg, face = face,
+                            modifier = Modifier.align(Alignment.BottomCenter).requiredSize(d).offset(y = d / 2)
+                        )
                     }
                 }
             }
         }
     }
+}
+
+/** A small pill for the weather location: filled when it is the active source, outlined otherwise. */
+@Composable
+private fun LocationChip(
+    selected: Boolean, fg: Color, face: Color, onClick: () -> Unit,
+    modifier: Modifier = Modifier, content: @Composable RowScope.(Color) -> Unit
+) {
+    val view = LocalView.current
+    Row(
+        modifier
+            .height(30.dp)
+            .clip(CircleShape)
+            .background(if (selected) fg else Color.Transparent)
+            .border(1.5.dp, fg, CircleShape)
+            .clickable { view.tick(Tick.Press); onClick() }
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) { content(if (selected) face else fg) }
 }
 
 @Composable
