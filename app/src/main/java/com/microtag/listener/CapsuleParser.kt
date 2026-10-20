@@ -109,6 +109,18 @@ object CapsuleParser {
         "com.microsoft.skydrive", "com.amazon.clouddrive.photos", "com.mega.android", "com.synology.dsphoto"
     )
 
+    private val percentIn = Regex("""(\d{1,3})\s?%""")
+
+    /**
+     * A transfer in progress. Checked before the messenger test: WhatsApp is a code app, but its backup and media
+     * transfers carry a progress bar, or say "Uploading: 45 MB of 45 MB (97%)", and must not be read as chat.
+     */
+    private fun isTransfer(extras: Bundle): Boolean {
+        if (extras.containsKey(Notification.EXTRA_PROGRESS) && extras.getInt(Notification.EXTRA_PROGRESS_MAX, 0) > 0) return true
+        val text = fullText(extras)
+        return percentIn.containsMatchIn(text) && (uploadWords.containsMatchIn(text) || downloadWords.containsMatchIn(text))
+    }
+
     private fun isUpload(pkg: String, extras: Bundle): Boolean {
         val text = fullText(extras)
         val up = uploadWords.containsMatchIn(text)
@@ -131,6 +143,7 @@ object CapsuleParser {
         isStrava(pkg) -> MicrotagPrefs.KEY_STRAVA
         isDiscord(pkg) -> MicrotagPrefs.KEY_DISCORD
         isWeather(pkg) -> TagKeys.WEATHER
+        isTransfer(extras) -> if (isUpload(pkg, extras)) TagKeys.UPLOADS else MicrotagPrefs.KEY_DOWNLOADS
         isMessaging(pkg) -> MicrotagPrefs.KEY_OTP
         extras.containsKey(Notification.EXTRA_PROGRESS) -> if (isUpload(pkg, extras)) TagKeys.UPLOADS else MicrotagPrefs.KEY_DOWNLOADS
         carriesCode(extras) -> MicrotagPrefs.KEY_OTP
@@ -177,8 +190,9 @@ object CapsuleParser {
             isStrava(pkg) -> parseStrava(notif, combined, title, text, ctx)
             isDiscord(pkg) -> parseDiscord(notif, combined, title, text)
             isWeather(pkg) -> parseWeather(combined, title, text)
+            isTransfer(extras) -> parseProgress(notif, title, text, isUpload(pkg, extras), fullText(extras))
             isMessaging(pkg) -> parseOtp(fullText(extras).ifBlank { combined }, title, text)
-            extras.containsKey(Notification.EXTRA_PROGRESS) -> parseProgress(notif, title, text, isUpload(pkg, extras))
+            extras.containsKey(Notification.EXTRA_PROGRESS) -> parseProgress(notif, title, text, isUpload(pkg, extras), fullText(extras))
             carriesCode(extras) -> parseOtp(fullText(extras), title, text)
             else -> null
         }
@@ -481,12 +495,18 @@ object CapsuleParser {
     }
 
     /** Downloads and uploads (backups, cloud sync) both show a system progress bar; they get their own icon and tile. */
-    private fun parseProgress(notif: Notification, title: String, text: String, upload: Boolean): ParsedCapsule? {
+    private fun parseProgress(notif: Notification, title: String, text: String, upload: Boolean, full: String = text): ParsedCapsule? {
         val max = notif.extras.getInt(Notification.EXTRA_PROGRESS_MAX, 0)
         val progress = notif.extras.getInt(Notification.EXTRA_PROGRESS, 0)
-        if (max <= 0 || progress >= max) return null
-
-        val pct = ((progress.toDouble() / max) * 100).toInt()
+        // No usable progress bar: take the percentage the text states.
+        val pct = if (max > 0) {
+            if (progress >= max) return null
+            ((progress.toDouble() / max) * 100).toInt()
+        } else {
+            val said = percentIn.find(full)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+            if (said >= 100) return null
+            said
+        }
         return ParsedCapsule(
             pillText = "$pct%",
             title = title.ifBlank { if (upload) "Uploading" else "Downloading" },
