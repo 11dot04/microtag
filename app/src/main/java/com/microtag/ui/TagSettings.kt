@@ -72,6 +72,25 @@ class TagSettings(context: Context) {
         get() = sp.getBoolean("haptics", true)
         set(v) = sp.edit { putBoolean("haptics", v) }
 
+    /** Micrographics: tiny marks, rules and annotations around the UI. */
+    var micro: Boolean
+        get() = sp.getBoolean("micro", true)
+        set(v) = sp.edit { putBoolean("micro", v) }
+
+    /** Pure black base on dark palettes. */
+    var amoled: Boolean
+        get() = sp.getBoolean("amoled", false)
+        set(v) = sp.edit { putBoolean("amoled", v) }
+
+    /** Weather location: follow the device (true) or use [weatherCity]. */
+    var weatherAuto: Boolean
+        get() = sp.getBoolean("weather_auto", true)
+        set(v) = sp.edit { putBoolean("weather_auto", v) }
+
+    var weatherCity: String
+        get() = sp.getString("weather_city", "") ?: ""
+        set(v) = sp.edit { putString("weather_city", v) }
+
     /** "native", "light", "dark" or "system" (see Appearance). */
     var appearance: String
         get() = sp.getString("appearance", "native") ?: "native"
