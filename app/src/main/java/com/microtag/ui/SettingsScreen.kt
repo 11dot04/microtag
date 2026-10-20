@@ -61,7 +61,9 @@ private class Item(
     /** Shown in accent at the end of an action row instead of the chevron (a time, a choice). */
     val value: String? = null,
     /** Draw the value in the quiet outline colour instead of the accent (e.g. "Missing"). */
-    val valueMuted: Boolean = false
+    val valueMuted: Boolean = false,
+    /** A bracketed state tag under the description, e.g. "Granted" (shown only with micrographics on). */
+    val tag: String? = null
 )
 
 
@@ -99,7 +101,8 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
     val perms = rememberPermissions()
 
     var palette by remember { mutableStateOf(settings.palette) }
-    var materialYou by remember { mutableStateOf(settings.materialYou) }
+    var micro by remember { mutableStateOf(settings.micro) }
+    var amoled by remember { mutableStateOf(settings.amoled) }
     var multicolour by remember { mutableStateOf(settings.multicolour) }
     var appearance by remember { mutableStateOf(settings.appearance) }
     var reducedMotion by remember { mutableStateOf(settings.reducedMotion) }
@@ -114,7 +117,7 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
 
     SubScreen(onBack, spacing = 10.dp) {
         Spacer(Modifier.height(12.dp))
-        MicroStrip(5, "Settings")
+        MicroStrip(5, "Settings", jp = "設定")
         FitText(
             AnnotatedString("Settings"),
             TextStyle(
@@ -129,11 +132,11 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
         Block(
             "Permissions",
             listOf(
-                Item("Notification listener", "Lets TAG see notifications. Opens system settings.", perms.hasListener, { perms.openListenerSettings() }),
-                Item("Post notifications", "Lets TAG show its chips.", perms.hasNotif, { perms.requestNotifications() }),
-                Item("Calendar", "For the events countdown.", perms.hasCalendar, { perms.requestCalendar() }),
-                Item("Nearby devices", "Lets the Bluetooth chip read a device's name.", perms.hasNearby, { perms.requestNearby() }),
-                Item("Shizuku", "Optional. Clipboard access in the background.", perms.hasShizuku, { perms.requestShizuku() })
+                Item("Notification listener", "Lets TAG see notifications. Opens system settings.", perms.hasListener, { perms.openListenerSettings() }, tag = if (perms.hasListener) "Granted" else "Missing"),
+                Item("Post notifications", "Lets TAG show its chips.", perms.hasNotif, { perms.requestNotifications() }, tag = if (perms.hasNotif) "Granted" else "Missing"),
+                Item("Calendar", "For the events countdown.", perms.hasCalendar, { perms.requestCalendar() }, tag = if (perms.hasCalendar) "Granted" else "Missing"),
+                Item("Nearby devices", "Lets the Bluetooth chip read a device's name.", perms.hasNearby, { perms.requestNearby() }, tag = if (perms.hasNearby) "Granted" else "Missing"),
+                Item("Shizuku", "Optional. Clipboard access in the background.", perms.hasShizuku, { perms.requestShizuku() }, tag = if (perms.hasShizuku) "Running" else "Off")
             ) + if (sensitiveNotificationsApply()) listOf(
                 // State only, no switch: it is granted through Shizuku (or adb), not from this screen.
                 Item(
@@ -184,10 +187,15 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
         Block(
             "Look and feel",
             listOf(
-                Item("Material You", "Swap the palette accent for your system accent colour.", materialYou, {
-                    materialYou = it
-                    settings.materialYou = it
-                    TagColors.useMaterialYou(context, it)
+                Item("Micrographics", "Tiny technical marks, rules and annotations around the app.", micro, {
+                    micro = it
+                    settings.micro = it
+                    TagColors.useMicro(it)
+                }),
+                Item("AMOLED black", "Pure black base on dark palettes, so OLED pixels switch off.", amoled, {
+                    amoled = it
+                    settings.amoled = it
+                    TagColors.useAmoled(it)
                 }),
                 Item(
                     "Appearance", "Every palette, on a light or dark base. Tap to change.",
@@ -275,6 +283,13 @@ private fun SettingRow(item: Item, shape: Shape) {
                     lineHeight = 18.sp, color = TagColors.Outline
                 )
             )
+            if (item.tag != null && TagColors.MicroOn) {
+                MicroTag(
+                    item.tag,
+                    Modifier.padding(top = 4.dp),
+                    color = if (item.tag == "Granted" || item.tag == "Running") TagColors.AccentText else TagColors.Outline
+                )
+            }
         }
         when {
             item.checked != null -> TagSwitch(checked = item.checked, onChange = item.onChange)
