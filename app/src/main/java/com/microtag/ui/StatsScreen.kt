@@ -175,7 +175,7 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
         }
     ) {
         Spacer(Modifier.height(12.dp))
-        MicroStrip(2, "Stats")
+        MicroStrip(2, "Stats", jp = "統計")
         FitText(
             AnnotatedString("Interceptions"),
             TextStyle(
@@ -249,6 +249,12 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
         }
 
         SectionLabel("TIME OF DAY", 2)
+        // A 24-hour clock of dots (micrographics); the bars below it stay.
+        MicroClockRing(
+            values, nowHour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) },
+            modifier = Modifier.fillMaxWidth().height(210.dp),
+            centerBottom = peakHour?.let { "PEAK %02d".format(it) }
+        )
         TimeOfDay(values)
 
         ByType(scoped)
