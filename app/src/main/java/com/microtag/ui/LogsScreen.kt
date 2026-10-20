@@ -158,7 +158,7 @@ fun LogsScreen(onBack: () -> Unit) {
         }
     ) {
         item { Spacer(Modifier.height(12.dp)) }
-        item { MicroStrip(3, "Logs") }
+        item { MicroStrip(3, "Logs", jp = "記録") }
         item {
             FitText(
                 AnnotatedString("Logs"),
