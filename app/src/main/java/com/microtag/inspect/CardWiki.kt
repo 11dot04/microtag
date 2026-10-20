@@ -76,10 +76,10 @@ import kotlin.math.sin
 
 /** Line height for the title block: tighter the more lines there are. */
 internal fun leadFor(lines: Int): Float = when {
-    lines <= 2 -> 0.98f
-    lines == 3 -> 0.92f
-    lines == 4 -> 0.86f
-    else -> 0.80f
+    lines <= 2 -> 0.90f
+    lines == 3 -> 0.86f
+    lines == 4 -> 0.82f
+    else -> 0.78f
 }
 
 /** The summary without its dates, and without the full name repeated at the start ("Euler was a Swiss..."). */
@@ -224,7 +224,8 @@ private fun Poster(c: CardCtx) {
         val fit = remember(blocks, widthPx, u, heightPx) {
             fitWordBlocks(tm, blocks, baseStyle, widthPx, 46f * u, 15f * u, 8, heightPx, spPx, ::leadFor)
         }
-        val lineStyle = baseStyle.copy(fontSize = fit.size.sp).tight(leadFor(fit.lines.sumOf { it.size }))
+        val lead = leadFor(fit.lines.sumOf { it.size })
+        val loose = baseStyle.copy(fontSize = fit.size.sp)
         val nameLines = fit.lines.getOrElse(0) { emptyList() }
         val descLines = fit.lines.getOrElse(1) { emptyList() }
         val nameWidth = remember(nameLines, fit.size) {
@@ -288,14 +289,14 @@ private fun Poster(c: CardCtx) {
                 Column(Modifier.padding(start = fx(0.086f)).width(fx(0.865f))) {
                     Column(Modifier.width(nameWidth).plainClick { c.onCopy(p.title) }) {
                         nameLines.forEachIndexed { i, line ->
-                            Text(
-                                line, style = lineStyle.copy(color = heroColour), softWrap = false, maxLines = 1,
-                                modifier = Modifier.align(if (i % 2 == 0) Alignment.Start else Alignment.End)
+                            TightLine(
+                                line, loose.copy(color = heroColour), lead,
+                                Modifier.align(if (i % 2 == 0) Alignment.Start else Alignment.End)
                             )
                         }
                     }
                     descLines.forEach { line ->
-                        Text(line, style = lineStyle.copy(color = Color.White.copy(alpha = 0.74f)), softWrap = false, maxLines = 1)
+                        TightLine(line, loose.copy(color = Color.White.copy(alpha = 0.74f)), lead)
                     }
                 }
             }
