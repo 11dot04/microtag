@@ -158,3 +158,18 @@ class TagSettings(context: Context) {
         }
     }
 }
+
+/**
+ * Applies every look-and-feel setting: palette, appearance, multicolour, micrographics and AMOLED.
+ * MainActivity calls it, and so must any activity that can start without MainActivity ever running
+ * (the Inspect card and image activities), because TagColors lives in the process, not in the activity.
+ */
+fun TagColors.applySettings(context: Context, settings: TagSettings) {
+    // Material You used to be a switch laid over any palette. It is a palette of its own now.
+    if (settings.materialYou) { settings.palette = "material"; settings.materialYou = false }
+    usePalette(context, settings.palette)
+    useMulticolour(settings.multicolour)
+    useAppearance(settings.appearance)
+    useMicro(settings.micro)
+    useAmoled(settings.amoled)
+}
