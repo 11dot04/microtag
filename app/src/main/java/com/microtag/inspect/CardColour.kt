@@ -44,13 +44,13 @@ import com.microtag.ui.FitText
 // COLOUR, the brutalist card. One square, drawn on a 949-unit grid so every piece sits where the concept puts it.
 //   frame     a hairline frame inside the card: the label tab at top left, viewfinder ticks round the name zone,
 //             a cut foot at bottom left. Three zones: name, middle band, lower section.
-//   name zone the name, large and light, and two four-point stars in the colour
+//   name zone the name, large and light, and the name, up to two lines
 //   band      a real Code 39 barcode of the hex, a strip of glyphs, a wireframe globe, the share arrow's neighbour:
 //             an asterisk with the rgb and hsl
 //   lower     left: a field of triangles, the share arrow, and the contrast verdict in a dotted box filled with the colour.
-//             right: a lightness gauge with the lighter and darker steps, the hex in the display face, the
+//             right: a lightness gauge, the hex in the display face, the
 //             complement as a swatch, and the 24 bits
-// A colour too dark to show on black gets a card filled with itself, white ink, and stars in white.
+// A colour too dark to show on black gets a card filled with itself, white ink, and white ink.
 // ==========================================================
 
 private const val G = 949f  // the grid width
@@ -60,8 +60,6 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
     val p = c.p
     val colour = p.palette.getOrNull(0)?.let { Color(it) } ?: c.accent
     val comp = p.palette.getOrNull(1)?.let { Color(it) } ?: Paper.Ink
-    val tint = p.palette.getOrNull(2)?.let { Color(it) } ?: androidx.compose.ui.graphics.lerp(colour, Color.White, 0.38f)
-    val shade = p.palette.getOrNull(3)?.let { Color(it) } ?: androidx.compose.ui.graphics.lerp(colour, Color.Black, 0.42f)
     val filled = Surface.isFilled(colour)
     val surface = Surface.forColour(colour)
     val ink = Color.White
@@ -74,7 +72,6 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
     val hex = p.bigText.removePrefix("#").uppercase()
     val hexColour = if (c.flash == p.bigText) c.accent else ink
     val compHex = hexOf(comp)
-    val starColour = if (filled) ink else colour
     val value = remember(hex) { hex.toLongOrNull(16)?.toInt() ?: 0 }
     val dec = remember(value) { value.toString().padStart(11, '0').take(11) }
     val left = "${dec.take(5)} ${dec.substring(5, 10)} ${dec[10]}"
@@ -88,7 +85,7 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
             val u = maxWidth.value / G
             fun d(v: Float): Dp = (v * u).dp
 
-            // ---- everything drawn: frame, ticks, dividers, stars, bars, glyphs, gauge, swatches
+            // ---- everything drawn: frame, ticks, dividers, bars, glyphs, gauge, swatches
             Canvas(Modifier.fillMaxSize()) {
                 val k = size.width / G
                 val hair = 2f * k
@@ -102,18 +99,11 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
                     quadraticTo(907f * k, 905f * k, 870f * k, 905f * k)
                     lineTo(132f * k, 905f * k)
                     lineTo(44f * k, 817f * k)
-                    lineTo(44f * k, 125f * k)
+                    lineTo(44f * k, 84f * k)
                 }
                 drawPath(frame, line, style = Stroke(hair))
-                val tab = Path().apply {
-                    moveTo(44f * k, 125f * k)
-                    lineTo(44f * k, 43f * k)
-                    lineTo(235f * k, 43f * k)
-                    quadraticTo(275f * k, 43f * k, 275f * k, 84f * k)
-                    quadraticTo(275f * k, 125f * k, 235f * k, 125f * k)
-                    close()
-                }
-                drawPath(tab, line, style = Stroke(hair))
+                // The label: a stadium. The frame's top and left lines leave it at its tangents.
+                drawRoundRect(line, Offset(44f * k, 43f * k), Size(231f * k, 82f * k), CornerRadius(41f * k), style = Stroke(hair))
 
                 // Viewfinder ticks round the name zone.
                 tick(Offset(852f * k, 90f * k), Offset(887f * k, 90f * k), Offset(887f * k, 62f * k), line, hair)
@@ -124,10 +114,6 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
                 drawLine(line, Offset(44f * k, 455f * k), Offset(907f * k, 455f * k), hair)
                 drawLine(line, Offset(44f * k, 605f * k), Offset(907f * k, 605f * k), hair)
                 drawLine(line, Offset(352f * k, 605f * k), Offset(352f * k, 905f * k), hair)
-
-                // Two four-point stars in the colour.
-                star(Offset(707f * k, 170f * k), 52f * k, 92f * k, starColour)
-                star(Offset(775f * k, 170f * k), 62f * k, 92f * k, starColour)
 
                 // Barcode of the hex. The number strips are the colour and its opposite in decimal.
                 run {
@@ -166,13 +152,9 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
                 if (!filled) drawPath(box, colour)
                 drawPath(box, line, style = Stroke(hair, cap = StrokeCap.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(2f * k, 5f * k))))
 
-                // Lightness gauge: a white rule with the lighter and darker steps set on it where they sit.
+                // Lightness gauge: a white rule with a pointer where the colour sits.
                 val gTop = 612f * k; val gH = 246f * k
                 drawRect(line, Offset(372f * k, gTop), Size(10f * k, gH))
-                for (step in listOf(tint, shade)) {
-                    val y = gTop + (1f - lightness(step)) * gH
-                    drawRect(step, Offset(372f * k, (y - 24f * k).coerceIn(gTop, gTop + gH - 48f * k)), Size(10f * k, 48f * k))
-                }
                 run {
                     val y = gTop + (1f - lightness(colour)) * gH
                     drawPath(Path().apply {
@@ -191,29 +173,19 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
             }
             Box(Modifier.offset(d(280f), d(46f))) { PinGlyph(c) }
 
-            // The name: one size, never split inside a word.
+            // The name: one size, never split inside a word, two lines if it can, tight leading.
             val nameStyle = sans(1f, FontWeight.Normal, ink)
+            val spPx = density.density * density.fontScale
             val fit = remember(p.heroText, u) {
-                fitWordBlocks(tm, listOf(p.heroText), nameStyle, with(density) { d(555f).toPx() }, 150f * u, 52f * u, 3)
+                fitWordBlocks(
+                    tm, listOf(p.heroText), nameStyle, with(density) { d(780f).toPx() }, 128f * u, 48f * u, 2,
+                    with(density) { d(262f).toPx() }, spPx, ::leadFor
+                )
             }
-            Column(Modifier.offset(d(88f), d(112f)).plainClick { c.onCopy(p.heroText) }) {
+            val nameLead = leadFor(fit.lines.firstOrNull().orEmpty().size)
+            Column(Modifier.offset(d(88f), d(140f)).plainClick { c.onCopy(p.heroText) }) {
                 fit.lines.firstOrNull().orEmpty().forEach { ln ->
-                    Text(ln, style = nameStyle.copy(fontSize = fit.size.sp).tight(0.98f), softWrap = false, maxLines = 1)
-                }
-            }
-
-            // The steps, as two paint chips low in the name zone. Tap to copy.
-            for ((i, step) in listOf("LIGHTER" to tint, "DARKER" to shade).withIndex()) {
-                val on = if (step.second.luminance() > 0.45f) Color.Black else Color.White
-                Box(
-                    Modifier.offset(d(92f + i * 176f), d(338f)).size(d(166f), d(66f))
-                        .background(step.second).border(androidx.compose.ui.unit.Dp.Hairline, ink.copy(alpha = 0.5f))
-                        .plainClick { c.onCopy(hexOf(step.second)) }
-                ) {
-                    Column(Modifier.fillMaxSize().padding(horizontal = d(10f), vertical = d(8f)), verticalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
-                        Text(step.first, style = mono(10f * u, on.copy(alpha = 0.8f), 1f, FontWeight.Bold), maxLines = 1, softWrap = false)
-                        Text(hexOf(step.second).removePrefix("#"), style = mono(15f * u, on, 0.4f, FontWeight.Bold), maxLines = 1, softWrap = false)
-                    }
+                    TightLine(ln, nameStyle.copy(fontSize = fit.size.sp).tight(1f), nameLead)
                 }
             }
 
@@ -238,7 +210,10 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
             }
 
             // The share arrow, in the lower left.
-            Box(Modifier.offset(d(200f), d(612f))) { ShareArrow(c.onShare, ink, iconSize = d(112f)) }
+            // ShareArrow centres its glyph in a larger box, so the box is placed from the glyph's centre.
+            val arrowIcon = d(124f)
+            val arrowBox = maxOf(48.dp, arrowIcon + 14.dp)
+            Box(Modifier.offset(d(265f) - arrowBox / 2, d(668f) - arrowBox / 2)) { ShareArrow(c.onShare, ink, iconSize = arrowIcon) }
 
             // The contrast verdict.
             if (verdict.isNotBlank()) {
@@ -250,9 +225,7 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
                 }
             }
 
-            // Gauge labels: the lighter step above, the darker below, and where the colour sits.
-            Text("+", style = mono(20f * u, ink.copy(alpha = 0.85f), 0f, FontWeight.Bold), modifier = Modifier.offset(d(399f), d(606f)))
-            Text("−", style = mono(20f * u, ink.copy(alpha = 0.85f), 0f, FontWeight.Bold), modifier = Modifier.offset(d(399f), d(826f)))
+            // Gauge label: where the colour sits.
             Text(
                 "L${(lightness(colour) * 100).toInt()}", style = mono(12f * u, ink.copy(alpha = 0.7f), 0.4f, FontWeight.Bold),
                 modifier = Modifier.offset(d(386f), d(866f)), maxLines = 1, softWrap = false
@@ -277,10 +250,6 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
                 Text("complementary", style = sans(16f * u, FontWeight.Light, ink.copy(alpha = 0.85f)), maxLines = 1, softWrap = false)
             }
             Box(Modifier.offset(d(785f), d(785f)).size(d(102f), d(100f)).plainClick { c.onCopy(compHex) })
-
-            // The step swatches on the gauge copy their hex.
-            Box(Modifier.offset(d(366f), d(612f)).size(d(30f), d(120f)).plainClick { c.onCopy(hexOf(tint)) })
-            Box(Modifier.offset(d(366f), d(738f)).size(d(30f), d(120f)).plainClick { c.onCopy(hexOf(shade)) })
 
             // The 24 bits.
             if (hex.length == 6) {
@@ -309,18 +278,6 @@ private fun DrawScope.tick(a: Offset, corner: Offset, b: Offset, colour: Color, 
     drawPath(Path().apply { moveTo(a.x, a.y); lineTo(corner.x, corner.y); lineTo(b.x, b.y) }, colour, style = Stroke(w))
 }
 
-/** A four-point star with concave sides: [rx] wide and [ry] tall from its centre. */
-private fun DrawScope.star(c: Offset, rx: Float, ry: Float, colour: Color) {
-    drawPath(Path().apply {
-        moveTo(c.x, c.y - ry)
-        quadraticTo(c.x, c.y, c.x + rx, c.y)
-        quadraticTo(c.x, c.y, c.x, c.y + ry)
-        quadraticTo(c.x, c.y, c.x - rx, c.y)
-        quadraticTo(c.x, c.y, c.x, c.y - ry)
-        close()
-    }, colour)
-}
-
 private fun DrawScope.asterisk(c: Offset, r: Float, colour: Color, w: Float) {
     for (i in 0 until 4) {
         val a = Math.toRadians(i * 45.0)
@@ -329,28 +286,42 @@ private fun DrawScope.asterisk(c: Offset, r: Float, colour: Color, w: Float) {
     }
 }
 
-/** A small box of four pictograms (a boot, an asterisk, a bar, an up arrow) with a pill beside them. */
+/** A box of four pictograms on a square grid (a crossed square, a six-spoke asterisk, a ringed dot, an up arrow) and a small pill. */
 private fun DrawScope.glyphStrip(x: Float, y: Float, w: Float, h: Float, colour: Color, hair: Float) {
+    val sw = hair * 1.1f
     drawRect(colour, Offset(x, y), Size(w, h), style = Stroke(hair))
-    val gy = y + h / 2f
-    val s = h * 0.34f
-    var gx = x + h * 0.45f
-    // boot
-    drawPath(Path().apply {
-        moveTo(gx, gy - s); lineTo(gx, gy + s); lineTo(gx + s * 1.5f, gy + s); lineTo(gx + s * 1.5f, gy + s * 0.2f); lineTo(gx + s * 0.5f, gy + s * 0.2f); lineTo(gx + s * 0.5f, gy - s)
-        close()
-    }, colour, style = Stroke(hair * 0.9f))
-    gx += s * 2.1f
-    asterisk(Offset(gx + s * 0.6f, gy), s * 0.9f, colour, hair * 0.9f)
-    gx += s * 2.1f
-    drawRoundRect(colour, Offset(gx, gy - s), Size(s * 1.1f, s * 2f), CornerRadius(s * 0.5f), style = Stroke(hair * 0.9f))
-    gx += s * 1.8f
-    drawLine(colour, Offset(gx + s * 0.4f, gy + s), Offset(gx + s * 0.4f, gy - s), hair * 0.9f)
-    drawLine(colour, Offset(gx - s * 0.2f, gy - s * 0.3f), Offset(gx + s * 0.4f, gy - s), hair * 0.9f)
-    drawLine(colour, Offset(gx + s * 1.0f, gy - s * 0.3f), Offset(gx + s * 0.4f, gy - s), hair * 0.9f)
-    // the pill
-    val pw = w * 0.40f
-    drawRoundRect(colour, Offset(x + w - pw - h * 0.12f, y + h * 0.12f), Size(pw, h * 0.76f), CornerRadius(h * 0.38f), style = Stroke(hair))
+    for (i in 1..4) drawLine(colour, Offset(x + h * i, y), Offset(x + h * i, y + h), hair * 0.8f)
+    val r = h * 0.26f
+    fun centre(i: Int) = Offset(x + h * i + h / 2f, y + h / 2f)
+    // crossed square
+    centre(0).let { c ->
+        drawRect(colour, Offset(c.x - r, c.y - r), Size(2 * r, 2 * r), style = Stroke(sw))
+        drawLine(colour, Offset(c.x - r, c.y + r), Offset(c.x + r, c.y - r), sw)
+    }
+    // six-spoke asterisk
+    centre(1).let { c ->
+        for (i in 0 until 3) {
+            val a = Math.toRadians(i * 60.0 + 90.0)
+            val dx = (Math.cos(a) * r * 1.1f).toFloat(); val dy = (Math.sin(a) * r * 1.1f).toFloat()
+            drawLine(colour, Offset(c.x - dx, c.y - dy), Offset(c.x + dx, c.y + dy), sw, StrokeCap.Round)
+        }
+    }
+    // ringed dot
+    centre(2).let { c ->
+        drawCircle(colour, r, c, style = Stroke(sw))
+        drawCircle(colour, r * 0.36f, c)
+    }
+    // up arrow
+    centre(3).let { c ->
+        drawLine(colour, Offset(c.x, c.y + r), Offset(c.x, c.y - r), sw, StrokeCap.Round)
+        drawLine(colour, Offset(c.x - r * 0.8f, c.y - r * 0.1f), Offset(c.x, c.y - r), sw, StrokeCap.Round)
+        drawLine(colour, Offset(c.x + r * 0.8f, c.y - r * 0.1f), Offset(c.x, c.y - r), sw, StrokeCap.Round)
+    }
+    // the pill, with a dot at its right end
+    val px = x + 4 * h + h * 0.25f
+    val pw = w - 4 * h - h * 0.5f
+    drawRoundRect(colour, Offset(px, y + h * 0.27f), Size(pw, h * 0.46f), CornerRadius(h * 0.23f), style = Stroke(hair))
+    drawCircle(colour, h * 0.1f, Offset(px + pw - h * 0.23f, y + h / 2f))
 }
 
 /** A wireframe globe seen as an ellipse: outline, two meridians, a centre line and the equator. */
