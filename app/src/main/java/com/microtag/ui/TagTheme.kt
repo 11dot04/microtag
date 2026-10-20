@@ -153,7 +153,9 @@ data class TagPalette(
     val extras: List<Color> = emptyList(),
     /** Optional font roles, as res/font base names (see TagFonts). Null keeps Montserrat. */
     val display: String? = null,
-    val mono: String? = null
+    val mono: String? = null,
+    /** Optional body/label face (Montserrat everywhere else). The Material palette uses Google Sans Flex. */
+    val body: String? = null
 ) {
     val isLight: Boolean get() = base.luminance() > 0.5f
 
@@ -273,7 +275,24 @@ object TagPalettes {
         display = "instrument_serif"
     )
 
-    val All = listOf(Lime, Atelier, Signal, Maison, Rouge, Verdant, Vermilion, Dusk, Sage)
+    /**
+     * Material 3 in its own right: on Android 12+ the colours come from the system's dynamic scheme (wallpaper
+     * tones), light or dark with the phone; elsewhere the baseline purple. Set in Google Sans Flex.
+     * The values here are the baseline dark scheme; TagColors swaps in the real ones (see materialPalettes).
+     */
+    val Material = TagPalette(
+        id = "material", name = "Material",
+        base = Color(0xFF1C1B1F), ink = Color(0xFFE6E1E5),
+        accent = Color(0xFFD0BCFF), onAccent = Color(0xFF381E72),
+        surface = Color(0xFF2B2930), pausedPoster = Color(0xFF322F37),
+        outline = Color(0xFF938F99), dim = Color(0xFF7D7983),
+        signal = Color(0xFFF2B8B5),
+        paper = Color(0xFFE6E1E5), paperInk = Color(0xFF1C1B1F),
+        secondary = Color(0xFFCCC2DC), tertiary = Color(0xFFEFB8C8),
+        display = "google_sans_flex", body = "google_sans_flex"
+    )
+
+    val All = listOf(Lime, Material, Atelier, Signal, Maison, Rouge, Verdant, Vermilion, Dusk, Sage)
     fun byId(id: String?): TagPalette = All.firstOrNull { it.id == id } ?: Lime
 }
 
@@ -350,37 +369,96 @@ fun TagPalettes.resolve(p: TagPalette, appearance: Appearance, systemDark: Boole
     return if (wantDark == !p.isLight) p else p.inverted()
 }
 
-private class SysTones(val a200: Color, val a700: Color, val b200: Color, val b700: Color, val c200: Color, val c700: Color)
+/** Pure black base for dark palettes (OLED screens switch the pixels off); surfaces stay a hair above it. */
+fun TagPalette.amoled(): TagPalette = if (isLight) this else copy(
+    base = Color.Black,
+    surface = lerp(Color.Black, ink, 0.07f),
+    pausedPoster = lerp(Color.Black, ink, 0.05f)
+)
+
+/** The system's Material You tones as (light, dark) TagPalettes. Null below Android 12. */
+private fun systemMaterial(context: Context, baseline: TagPalette): Pair<TagPalette, TagPalette>? {
+    if (Build.VERSION.SDK_INT < 31) return null
+    fun c(id: Int) = Color(context.getColor(id))
+    val dark = baseline.copy(
+        base = c(android.R.color.system_neutral1_900), ink = c(android.R.color.system_neutral1_100),
+        accent = c(android.R.color.system_accent1_200), onAccent = c(android.R.color.system_accent1_800),
+        accentText = c(android.R.color.system_accent1_200),
+        surface = c(android.R.color.system_neutral1_800),
+        pausedPoster = c(android.R.color.system_neutral1_800),
+        outline = c(android.R.color.system_neutral2_400), dim = c(android.R.color.system_neutral2_500),
+        secondary = c(android.R.color.system_accent2_200), tertiary = c(android.R.color.system_accent3_200),
+        signal = Color(0xFFF2B8B5),
+        paper = c(android.R.color.system_neutral1_100), paperInk = c(android.R.color.system_neutral1_900)
+    )
+    val light = baseline.copy(
+        base = c(android.R.color.system_neutral1_10), ink = c(android.R.color.system_neutral1_900),
+        accent = c(android.R.color.system_accent1_600), onAccent = c(android.R.color.system_accent1_0),
+        accentText = c(android.R.color.system_accent1_600),
+        surface = c(android.R.color.system_neutral1_100),
+        pausedPoster = c(android.R.color.system_neutral1_200),
+        outline = c(android.R.color.system_neutral2_500), dim = c(android.R.color.system_neutral2_400),
+        secondary = c(android.R.color.system_accent2_600), tertiary = c(android.R.color.system_accent3_600),
+        signal = Color(0xFFB3261E),
+        paper = c(android.R.color.system_neutral1_10), paperInk = c(android.R.color.system_neutral1_900)
+    )
+    return light to dark
+}
+
+/** Baseline Material 3 (the purple scheme) for light, derived from the dark one. */
+private fun baselineLight(dark: TagPalette) = dark.copy(
+    base = Color(0xFFFFFBFE), ink = Color(0xFF1C1B1F),
+    accent = Color(0xFF6750A4), onAccent = Color(0xFFFFFFFF), accentText = Color(0xFF6750A4),
+    surface = Color(0xFFF3EDF7), pausedPoster = Color(0xFFE7E0EC),
+    outline = Color(0xFF79747E), dim = Color(0xFF938F99),
+    secondary = Color(0xFF625B71), tertiary = Color(0xFF7D5260), signal = Color(0xFFB3261E),
+    paper = Color(0xFFFFFBFE), paperInk = Color(0xFF1C1B1F)
+)
 
 object TagColors {
     private var basePalette by mutableStateOf(TagPalettes.Lime)
     private var appearance by mutableStateOf(Appearance.Native)
-    private var _systemDark by mutableStateOf(true)
-    // Cached until the palette, the appearance or the phone's mode changes.
-    private val resolved by derivedStateOf { TagPalettes.resolve(basePalette, appearance, _systemDark) }
-    private val palette: TagPalette get() = resolved
-    private var sys by mutableStateOf<SysTones?>(null)
-    private var materialYouOn = false
+    private var systemDark by mutableStateOf(true)
+    private var amoledOn by mutableStateOf(false)
+    private var microOn by mutableStateOf(true)
+    // The Material palette's real colours (light, dark); baseline until the system's are read.
+    private var materialLight by mutableStateOf(baselineLight(TagPalettes.Material))
+    private var materialDark by mutableStateOf(TagPalettes.Material)
     private var multicolourOn by mutableStateOf(false)
 
-    // Material You's three accents: the light tones (200) suit dark bases, the dark tones (700) light bases.
-    private val sysAccent: Color? get() = sys?.let { if (palette.isLight) it.a700 else it.a200 }
-    private val sysSecondary: Color? get() = sys?.let { if (palette.isLight) it.b700 else it.b200 }
-    private val sysTertiary: Color? get() = sys?.let { if (palette.isLight) it.c700 else it.c200 }
+    private fun resolve(p: TagPalette, a: Appearance, sysDark: Boolean): TagPalette {
+        val base = if (p.id == "material") {
+            // Material has no "native" side: it follows the phone unless told otherwise.
+            val dark = when (a) { Appearance.Light -> false; Appearance.Dark -> true; else -> sysDark }
+            if (dark) materialDark else materialLight
+        } else TagPalettes.resolve(p, a, sysDark)
+        return if (amoledOn) base.amoled() else base
+    }
 
-    /** The accent. The palette's own, or the system accent when Material You is on. */
-    val Lime: Color get() = sysAccent ?: palette.accent
+    // Cached until the palette, the appearance, the AMOLED switch or the phone's mode changes.
+    private val resolved by derivedStateOf { resolve(basePalette, appearance, systemDark) }
+    private val palette: TagPalette get() = resolved
+
+    /** The accent. */
+    val Lime: Color get() = palette.accent
     val Accent: Color get() = Lime
 
     /** Whatever reads on top of the accent. */
-    val OnLime: Color
-        get() = sysAccent?.let { if (it.luminance() > 0.4f) Color(0xFF000000) else Color(0xFFF6F6F6) } ?: palette.onAccent
+    val OnLime: Color get() = palette.onAccent
 
     /** Second and third accents. Fall back to the primary when a palette has none. */
-    val Secondary: Color get() = sysSecondary ?: palette.secondary ?: Lime
-    val Tertiary: Color get() = sysTertiary ?: palette.tertiary ?: Lime
-    /** True when this palette (or Material You) really has more than one accent to hand out. */
-    val HasTones: Boolean get() = sys != null || palette.secondary != null
+    val Secondary: Color get() = palette.secondary ?: Lime
+    val Tertiary: Color get() = palette.tertiary ?: Lime
+    /** True when this palette really has more than one accent to hand out. */
+    val HasTones: Boolean get() = palette.secondary != null
+
+    /** The "Micrographics" setting: tiny marks, rules and annotations. Everything decorative checks this. */
+    val MicroOn: Boolean get() = microOn
+    fun useMicro(on: Boolean) { microOn = on }
+
+    /** Pure black on dark palettes. */
+    val AmoledOn: Boolean get() = amoledOn
+    fun useAmoled(on: Boolean) { amoledOn = on }
 
     /** The "Multicolour tiles" setting. Off by default: one accent carries the layout, the others punctuate. */
     val Multicolour: Boolean get() = multicolourOn
@@ -416,7 +494,7 @@ object TagColors {
     fun series(i: Int, alpha: Float = 1f): Color = if (HasTones) tone(i % 3) else Lime.copy(alpha = alpha)
 
     /** The accent as small text on the base. */
-    val AccentText: Color get() = sysAccent ?: palette.accentText
+    val AccentText: Color get() = palette.accentText
 
     val Black: Color get() = palette.base     // the base: page, off tiles, plates
     val White: Color get() = palette.ink      // ink: text, always-on tiles
@@ -434,7 +512,8 @@ object TagColors {
         get() = if (palette.signal.luminance() > 0.4f) Color(0xFF14110F) else Color(0xFFF6F6F6)
     val Extras: List<Color> get() = palette.supporting
     val Name: String get() = palette.name
-    /** res/font base names of this palette's display and mono faces, or null for Montserrat. */
+    /** res/font base names of this palette's display, body and mono faces, or null for Montserrat. */
+    val BodyBase: String? get() = palette.body
     val DisplayBase: String? get() = palette.display
     val MonoBase: String? get() = palette.mono
     val Paper: Color get() = palette.paper
@@ -442,30 +521,25 @@ object TagColors {
     val IsLight: Boolean get() = palette.isLight
     val Id: String get() = palette.id
 
-    fun usePalette(context: Context, id: String, materialYou: Boolean = materialYouOn) {
+    fun usePalette(context: Context, id: String) {
+        // The system's own Material You tones, when this Android has them.
+        systemMaterial(context, TagPalettes.Material)?.let { (light, dark) ->
+            materialLight = light
+            materialDark = dark
+        }
         basePalette = TagPalettes.byId(id)
-        materialYouOn = materialYou
-        sys = if (materialYou && Build.VERSION.SDK_INT >= 31) {
-            SysTones(
-                Color(context.getColor(android.R.color.system_accent1_200)), Color(context.getColor(android.R.color.system_accent1_700)),
-                Color(context.getColor(android.R.color.system_accent2_200)), Color(context.getColor(android.R.color.system_accent2_700)),
-                Color(context.getColor(android.R.color.system_accent3_200)), Color(context.getColor(android.R.color.system_accent3_700))
-            )
-        } else null
         TagFonts.apply(context, basePalette)
     }
-
-    fun useMaterialYou(context: Context, enabled: Boolean) = usePalette(context, basePalette.id, enabled)
 
     /** Original, Light, Dark or System (see [Appearance]). */
     fun useAppearance(id: String) { appearance = Appearance.fromId(id) }
     val AppearanceId: String get() = appearance.id
 
     /** Fed by TagTheme from the phone's own dark mode. */
-    fun setSystemDark(dark: Boolean) { if (_systemDark != dark) _systemDark = dark }
+    fun setSystemDark(dark: Boolean) { if (systemDark != dark) systemDark = dark }
 
     /** A palette as it would look right now, for previews (the palette picker). */
-    fun preview(p: TagPalette): TagPalette = TagPalettes.resolve(p, appearance, _systemDark)
+    fun preview(p: TagPalette): TagPalette = resolve(p, appearance, systemDark)
 }
 
 /** Global motion and haptics switches, driven from Settings. */
@@ -479,12 +553,18 @@ object TagMotion {
 // the rest of the label drops to Light. Drop the TTFs in res/font.
 // ==========================================================
 
-val Montserrat = FontFamily(
+private val MontserratBase = FontFamily(
     Font(R.font.montserrat_light, FontWeight.Light),
     Font(R.font.montserrat_medium, FontWeight.Medium),
     Font(R.font.montserrat_bold, FontWeight.Bold),
     Font(R.font.montserrat_black, FontWeight.Black)
 )
+
+/**
+ * The body and label face used all over the app. Still Montserrat unless the palette brings its own
+ * (the Material palette uses Google Sans Flex), so every existing `fontFamily = Montserrat` follows the palette.
+ */
+val Montserrat: FontFamily get() = TagFonts.body
 
 /**
  * Font roles a palette can change. Montserrat stays the label face everywhere; a palette may
@@ -496,11 +576,13 @@ val Montserrat = FontFamily(
  * Montserrat is used, so a palette never breaks for want of a file.
  */
 object TagFonts {
-    private var displayFamily by mutableStateOf<ComposeFontFamily>(Montserrat)
-    private var monoFamily by mutableStateOf<ComposeFontFamily>(Montserrat)
+    private var bodyFamily by mutableStateOf<ComposeFontFamily>(MontserratBase)
+    private var displayFamily by mutableStateOf<ComposeFontFamily>(MontserratBase)
+    private var monoFamily by mutableStateOf<ComposeFontFamily>(MontserratBase)
 
     private var dataFamily by mutableStateOf<ComposeFontFamily>(FontFamily.Monospace)
 
+    val body: ComposeFontFamily get() = bodyFamily
     val display: ComposeFontFamily get() = displayFamily
     val mono: ComposeFontFamily get() = monoFamily
 
@@ -511,9 +593,10 @@ object TagFonts {
     val NoSynthesis = FontSynthesis.None
 
     fun apply(context: Context, p: TagPalette) {
-        displayFamily = p.display?.let { family(context, it) } ?: Montserrat
+        bodyFamily = p.body?.let { family(context, it) } ?: MontserratBase
+        displayFamily = p.display?.let { family(context, it) } ?: bodyFamily
         val customMono = p.mono?.let { family(context, it) }
-        monoFamily = customMono ?: Montserrat
+        monoFamily = customMono ?: bodyFamily
         dataFamily = customMono ?: FontFamily.Monospace
     }
 
@@ -666,7 +749,7 @@ object TagShapes {
 // HAPTICS
 // ==========================================================
 
-enum class Tick { Press, On, Off, Detent, Confirm }
+enum class Tick { Press, On, Off, Detent, Confirm, Minor }
 
 fun View.tick(kind: Tick) {
     if (!TagMotion.haptics) return
@@ -677,6 +760,8 @@ fun View.tick(kind: Tick) {
             Tick.Off -> HapticFeedbackConstants.TOGGLE_OFF
             Tick.Detent -> HapticFeedbackConstants.SEGMENT_TICK
             Tick.Confirm -> HapticFeedbackConstants.CONFIRM
+            // the lightest tick: between the marks of a dial
+            Tick.Minor -> if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.SEGMENT_FREQUENT_TICK else HapticFeedbackConstants.CLOCK_TICK
         }
     )
 }
