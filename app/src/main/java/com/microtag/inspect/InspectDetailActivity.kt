@@ -45,6 +45,7 @@ import com.microtag.core.MicrotagReminder
 import com.microtag.ui.TagColors
 import com.microtag.ui.TagMotion
 import com.microtag.ui.TagSettings
+import com.microtag.ui.applySettings
 import com.microtag.ui.TagTheme
 import com.microtag.ui.Tick
 import com.microtag.ui.tick
@@ -74,7 +75,7 @@ class InspectDetailActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         // This activity can start without MainActivity ever running, so it applies the look-and-feel itself.
         val settings = TagSettings(applicationContext)
-        TagColors.useMaterialYou(applicationContext, settings.materialYou)
+        TagColors.applySettings(applicationContext, settings)
         TagMotion.enabled = !settings.reducedMotion
         TagMotion.haptics = settings.haptics
         applyBlur()
