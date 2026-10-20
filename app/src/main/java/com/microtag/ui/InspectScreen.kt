@@ -178,7 +178,7 @@ fun InspectScreen(onBack: () -> Unit, onOpenPriority: () -> Unit = {}) {
     remember { PillPrefs.attach(context) }
     SubScreen(onBack, spacing = 10.dp) {
         Spacer(Modifier.height(12.dp))
-        MicroStrip(4, "Inspect")
+        MicroStrip(4, "Inspect", jp = "検査")
         FitText(
             AnnotatedString("Inspect"),
             TextStyle(
