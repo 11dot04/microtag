@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -77,6 +78,16 @@ internal fun TextStyle.tight(factor: Float = 0.9f): TextStyle = copy(
     lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
     platformStyle = PlatformTextStyle(includeFontPadding = false)
 )
+
+/** One line of text in a box of exactly fontSize * lead, so stacked single lines sit as tight as asked (TextStyle trimming alone does not do that). */
+@Composable
+internal fun TightLine(text: String, style: TextStyle, lead: Float, modifier: Modifier = Modifier) {
+    val h = with(androidx.compose.ui.platform.LocalDensity.current) { (style.fontSize.value * lead).sp.toDp() }
+    Box(modifier.height(h)) {
+        Text(text, style = style, softWrap = false, maxLines = 1,
+            modifier = Modifier.wrapContentHeight(Alignment.CenterVertically, unbounded = true))
+    }
+}
 
 @Composable
 internal fun Modifier.plainClick(onClick: () -> Unit): Modifier =
