@@ -349,6 +349,7 @@ private fun TipRow(tip: InspectTip, shape: Shape) {
 }
 
 /** "PILL SHOWS" and the choices for one card; the pick is stored and the chip above updates at once. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun PillPicker(option: PillConfig.Option, current: String, onPick: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -356,7 +357,11 @@ internal fun PillPicker(option: PillConfig.Option, current: String, onPick: (Str
             option.heading,
             style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.2.sp, color = TagColors.Outline)
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // A flow row: when the chips do not fit on one line the whole chip drops to the next, never a word inside it.
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             option.choices.forEach { ch ->
                 val on = ch.value == current
                 Box(
@@ -368,7 +373,9 @@ internal fun PillPicker(option: PillConfig.Option, current: String, onPick: (Str
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
-                        ch.label,
+                        chipLabel(ch.label),
+                        maxLines = 1,
+                        softWrap = false,
                         style = TextStyle(
                             fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp,
                             color = if (on) TagColors.OnLime else TagColors.White
@@ -379,6 +386,12 @@ internal fun PillPicker(option: PillConfig.Option, current: String, onPick: (Str
         }
     }
 }
+
+/**
+ * Choice labels are shown as given, except the open-ended pin duration, which is one word.
+ * (To change it at the source, edit its label in PillConfig; this keeps the chip short wherever it is shown.)
+ */
+private fun chipLabel(label: String): String = if (label.equals("Until cleared", ignoreCase = true)) "Forever" else label
 
 /** A stand-in for the status-bar chip: its pill text and its icon (or a colour dot). All plain values, nothing looked up. */
 @Composable
