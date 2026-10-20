@@ -1,5 +1,6 @@
 package com.microtag.ui
 
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -30,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.getValue
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -195,6 +197,7 @@ fun DrawScope.microTicks(
 /** One glyph as a composable. */
 @Composable
 fun MicroGlyph(kind: Micro, modifier: Modifier = Modifier, size: Dp = 14.dp, color: Color = TagColors.Outline) {
+    if (!TagColors.MicroOn) return
     Canvas(modifier.size(size).clearAndSetSemantics { }) {
         microGlyph(kind, Offset(this.size.width / 2f, this.size.height / 2f), this.size.minDimension * 0.8f, color)
     }
@@ -210,6 +213,7 @@ fun MicroLabel(
     size: Int = 10,
     wrap: Boolean = true
 ) {
+    if (!TagColors.MicroOn) return
     Text(
         text.uppercase(),
         modifier = modifier.clearAndSetSemantics { },
@@ -233,6 +237,18 @@ fun MicroLabel(
  */
 @Composable
 fun MicroHeader(label: String, modifier: Modifier = Modifier, index: Int? = null, color: Color = TagColors.AccentText) {
+    if (!TagColors.MicroOn) {
+        // Micrographics off: just the label.
+        Text(
+            label.uppercase(),
+            modifier = modifier,
+            style = TextStyle(
+                fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                letterSpacing = 1.2.sp, color = color
+            )
+        )
+        return
+    }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         if (index != null) {
             Text(
@@ -264,7 +280,8 @@ fun MicroHeader(label: String, modifier: Modifier = Modifier, index: Int? = null
 
 /** The line above a screen title: a cross, "TAG / NAME" on the left, the screen's number on the right. */
 @Composable
-fun MicroStrip(code: Int, name: String, modifier: Modifier = Modifier) {
+fun MicroStrip(code: Int, name: String, modifier: Modifier = Modifier, jp: String? = null) {
+    if (!TagColors.MicroOn) return
     Row(
         modifier.fillMaxWidth().padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -272,6 +289,7 @@ fun MicroStrip(code: Int, name: String, modifier: Modifier = Modifier) {
     ) {
         MicroGlyph(Micro.Cross, size = 10.dp)
         MicroLabel("TAG / $name")
+        if (jp != null) MicroLabel(jp, color = TagColors.White)
         Canvas(Modifier.weight(1f).height(1.dp).clearAndSetSemantics { }) {
             drawLine(TagColors.Outline.copy(alpha = 0.3f), Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx())
         }
@@ -282,6 +300,7 @@ fun MicroStrip(code: Int, name: String, modifier: Modifier = Modifier) {
 /** A tile's state as a bare dot: solid when on, a ring when off. No text, so it can't collide with the subtitle. */
 @Composable
 fun MicroStatus(on: Boolean, color: Color, modifier: Modifier = Modifier) {
+    if (!TagColors.MicroOn) return
     Canvas(modifier.size(10.dp).clearAndSetSemantics { }) {
         val r = size.minDimension / 2.6f
         if (on) drawCircle(color, r) else drawCircle(color, r, style = Stroke(1.4.dp.toPx()))
@@ -327,6 +346,129 @@ fun MicroHoursBar(startMin: Int, endMin: Int, modifier: Modifier = Modifier, now
             }
             labelPaint.textAlign = android.graphics.Paint.Align.RIGHT
             c.nativeCanvas.drawText("24", size.width, barH + 15.dp.toPx(), labelPaint)
+        }
+    }
+}
+
+/** A bracketed state tag: `[ GRANTED ]`. */
+@Composable
+fun MicroTag(text: String, modifier: Modifier = Modifier, color: Color = TagColors.AccentText) {
+    MicroLabel("[ $text ]", modifier, color, bold = true)
+}
+
+// ---------- pixel glyphs: 8 x 8 dot-matrix marks ----------
+
+enum class Pixel(val rows: List<String>) {
+    Bell(listOf("...##...", "..####..", ".######.", ".######.", ".######.", "########", "........", "...##...")),
+    Bolt(listOf("....##..", "...##...", "..##....", ".######.", "....##..", "...##...", "..##....", ".##.....")),
+    Clock(listOf("..####..", ".#....#.", "#..#...#", "#..#...#", "#..###.#", "#......#", ".#....#.", "..####..")),
+    Arrow(listOf("...#####", "....####", ".....###", "....#.##", "...#...#", "..#.....", ".#......", "#.......")),
+    Star(listOf("...##...", "#..##..#", ".#.##.#.", "..####..", "########", "..####..", ".#.##.#.", "#..##..#")),
+    Check(listOf("........", ".......#", "......##", "#....##.", "##..##..", ".####...", "..##....", "........"))
+}
+
+/** An 8 x 8 dot-matrix glyph. */
+@Composable
+fun PixelGlyph(kind: Pixel, modifier: Modifier = Modifier, size: Dp = 16.dp, color: Color = TagColors.Outline) {
+    if (!TagColors.MicroOn) return
+    Canvas(modifier.size(size).clearAndSetSemantics { }) {
+        val cell = this.size.minDimension / 8f
+        kind.rows.forEachIndexed { r, row ->
+            row.forEachIndexed { c, ch ->
+                if (ch == '#') drawRect(color, Offset(c * cell, r * cell), Size(cell * 0.86f, cell * 0.86f))
+            }
+        }
+    }
+}
+
+// ---------- a vertical annotation along a screen edge ----------
+
+/** Mono text set on its side, reading upward. Decorative. */
+@Composable
+fun MicroVerticalLabel(text: String, length: Dp, modifier: Modifier = Modifier, color: Color = TagColors.Outline) {
+    if (!TagColors.MicroOn) return
+    val paint = androidx.compose.runtime.remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG) }
+    Canvas(modifier.width(14.dp).height(length).clearAndSetSemantics { }) {
+        paint.textSize = 10.sp.toPx()
+        paint.typeface = android.graphics.Typeface.MONOSPACE
+        paint.letterSpacing = 0.12f
+        paint.color = color.copy(alpha = 0.6f).toArgb()
+        drawIntoCanvas { c ->
+            val n = c.nativeCanvas
+            n.save()
+            n.translate(size.width / 2f + 3.dp.toPx(), size.height)
+            n.rotate(-90f)
+            n.drawText(text.uppercase(), 0f, 0f, paint)
+            n.restore()
+        }
+    }
+}
+
+// ---------- the dotted clock ring ----------
+
+/**
+ * A 24-hour clock face made of dots: midnight at the top, hours running clockwise. Each dot swells and
+ * brightens with that hour's activity; the current hour is the accent and pulses. Cardinal hours are labelled
+ * and the middle shows [centerTop] over [centerBottom].
+ */
+@Composable
+fun MicroClockRing(
+    values: IntArray,
+    nowHour: Int?,
+    modifier: Modifier = Modifier,
+    centerTop: String = "24H",
+    centerBottom: String? = null
+) {
+    if (!TagColors.MicroOn) return
+    val pulse by androidx.compose.animation.core.rememberInfiniteTransition(label = "ringPulse").animateFloat(
+        initialValue = if (TagMotion.enabled) 0.35f else 1f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(900), androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+    val paint = androidx.compose.runtime.remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG) }
+    Canvas(modifier.clearAndSetSemantics { }) {
+        val c = center
+        val ring = size.minDimension * 0.38f
+        val maxV = maxOf(1, values.maxOrNull() ?: 1)
+        val ink = TagColors.White
+        val accent = TagColors.Lime
+        val mark = TagColors.Outline
+        drawCircle(mark.copy(alpha = 0.22f), ring * 0.74f, c, style = Stroke(1.dp.toPx()))
+        for (h in 0 until 24) {
+            val a = Math.toRadians(h * 15.0 - 90.0)
+            val p = Offset(c.x + kotlin.math.cos(a).toFloat() * ring, c.y + kotlin.math.sin(a).toFloat() * ring)
+            val v = if (h < values.size && values[h] > 0) values[h] / maxV.toFloat() else 0f
+            val isNow = h == nowHour
+            val r = (2f + 4.2f * v).dp.toPx() * (if (isNow) 1.25f else 1f)
+            val color = when {
+                isNow -> accent.copy(alpha = pulse)
+                v > 0f -> ink.copy(alpha = 0.45f + 0.5f * v)
+                else -> mark.copy(alpha = 0.32f)
+            }
+            drawCircle(color, r, p)
+        }
+        paint.typeface = android.graphics.Typeface.MONOSPACE
+        paint.textSize = 10.sp.toPx()
+        paint.color = mark.toArgb()
+        drawIntoCanvas { cv ->
+            val n = cv.nativeCanvas
+            val lr = ring + 17.dp.toPx()
+            paint.textAlign = android.graphics.Paint.Align.CENTER
+            n.drawText("00", c.x, c.y - lr + 4.dp.toPx(), paint)
+            n.drawText("12", c.x, c.y + lr + 4.dp.toPx(), paint)
+            n.drawText("06", c.x + lr, c.y + 4.dp.toPx(), paint)
+            n.drawText("18", c.x - lr, c.y + 4.dp.toPx(), paint)
+            paint.color = ink.toArgb()
+            paint.textSize = 12.sp.toPx()
+            n.drawText(centerTop, c.x, c.y + (if (centerBottom != null) -2.dp.toPx() else 4.dp.toPx()), paint)
+            if (centerBottom != null) {
+                paint.color = mark.toArgb()
+                paint.textSize = 10.sp.toPx()
+                n.drawText(centerBottom, c.x, c.y + 14.dp.toPx(), paint)
+            }
         }
     }
 }
