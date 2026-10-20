@@ -42,8 +42,13 @@ class MainActivity : ComponentActivity() {
 
         // Apply saved look-and-feel before the first frame, so there is no lime flash.
         val settings = TagSettings(applicationContext)
-        TagColors.usePalette(applicationContext, settings.palette, settings.materialYou)
+        // Material You used to be a switch laid over any palette. It is a palette of its own now.
+        if (settings.materialYou) { settings.palette = "material"; settings.materialYou = false }
+        TagColors.usePalette(applicationContext, settings.palette)
         TagColors.useMulticolour(settings.multicolour)
+        TagColors.useAppearance(settings.appearance)
+        TagColors.useMicro(settings.micro)
+        TagColors.useAmoled(settings.amoled)
         TagMotion.enabled = !settings.reducedMotion
         TagMotion.haptics = settings.haptics
 
