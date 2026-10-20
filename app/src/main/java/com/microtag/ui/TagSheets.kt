@@ -369,3 +369,61 @@ fun CalendarSheet(settings: TagSettings, onDismiss: () -> Unit) {
         }
     }
 }
+
+// ==========================================================
+// CITY: where the weather comes from, when it is not the device
+// Placeholder until a weather API is in the project: whatever is typed is saved as the city. Once there is a
+// geocoding / search source, results go in the empty list below and tapping one calls the same save.
+// ==========================================================
+
+@Composable
+fun CitySheet(settings: TagSettings, onDismiss: () -> Unit) {
+    var query by remember { mutableStateOf(settings.weatherCity) }
+
+    fun use(city: String) {
+        settings.weatherCity = city.trim()
+        settings.weatherAuto = city.isBlank()      // clearing the city returns to the device's location
+        onDismiss()
+    }
+
+    TagSheet("City", "where to get the weather for", onDismiss) {
+        androidx.compose.foundation.text.BasicTextField(
+            value = query,
+            onValueChange = { query = it },
+            singleLine = true,
+            textStyle = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 17.sp, color = TagColors.White),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(TagColors.Lime),
+            decorationBox = { inner ->
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(CircleShape)
+                        .border(2.dp, TagColors.Outline, CircleShape)
+                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                ) {
+                    if (query.isEmpty()) {
+                        Text(
+                            "Search a city",
+                            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 17.sp, color = TagColors.Outline)
+                        )
+                    }
+                    inner()
+                }
+            }
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "City search switches on once the weather service is connected. Until then, whatever you type is used as typed.",
+            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp, lineHeight = 18.sp, color = TagColors.Outline)
+        )
+        Spacer(Modifier.height(16.dp))
+        if (query.isNotBlank()) {
+            TagChip("Use “${query.trim()}”", true) { use(query) }
+            Spacer(Modifier.height(8.dp))
+        }
+        if (settings.weatherCity.isNotBlank()) {
+            TagChip("Back to Auto", false) { use("") }
+        }
+        Spacer(Modifier.height(40.dp))
+    }
+}
