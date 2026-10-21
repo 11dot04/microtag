@@ -136,6 +136,7 @@ fun DashboardScreen(
     prefs: MicrotagPrefs,
     onOpenInspect: () -> Unit,
     onOpenPin: () -> Unit = {},
+    onOpenMoments: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onOpenStats: () -> Unit,
     onOpenLogs: () -> Unit,
@@ -310,6 +311,7 @@ fun DashboardScreen(
         val b = 4f + p       // first Micro Tags row
         val b2 = b + 3f      // earbuds / sound mode
         val b3 = b2 + 2f     // music / VPN
+        val hasMoments = remember { com.microtag.inspect.PillPrefs.attach(context); com.microtag.inspect.MomentsStore.any() }
 
         // Tones: 0 accent, 1 secondary, 2 tertiary. Neighbouring tiles never share one, so a palette with
         // three accents reads as a patchwork; a single-accent palette (Lime) looks exactly as before.
@@ -395,6 +397,9 @@ fun DashboardScreen(
 
             // ---- Pin: opens its own screen. Not a toggle; pinning is something you do, not a source.
             TileTone(0) { PinTile(Modifier.cell(0f, b3 + 2f, 4f, 1f), onOpenPin) }
+
+            // ---- Moments: not there at all until the first one has been found.
+            if (hasMoments) TileTone(1) { MomentsTile(Modifier.cell(0f, b3 + 3f, 4f, 1f), onOpenMoments) }
         }
         Spacer(Modifier.height(40.dp))
         }
@@ -503,6 +508,18 @@ private fun MicroTile(
         Row(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             TagLabel(bold, light, fg, Modifier.weight(1f), size, inline = inline)
             TagIcon(icon, fg, size = 28.dp)
+        }
+    }
+}
+
+/** Opens the Moments screen. Only drawn once something has been found. */
+@Composable
+private fun MomentsTile(modifier: Modifier, onClick: () -> Unit) {
+    TagTile(modifier, TagShapes.Pill, TileState.Static, onClick) { fg ->
+        Row(Modifier.fillMaxSize().padding(start = 16.dp, end = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+            TagIcon(R.drawable.ic_capsule_bolt, fg, size = 28.dp)
+            Spacer(Modifier.width(10.dp))
+            TagLabel("Moments", "Found along the way", fg, Modifier.weight(1f))
         }
     }
 }
