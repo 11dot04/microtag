@@ -210,7 +210,9 @@ object MicrotagReminder {
         /** Runs when the user swipes the notification away, never when it times out or the app cancels it. */
         deleteIntent: PendingIntent? = null,
         /** Whether the card names the source app. Off where the icon already says it; kept for streaks, downloads and uploads. */
-        showAppName: Boolean = true
+        showAppName: Boolean = true,
+        /** 0-100: draws the notification's own progress bar (Android 16 progress style). */
+        progress: Int? = null
     ) {
         createNotificationChannel(context)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -296,6 +298,8 @@ object MicrotagReminder {
             if (label.isNotBlank() && !title.contains(label, ignoreCase = true)) builder.setSubText(label)
         }
 
+        progress?.let { applyProgress(builder, it) }
+
         // Attach native actions (Pause, Next, Disconnect, etc.); destructive ones in red.
         actions.forEach { builder.addAction(tintIfDestructive(it)) }
         
@@ -354,6 +358,23 @@ object MicrotagReminder {
             }
         }
         Log.d(TAG, "pill='$text' via ${if (applied) "setter+extra" else "extra only"}")
+    }
+
+    /** The Android 16 progress style, by reflection so it still builds on older SDKs; falls back to the classic bar. */
+    private fun applyProgress(builder: Notification.Builder, percent: Int) {
+        val p = percent.coerceIn(0, 100)
+        try {
+            val styleCls = Class.forName("android.app.Notification\$ProgressStyle")
+            val segCls = Class.forName("android.app.Notification\$ProgressStyle\$Segment")
+            val style = styleCls.getConstructor().newInstance()
+            val seg = segCls.getConstructor(Int::class.javaPrimitiveType).newInstance(100)
+            styleCls.getMethod("setProgressSegments", java.util.List::class.java).invoke(style, listOf(seg))
+            styleCls.getMethod("setProgress", Int::class.javaPrimitiveType).invoke(style, p)
+            builder.setStyle(style as Notification.Style)
+        } catch (e: Exception) {
+            Log.w(TAG, "ProgressStyle unavailable, using the classic bar: ${e.message}")
+            builder.setProgress(100, p, false)
+        }
     }
 
     private fun applyPromotedOngoing(builder: Notification.Builder) {
