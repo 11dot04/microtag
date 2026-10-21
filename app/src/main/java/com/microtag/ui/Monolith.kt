@@ -201,8 +201,8 @@ fun MonolithPoster(
         if (!TagColors.MicroOn) {
             // Micrographics off: one plain caption in place of the annotation column.
             Column(Modifier.offset { IntOffset(metaX.roundToInt(), metaTop.roundToInt()) }.width(metaWidth)) {
-                Text("INTERCEPTIONS", style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.sp, color = ink))
-                Text("so far", style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = TagColors.Outline))
+                Text("INTERCEPTIONS", maxLines = 1, softWrap = false, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.sp, color = ink))
+                Text("so far", maxLines = 1, softWrap = false, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = TagColors.Outline))
             }
         } else Column(
             Modifier
