@@ -505,11 +505,11 @@ class MicrotagNotificationService : NotificationListenerService() {
     private fun migrateInterceptions() {
         if (Interceptions.migrated(applicationContext)) return
         val lastSeen = HashMap<String, Long>()
-        val history = ArrayList<Interceptions.Record>()
+        val history = ArrayList<com.microtag.core.InterceptionBook.Record>()
         MicrotagLog.snapshot().filter { it.decision == Decision.PROMOTED }.sortedBy { it.timeMs }.forEach { e ->
             val previous = lastSeen[e.key]
             lastSeen[e.key] = e.timeMs
-            if (previous == null || e.timeMs - previous > 30 * 60 * 1000L) history.add(Interceptions.Record(e.timeMs, e.pkg, e.path))
+            if (previous == null || e.timeMs - previous > 30 * 60 * 1000L) history.add(com.microtag.core.InterceptionBook.Record(e.timeMs, e.pkg, e.path))
         }
         Interceptions.migrate(applicationContext, history)
     }
