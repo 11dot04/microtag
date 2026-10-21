@@ -18,6 +18,7 @@ import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import com.microtag.core.Interceptions
 import com.microtag.core.MicrotagLog
 import com.microtag.core.MicrotagLog.Decision
 import com.microtag.core.MicrotagPrefs
@@ -96,7 +97,8 @@ class MicrotagNotificationService : NotificationListenerService() {
 
     /** One interception per capsule session. Transient chips (OTP, songs, DMs) count each new headline. */
     private fun countsAsNew(key: String, tile: String?, timeoutSeconds: Int, headlineChanged: Boolean): Boolean {
-        if (!capsuleIds.containsKey(key)) return true
+        // Counted already and not over? Persisted, so a restart or an update does not count it again.
+        if (!Interceptions.isOpen(key)) return true
         return timeoutSeconds > 0 && headlineChanged && tile != MicrotagPrefs.KEY_DOWNLOADS && tile != TagKeys.UPLOADS
     }
 
@@ -108,6 +110,8 @@ class MicrotagNotificationService : NotificationListenerService() {
         prefs = MicrotagPrefs(applicationContext)
         settings = TagSettings(applicationContext)
         MicrotagLog.init(applicationContext)
+        Interceptions.init(applicationContext)
+        migrateInterceptions()
         RuleEngine.init(applicationContext)
         CountryCodes.init(applicationContext)
         getSharedPreferences("microtag_prefs", Context.MODE_PRIVATE)
@@ -129,6 +133,7 @@ class MicrotagNotificationService : NotificationListenerService() {
             powerReceiverRegistered = true
         }
         startSideSources()
+        MomentsWatcher.start(applicationContext)
         // Pins survive a reboot: put back whatever is still pinned.
         try { com.microtag.inspect.PinEngine.restore(applicationContext) } catch (e: Exception) { Log.w(TAG, "Pin restore failed", e) }
     }
@@ -136,6 +141,7 @@ class MicrotagNotificationService : NotificationListenerService() {
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         Log.w(TAG, "Listener disconnected, requesting rebind")
+        MicrotagLog.flush()
         handler.removeCallbacks(pollTask)
         try {
             requestRebind(ComponentName(this, MicrotagNotificationService::class.java))
@@ -156,7 +162,9 @@ class MicrotagNotificationService : NotificationListenerService() {
         }
         setRingerWatching(false)
         BluetoothWatcher.stop()
+        MomentsWatcher.stop(applicationContext)
         CalendarCountdown.stop()
+        MicrotagLog.flush()
         super.onDestroy()
     }
 
@@ -201,7 +209,8 @@ class MicrotagNotificationService : NotificationListenerService() {
             MicrotagReminder.cancelCapsule(applicationContext, RINGER_CAPSULE_ID)
             return
         }
-        prefs.incrementInterceptCount()
+        // A ringer change is its own interception, but a burst of toggles is one.
+        if (Interceptions.debounced("ringer", 5_000L)) bump("ringer", packageName, "RINGER")
         MicrotagReminder.showCapsule(
             context = applicationContext,
             pillText = pill,
@@ -283,6 +292,7 @@ class MicrotagNotificationService : NotificationListenerService() {
         super.onNotificationRemoved(sbn)
         if (sbn == null || sbn.packageName == packageName) return
 
+        Interceptions.end(sbn.key)
         val id = capsuleIds[sbn.key]
         if (id != null) MicrotagReminder.cancelTicker(id)
         cancelDeferred(sbn.key)
@@ -326,6 +336,7 @@ class MicrotagNotificationService : NotificationListenerService() {
         val pkg = sbn.packageName ?: return
         if (pkg == packageName) return // never react to our own capsules
         val notif = sbn.notification ?: return
+        Interceptions.touch(sbn.key) // still there: keeps its session alive
         val extras = notif.extras ?: return
 
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
@@ -370,7 +381,7 @@ class MicrotagNotificationService : NotificationListenerService() {
             capsuleIds[sbn.key] = id
             remember(sbn.key, pkg, match.tile)
             trackTimeout(sbn.key, match.timeoutSeconds)
-            if (isNew) prefs.incrementInterceptCount()
+            if (isNew) bump(sbn.key, pkg, "RULE")
             MicrotagReminder.showCapsule(
                 context = applicationContext,
                 pillText = match.pillText,
@@ -443,7 +454,7 @@ class MicrotagNotificationService : NotificationListenerService() {
             remember(sbn.key, pkg, parsed.tile)
             trackTimeout(sbn.key, parsed.timeoutSeconds)
 
-            if (isNew) prefs.incrementInterceptCount()
+            if (isNew) bump(sbn.key, pkg, "PARSER")
             // System capsules (Bluetooth, DND, battery) open the matching settings page; every other
             // capsule names its app and opens what the original notification would have opened.
             val isSystem = pkg == "com.android.bluetooth" || pkg == "com.android.systemui"
@@ -461,7 +472,8 @@ class MicrotagNotificationService : NotificationListenerService() {
                 actions = parsed.actions,
                 sourcePackage = if (isSystem) null else pkg,
                 sourceIntent = if (isSystem) systemTap(pkg, "${parsed.title} ${parsed.content}") else notif.contentIntent,
-                showAppName = namesApp(parsed.tile)
+                showAppName = namesApp(parsed.tile),
+                progress = parsed.progress
             )
             return
         }
@@ -484,6 +496,28 @@ class MicrotagNotificationService : NotificationListenerService() {
         } else {
             logDecision(sbn, "NONE", Decision.IGNORED, "no rule, parser or fallback matched")
         }
+    }
+
+    /**
+     * Once: the old log's promoted sessions become history in the new store, and the old counter carries over.
+     * Sessions are folded the way Stats used to: a key's later updates inside 30 minutes belong to the first.
+     */
+    private fun migrateInterceptions() {
+        if (Interceptions.migrated(applicationContext)) return
+        val lastSeen = HashMap<String, Long>()
+        val history = ArrayList<Interceptions.Record>()
+        MicrotagLog.snapshot().filter { it.decision == Decision.PROMOTED }.sortedBy { it.timeMs }.forEach { e ->
+            val previous = lastSeen[e.key]
+            lastSeen[e.key] = e.timeMs
+            if (previous == null || e.timeMs - previous > 30 * 60 * 1000L) history.add(Interceptions.Record(e.timeMs, e.pkg, e.path))
+        }
+        Interceptions.migrate(applicationContext, history)
+    }
+
+    /** One interception, written to the store at once. See [Interceptions] for what counts as one. */
+    private fun bump(key: String, pkg: String, path: String) {
+        Interceptions.record(applicationContext, key, pkg, path)
+        MomentsWatcher.intercepted(applicationContext)
     }
 
     /**
@@ -580,7 +614,7 @@ class MicrotagNotificationService : NotificationListenerService() {
         capsuleIds[sbn.key] = id
         trackTimeout(sbn.key, 15)
         remember(sbn.key, sbn.packageName, MicrotagPrefs.KEY_TEAMS)
-        if (isNew) prefs.incrementInterceptCount()
+        if (isNew) bump(sbn.key, sbn.packageName, "FALLBACK")
         MicrotagReminder.showCapsule(
             context = applicationContext,
             pillText = "Teams Live",
@@ -610,7 +644,7 @@ class MicrotagNotificationService : NotificationListenerService() {
         capsuleIds[sbn.key] = id
         trackTimeout(sbn.key, 10)
         remember(sbn.key, sbn.packageName, MicrotagPrefs.KEY_MAPS)
-        if (isNew) prefs.incrementInterceptCount()
+        if (isNew) bump(sbn.key, sbn.packageName, "FALLBACK")
         MicrotagReminder.showCapsule(
             context = applicationContext,
             pillText = "Nav",
