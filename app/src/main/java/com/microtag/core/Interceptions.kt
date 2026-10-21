@@ -9,8 +9,6 @@ import java.io.File
  * The home screen's counter is kept equal to the total, so what it shows and what Stats shows can never disagree.
  */
 object Interceptions {
-    typealias Record = InterceptionBook.Record
-
     private const val PREFS = "microtag_interceptions"
     private const val LEGACY_PREFS = "microtag_prefs"
     private const val LEGACY_KEY = "intercept_count"
@@ -39,10 +37,10 @@ object Interceptions {
     private fun b(): InterceptionBook = book ?: error("Interceptions.init was not called")
 
     fun migrated(context: Context): Boolean { init(context); return b().migrated() }
-    fun migrate(context: Context, history: List<Record>) { init(context); b().migrate(history) }
+    fun migrate(context: Context, history: List<InterceptionBook.Record>) { init(context); b().migrate(history) }
     fun record(context: Context, key: String, pkg: String, path: String): Int { init(context); return b().record(key, pkg, path) }
 
-    fun records(): List<Record> = book?.records().orEmpty()
+    fun records(): List<InterceptionBook.Record> = book?.records().orEmpty()
     fun total(): Int = book?.total() ?: 0
     fun isOpen(key: String): Boolean = book?.isOpen(key) ?: false
     fun touch(key: String) { book?.touch(key) }
