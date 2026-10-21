@@ -30,7 +30,7 @@ import com.microtag.core.MicrotagPrefs
 import com.microtag.rules.RuleEngine
 import com.microtag.shizuku.ShizukuBridge
 
-private enum class Screen { Onboarding, Dashboard, Inspect, Priority, Pin, Settings, Stats, Logs }
+private enum class Screen { Onboarding, Dashboard, Inspect, Priority, Pin, Moments, Settings, Stats, Logs }
 
 class MainActivity : ComponentActivity() {
 
@@ -79,6 +79,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.Inspect -> TransformOrigin(0.80f, 0.72f)    // the Inspect tiles
                                 Screen.Priority -> TransformOrigin(0.30f, 0.30f)   // the button on Inspect
                                 Screen.Pin -> TransformOrigin(0.50f, 0.92f)        // the Pin tile, at the foot
+                                Screen.Moments -> TransformOrigin(0.50f, 0.97f)    // the Moments tile, below it
                                 else -> TransformOrigin.Center
                             }
                             if (targetState == Screen.Dashboard) {
@@ -109,6 +110,7 @@ class MainActivity : ComponentActivity() {
                                 prefs = prefs,
                                 onOpenInspect = { screen = Screen.Inspect },
                                 onOpenPin = { screen = Screen.Pin },
+                                onOpenMoments = { screen = Screen.Moments },
                                 onOpenSettings = { screen = Screen.Settings },
                                 onOpenStats = { screen = Screen.Stats },
                                 onOpenLogs = { screen = Screen.Logs },
@@ -117,6 +119,7 @@ class MainActivity : ComponentActivity() {
                             Screen.Inspect -> InspectScreen(onBack = { screen = Screen.Dashboard }, onOpenPriority = { screen = Screen.Priority })
                             Screen.Priority -> PriorityScreen(onBack = { screen = Screen.Inspect })
                             Screen.Pin -> PinScreen(onBack = { screen = Screen.Dashboard })
+                            Screen.Moments -> MomentsScreen(onBack = { screen = Screen.Dashboard })
                             Screen.Stats -> StatsScreen(prefs = prefs, onBack = { screen = Screen.Dashboard })
                             Screen.Logs -> LogsScreen(onBack = { screen = Screen.Dashboard })
                             Screen.Settings -> SettingsScreen(
