@@ -9,8 +9,11 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import com.microtag.core.Interceptions
 import com.microtag.core.MicrotagPrefs
 import com.microtag.core.MicrotagReminder
 import com.microtag.ui.TagKeys
@@ -24,8 +27,9 @@ import com.microtag.ui.TagSettings
  * Needs the BLUETOOTH_CONNECT permission on Android 12+: without it the device name is hidden and the
  * battery broadcast is not delivered. The dashboard tile asks for it; Shizuku grants it when available.
  *
- * On connect: the device name. If it reports a battery within [BATTERY_WINDOW_MS] the same chip becomes "name 80%".
- * Later battery changes only show when the battery is low (20, 15, 10 and 5 percent).
+ * The pill has little room, so the two facts take turns instead of sharing it: first the short name (brand dropped,
+ * see [BtName]), then, a few seconds later, the battery as its own "80%" chip. Later battery changes only show when
+ * the battery is low (20, 15, 10 and 5 percent).
  */
 object BluetoothWatcher {
     private const val ID = 7_300_003
@@ -33,6 +37,9 @@ object BluetoothWatcher {
     private const val EXTRA_BATTERY = "android.bluetooth.device.extra.BATTERY_LEVEL"
     private const val BATTERY_WINDOW_MS = 12_000L
     private const val DEBOUNCE_MS = 4_000L
+    private const val NAME_HOLD_MS = 3_500L
+    private val main = Handler(Looper.getMainLooper())
+    private val pending = HashMap<String, Runnable>()
     private val LOW_STEPS = intArrayOf(20, 15, 10, 5)
 
     private var registered = false
@@ -72,6 +79,8 @@ object BluetoothWatcher {
             registered = false
         }
         MicrotagReminder.cancelCapsule(ctx, ID)
+        pending.values.forEach { main.removeCallbacks(it) }
+        pending.clear()
         connectedAt.clear()
         lastBattery.clear()
         shownFor = null
@@ -89,11 +98,13 @@ object BluetoothWatcher {
                     if (now - (connectedAt[address] ?: 0L) < DEBOUNCE_MS) return
                     connectedAt[address] = now
                     lastBattery.remove(address)
-                    show(ctx, address, nameOf(device), "Connected", null)
+                    show(ctx, address, nameOf(device), null, low = false)
                 }
                 BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                     connectedAt.remove(address)
                     lastBattery.remove(address)
+                    pending.remove(address)?.let { main.removeCallbacks(it) }
+                    Interceptions.end("bt:$address")
                     if (shownFor == address) {
                         MicrotagReminder.cancelCapsule(ctx, ID)
                         shownFor = null
@@ -106,8 +117,17 @@ object BluetoothWatcher {
                     lastBattery[address] = pct
                     val justConnected = now - (connectedAt[address] ?: 0L) < BATTERY_WINDOW_MS
                     val crossedLow = previous != null && LOW_STEPS.any { previous > it && pct <= it }
-                    if (justConnected || crossedLow) {
-                        show(ctx, address, nameOf(device), if (crossedLow) "Battery low" else "Connected", pct)
+                    if (crossedLow) {
+                        pending.remove(address)?.let { main.removeCallbacks(it) }
+                        show(ctx, address, nameOf(device), pct, low = true)
+                    } else if (justConnected) {
+                        // Let the name be read first, then the battery takes the chip.
+                        val wait = (NAME_HOLD_MS - (now - (connectedAt[address] ?: now))).coerceAtLeast(0L)
+                        val name = nameOf(device)
+                        pending.remove(address)?.let { main.removeCallbacks(it) }
+                        val task = Runnable { pending.remove(address); show(ctx, address, name, pct, low = false) }
+                        pending[address] = task
+                        main.postDelayed(task, wait)
                     }
                 }
             }
@@ -125,21 +145,32 @@ object BluetoothWatcher {
         "Bluetooth"
     }
 
-    private fun show(ctx: Context, address: String, name: String, status: String, battery: Int?) {
+    /** [battery] null shows the name; otherwise the battery chip, titled with the name. */
+    private fun show(ctx: Context, address: String, name: String, battery: Int?, low: Boolean) {
         val prefs = MicrotagPrefs(ctx)
         if (!prefs.isAppEnabled(TagKeys.BLUETOOTH)) return
         if (TagSettings(ctx).quietReason() != null) return
-        // Chip text is short: the name shrinks to leave room for the percentage.
-        val pill = if (battery == null) name.take(10) else "${name.take(8)} $battery%"
+        val pill = if (battery == null) BtName.pill(name) else "$battery%"
+        val full = BtName.clean(name)
         shownFor = address
-        prefs.incrementInterceptCount()
+        // One interception per connection: the name, the battery and any low warning are all part of it.
+        val key = "bt:$address"
+        Interceptions.touch(key)
+        if (!Interceptions.isOpen(key)) {
+            Interceptions.record(ctx, key, "com.android.bluetooth", "BLUETOOTH")
+            MomentsWatcher.intercepted(ctx)
+        }
         MicrotagReminder.showCapsule(
             context = ctx,
             pillText = pill,
-            title = name,
-            content = if (battery == null) status else "$status · battery $battery%",
+            title = full,
+            content = when {
+                battery == null -> "Connected"
+                low -> "Battery low · $battery%"
+                else -> "Battery $battery%"
+            },
             notificationId = ID,
-            timeoutSeconds = 6,
+            timeoutSeconds = if (battery == null) 4 else 6,
             iconName = "ic_earbuds",
             contentIntent = settingsIntent(ctx),
             showAppName = false
