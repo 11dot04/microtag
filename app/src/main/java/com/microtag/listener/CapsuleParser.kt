@@ -20,7 +20,9 @@ data class ParsedCapsule(
     val payload: InspectPayload? = null,
     val actions: List<Notification.Action> = emptyList(),
     /** Dashboard tile (MicrotagPrefs key) this capsule belongs to, if any. */
-    val tile: String? = null
+    val tile: String? = null,
+    /** 0-100 for a transfer: shown as the notification's own progress bar. */
+    val progress: Int? = null
 )
 
 /** Settings the parser needs, passed in so the parser itself stays free of Android storage. */
@@ -115,6 +117,10 @@ object CapsuleParser {
      * A transfer in progress. Checked before the messenger test: WhatsApp is a code app, but its backup and media
      * transfers carry a progress bar, or say "Uploading: 45 MB of 45 MB (97%)", and must not be read as chat.
      */
+    /** The app already asks for a Live Update itself (a download manager, a ride app): it is not ours to take over. */
+    private fun isPromoted(extras: Bundle): Boolean =
+        try { extras.getBoolean("android.requestPromotedOngoing", false) } catch (_: Exception) { false }
+
     private fun isTransfer(extras: Bundle): Boolean {
         if (extras.containsKey(Notification.EXTRA_PROGRESS) && extras.getInt(Notification.EXTRA_PROGRESS_MAX, 0) > 0) return true
         val text = fullText(extras)
@@ -143,6 +149,8 @@ object CapsuleParser {
         isStrava(pkg) -> MicrotagPrefs.KEY_STRAVA
         isDiscord(pkg) -> MicrotagPrefs.KEY_DISCORD
         isWeather(pkg) -> TagKeys.WEATHER
+        isPromoted(extras) && isTransfer(extras) -> null
+        carriesCode(extras) -> MicrotagPrefs.KEY_OTP
         isTransfer(extras) -> if (isUpload(pkg, extras)) TagKeys.UPLOADS else MicrotagPrefs.KEY_DOWNLOADS
         isMessaging(pkg) -> MicrotagPrefs.KEY_OTP
         extras.containsKey(Notification.EXTRA_PROGRESS) -> if (isUpload(pkg, extras)) TagKeys.UPLOADS else MicrotagPrefs.KEY_DOWNLOADS
@@ -190,6 +198,8 @@ object CapsuleParser {
             isStrava(pkg) -> parseStrava(notif, combined, title, text, ctx)
             isDiscord(pkg) -> parseDiscord(notif, combined, title, text)
             isWeather(pkg) -> parseWeather(combined, title, text)
+            isPromoted(extras) && isTransfer(extras) -> null
+            carriesCode(extras) -> parseOtp(fullText(extras), title, text)
             isTransfer(extras) -> parseProgress(notif, title, text, isUpload(pkg, extras), fullText(extras))
             isMessaging(pkg) -> parseOtp(fullText(extras).ifBlank { combined }, title, text)
             extras.containsKey(Notification.EXTRA_PROGRESS) -> parseProgress(notif, title, text, isUpload(pkg, extras), fullText(extras))
@@ -217,8 +227,12 @@ object CapsuleParser {
         return cleaned.ifBlank { rawTitle }.take(14)
     }
 
+    private val browserMedia = Regex("""(?i)\bsite is playing\b|\bplaying media\b""")
+
     private fun parseMedia(notif: Notification, title: String, text: String, subText: String): ParsedCapsule? {
         if (title.isBlank()) return null
+        // A browser's "A site is playing media" is not a song.
+        if (browserMedia.containsMatchIn("$title $text $subText")) return null
         val artist = text.ifBlank { subText } 
         val songName = cleanSongTitle(title, artist)
 
@@ -513,7 +527,8 @@ object CapsuleParser {
             content = text.ifBlank { "$progress / $max completed" },
             iconName = if (upload) ICON_UPLOAD else ICON_DOWNLOAD,
             timeoutSeconds = 4,
-            tile = if (upload) TagKeys.UPLOADS else MicrotagPrefs.KEY_DOWNLOADS
+            tile = if (upload) TagKeys.UPLOADS else MicrotagPrefs.KEY_DOWNLOADS,
+            progress = pct.coerceIn(0, 100)
         )
     }
 }
