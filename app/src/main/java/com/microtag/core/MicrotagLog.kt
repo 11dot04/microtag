@@ -15,6 +15,10 @@ import java.util.Locale
  * Persistent ring buffer of every notification the listener evaluated and what it decided.
  * Identical consecutive decisions for the same source are collapsed into one entry with a repeat count,
  * so the 3 s poll doesn't flood the log.
+ *
+ * This is the debug view for the Logs screen. The interception count and Stats live in [Interceptions]. Saves are
+ * atomic (write a temp file, rename it over the old one), a file that cannot be read is set aside instead of being
+ * overwritten with an empty log, and [flush] writes at once so an app update does not lose the last seconds.
  */
 object MicrotagLog {
 
@@ -115,7 +119,7 @@ object MicrotagLog {
             file = File(ctx.filesDir, FILE_NAME)
             enabled = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getBoolean(KEY_ENABLED, true)
-            runCatching {
+            val readable = runCatching {
                 val raw = file?.takeIf { it.exists() }?.readText().orEmpty()
                 if (raw.isNotBlank()) {
                     val arr = JSONArray(raw)
@@ -123,6 +127,11 @@ object MicrotagLog {
                         entries.addLast(Entry.fromJson(arr.getJSONObject(i)))
                     }
                 }
+            }.isSuccess
+            // Damaged: keep the bytes for inspection and start fresh, rather than silently overwriting them.
+            if (!readable) {
+                entries.clear()
+                file?.let { runCatching { it.renameTo(File(it.parentFile, "$FILE_NAME.damaged")) } }
             }
             initialized = true
         }
@@ -196,11 +205,22 @@ object MicrotagLog {
         handler.postDelayed(saveTask, SAVE_DEBOUNCE_MS)
     }
 
+    /** Writes now, on the calling thread. Called when the service is going away or being rebound. */
+    fun flush() {
+        handler.removeCallbacks(saveTask)
+        saveNow()
+    }
+
     private fun saveNow() {
         val target = file ?: return
         val json = synchronized(lock) {
             JSONArray().also { arr -> entries.forEach { arr.put(it.toJson()) } }.toString()
         }
-        runCatching { target.writeText(json) }
+        // Temp file, then rename: a kill in the middle leaves the old file whole.
+        val tmp = File(target.parentFile, "$FILE_NAME.tmp")
+        runCatching {
+            tmp.writeText(json)
+            if (!tmp.renameTo(target)) { target.writeText(json); tmp.delete() }
+        }
     }
 }
