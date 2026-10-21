@@ -369,12 +369,8 @@ fun TagPalettes.resolve(p: TagPalette, appearance: Appearance, systemDark: Boole
     return if (wantDark == !p.isLight) p else p.inverted()
 }
 
-/** Pure black base for dark palettes (OLED screens switch the pixels off); surfaces stay a hair above it. */
-fun TagPalette.amoled(): TagPalette = if (isLight) this else copy(
-    base = Color.Black,
-    surface = lerp(Color.Black, ink, 0.07f),
-    pausedPoster = lerp(Color.Black, ink, 0.05f)
-)
+/** Pure black page for dark palettes (OLED pixels switch off). Only the base changes; surfaces and accents are untouched. */
+fun TagPalette.amoled(): TagPalette = if (isLight) this else copy(base = Color.Black)
 
 /** The system's Material You tones as (light, dark) TagPalettes. Null below Android 12. */
 private fun systemMaterial(context: Context, baseline: TagPalette): Pair<TagPalette, TagPalette>? {
@@ -416,29 +412,28 @@ private fun baselineLight(dark: TagPalette) = dark.copy(
 )
 
 object TagColors {
-    private var basePalette by mutableStateOf(TagPalettes.Lime)
-    private var appearance by mutableStateOf(Appearance.Native)
+    private var _basePalette by mutableStateOf(TagPalettes.Lime)
+    private var _appearance by mutableStateOf(Appearance.Native)
     private var _systemDark by mutableStateOf(true)
     private var _amoledOn by mutableStateOf(false)
     private var _microOn by mutableStateOf(true)
-    
     // The Material palette's real colours (light, dark); baseline until the system's are read.
-    private var materialLight by mutableStateOf(baselineLight(TagPalettes.Material))
-    private var materialDark by mutableStateOf(TagPalettes.Material)
+    private var _materialLight by mutableStateOf(baselineLight(TagPalettes.Material))
+    private var _materialDark by mutableStateOf(TagPalettes.Material)
     private var _multicolourOn by mutableStateOf(false)
 
     private fun resolve(p: TagPalette, a: Appearance, sysDark: Boolean): TagPalette {
         val base = if (p.id == "material") {
             // Material has no "native" side: it follows the phone unless told otherwise.
             val dark = when (a) { Appearance.Light -> false; Appearance.Dark -> true; else -> sysDark }
-            if (dark) materialDark else materialLight
+            if (dark) _materialDark else _materialLight
         } else TagPalettes.resolve(p, a, sysDark)
         return if (_amoledOn) base.amoled() else base
     }
 
-    // Cached until the palette, the appearance, the AMOLED switch or the phone's mode changes.
-    private val resolved by derivedStateOf { resolve(basePalette, appearance, _systemDark) }
-    private val palette: TagPalette get() = resolved
+    // Cached until the palette, the _appearance, the AMOLED switch or the phone's mode changes.
+    private val _resolved by derivedStateOf { resolve(_basePalette, _appearance, _systemDark) }
+    private val palette: TagPalette get() = _resolved
 
     /** The accent. */
     val Lime: Color get() = palette.accent
@@ -525,22 +520,22 @@ object TagColors {
     fun usePalette(context: Context, id: String) {
         // The system's own Material You tones, when this Android has them.
         systemMaterial(context, TagPalettes.Material)?.let { (light, dark) ->
-            materialLight = light
-            materialDark = dark
+            _materialLight = light
+            _materialDark = dark
         }
-        basePalette = TagPalettes.byId(id)
-        TagFonts.apply(context, basePalette)
+        _basePalette = TagPalettes.byId(id)
+        TagFonts.apply(context, _basePalette)
     }
 
     /** Original, Light, Dark or System (see [Appearance]). */
-    fun useAppearance(id: String) { appearance = Appearance.fromId(id) }
-    val AppearanceId: String get() = appearance.id
+    fun useAppearance(id: String) { _appearance = Appearance.fromId(id) }
+    val AppearanceId: String get() = _appearance.id
 
     /** Fed by TagTheme from the phone's own dark mode. */
     fun setSystemDark(dark: Boolean) { if (_systemDark != dark) _systemDark = dark }
 
     /** A palette as it would look right now, for previews (the palette picker). */
-    fun preview(p: TagPalette): TagPalette = resolve(p, appearance, _systemDark)
+    fun preview(p: TagPalette): TagPalette = resolve(p, _appearance, _systemDark)
 }
 
 /** Global motion and haptics switches, driven from Settings. */
@@ -577,28 +572,28 @@ val Montserrat: FontFamily get() = TagFonts.body
  * Montserrat is used, so a palette never breaks for want of a file.
  */
 object TagFonts {
-    private var bodyFamily by mutableStateOf<ComposeFontFamily>(MontserratBase)
-    private var displayFamily by mutableStateOf<ComposeFontFamily>(MontserratBase)
-    private var monoFamily by mutableStateOf<ComposeFontFamily>(MontserratBase)
+    private var _bodyFamily by mutableStateOf<ComposeFontFamily>(MontserratBase)
+    private var _displayFamily by mutableStateOf<ComposeFontFamily>(MontserratBase)
+    private var _monoFamily by mutableStateOf<ComposeFontFamily>(MontserratBase)
 
-    private var dataFamily by mutableStateOf<ComposeFontFamily>(FontFamily.Monospace)
+    private var _dataFamily by mutableStateOf<ComposeFontFamily>(FontFamily.Monospace)
 
-    val body: ComposeFontFamily get() = bodyFamily
-    val display: ComposeFontFamily get() = displayFamily
-    val mono: ComposeFontFamily get() = monoFamily
+    val body: ComposeFontFamily get() = _bodyFamily
+    val display: ComposeFontFamily get() = _displayFamily
+    val mono: ComposeFontFamily get() = _monoFamily
 
     /** Timestamps, repeat counts, log lines: the system monospace, or the palette's own mono face. */
-    val data: ComposeFontFamily get() = dataFamily
+    val data: ComposeFontFamily get() = _dataFamily
 
     /** Single-weight faces must not be faux-bolded. Use this on any style that uses [display]. */
     val NoSynthesis = FontSynthesis.None
 
     fun apply(context: Context, p: TagPalette) {
-        bodyFamily = p.body?.let { family(context, it) } ?: MontserratBase
-        displayFamily = p.display?.let { family(context, it) } ?: bodyFamily
+        _bodyFamily = p.body?.let { family(context, it) } ?: MontserratBase
+        _displayFamily = p.display?.let { family(context, it) } ?: _bodyFamily
         val customMono = p.mono?.let { family(context, it) }
-        monoFamily = customMono ?: bodyFamily
-        dataFamily = customMono ?: FontFamily.Monospace
+        _monoFamily = customMono ?: _bodyFamily
+        _dataFamily = customMono ?: FontFamily.Monospace
     }
 
     /** A native Typeface from res/font for canvas drawing (the shared card): the first of [weights] that exists. */
