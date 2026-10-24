@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@file:Suppress("OPT_IN_USAGE", "OPT_IN_USAGE_ERROR")
 
 package com.microtag.ui
 
