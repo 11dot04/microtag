@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.em
 import androidx.core.content.res.ResourcesCompat
 import kotlin.math.roundToInt
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.draw.clipToBounds
@@ -256,8 +257,14 @@ fun DashboardScreen(
             }
         }
 
-        // The poster is the page itself now (no accent slab), so the status bar icons follow the palette's base.
-        val lightBackdrop = TagColors.IsLight
+        // Status bar icons follow whatever is behind them: the accent poster at the top, the palette's
+        // base once you scroll (or while paused, when the poster is a quiet tone of the base).
+        val lightBackdrop by remember(paused) {
+            derivedStateOf {
+                if (paused || scroll.value >= posterPx * 0.3f) TagColors.IsLight
+                else TagColors.Lime.luminance() > 0.5f
+            }
+        }
         LaunchedEffect(lightBackdrop) { onBackdropChange(lightBackdrop) }
 
       // No header band. As the poster docks, the content itself fades out under the status bar and the
@@ -307,7 +314,11 @@ fun DashboardScreen(
             label = "weatherOpen"
         )
         // Streaks drops a row first, then stretches sideways once it is clear of Strava.
-        val widen = ((p - 0.85f) / 0.15f).coerceIn(0f, 1f)
+        // Opening the weather tile makes it 2 wide and 3 tall. Strava keeps the right column's top two rows, so
+        // Streaks drops one row, then slides under Strava, leaving no gap. Left column: weather (3). Right: Strava (2) + Streaks (1).
+        val streakDrop = ease((p / 0.35f).coerceIn(0f, 1f))
+        val streakSlide = ease(((p - 0.35f) / 0.30f).coerceIn(0f, 1f))
+        val weatherGrow = ease(((p - 0.30f) / 0.70f).coerceIn(0f, 1f))
         val b = 4f + p       // first Micro Tags row
         val b2 = b + 3f      // earbuds / sound mode
         val b3 = b2 + 2f     // music / VPN
@@ -327,9 +338,9 @@ fun DashboardScreen(
             // ---- weather (top) / streaks (under it) / strava
             TileTone(2) {
                 WeatherTile(
-                    Modifier.cell(0f, 2f, 2f, 1f + p),
+                    Modifier.cell(0f, 2f, 2f, 1f + 2f * weatherGrow),
                     // Pill when closed, settles to the standard tile radius as it opens.
-                    RoundedCornerShape((100f + (26f - 100f) * p.coerceIn(0f, 1f)).dp),
+                    RoundedCornerShape((100f + (26f - 100f) * weatherGrow).dp),
                     weather, weatherOpen, weatherIdx, intervalLabels,
                     auto = weatherAuto, city = weatherCity,
                     onAuto = { weatherAuto = true; settings.weatherAuto = true },
@@ -340,7 +351,7 @@ fun DashboardScreen(
             }
             TileTone(0) {
                 PillTile(
-                    Modifier.cell(0f, 3f + p, 2f + 2f * widen, 1f), null, "Streaks", null, streaks,
+                    Modifier.cell(2f * streakSlide, 3f + streakDrop, 2f, 1f), null, "Streaks", null, streaks,
                     chevron = true, onChevron = { sheet = DashSheet.Streaks }
                 )
             }
@@ -599,43 +610,46 @@ private fun WeatherTile(
                     ChevronButton(false, fg) { onOpenChange(true) }
                 }
             } else {
-                Column(Modifier.fillMaxSize().padding(start = 18.dp, top = 2.dp, end = 12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                // Off, a palette with several accents grades the wheel from its third accent to its second; otherwise
+                // the marks fade from the tile's ink.
+                val tones = !t.on && TagColors.HasTones
+                val cool = if (tones) TagColors.Tertiary else fg.copy(alpha = 0.55f)
+                val warm = if (tones) TagColors.Secondary else fg.copy(alpha = 0.85f)
+                Column(Modifier.fillMaxSize().padding(start = 14.dp, top = 6.dp, end = 14.dp)) {
+                    Row(Modifier.height(30.dp), verticalAlignment = Alignment.CenterVertically) {
                         TagLabel("Weather", null, fg, Modifier.weight(1f), 15.sp)
                         ChevronButton(true, fg) { onOpenChange(false) }
                     }
-                    // Where the weather comes from: the device (Auto) or a city picked by hand.
-                    Row(
-                        Modifier.fillMaxWidth().padding(top = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        LocationChip(selected = auto, fg = fg, face = face, onClick = onAuto) { tint ->
-                            androidx.compose.foundation.Canvas(Modifier.size(12.dp)) {
-                                microGlyph(Micro.Target, center, size.minDimension, tint, 1.3.dp.toPx())
-                            }
-                            Text("Auto", style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = tint))
-                        }
-                        LocationChip(selected = !auto, fg = fg, face = face, onClick = onPickCity, modifier = Modifier.weight(1f)) { tint ->
-                            Text(
-                                city.ifBlank { "Set city" },
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                style = TextStyle(
-                                    fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp,
-                                    color = if (city.isBlank() && auto) tint.copy(alpha = 0.7f) else tint
-                                )
+                    LocationPair(auto, fg, face, onAuto, onPickCity)
+                    Spacer(Modifier.height(8.dp))
+                    // Current temperature (the weather service is not connected yet) and where it is for.
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            "—°C",
+                            style = TextStyle(
+                                fontFamily = TagFonts.display, fontWeight = FontWeight.Light, fontSize = 26.sp,
+                                color = fg, fontSynthesis = TagFonts.NoSynthesis
                             )
-                        }
-                    }
-                    // The dial is far bigger than the room it has: pushed down until its centre sits on the
-                    // tile's bottom edge, so only its top half shows and the rest is clipped away.
-                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
-                        val d = minOf(maxWidth, maxHeight * 2f)
-                        TagDial(
-                            labels, index, onIndex, body = fg, face = face,
-                            modifier = Modifier.align(Alignment.BottomCenter).requiredSize(d).offset(y = d / 2)
                         )
+                        Text(
+                            if (auto) "Auto" else city.ifBlank { "Set city" },
+                            modifier = Modifier.weight(1f).padding(start = 10.dp, bottom = 4.dp),
+                            maxLines = 1,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = fg.copy(alpha = 0.85f))
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "FREQUENCY",
+                        style = TextStyle(
+                            fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 10.sp,
+                            letterSpacing = 1.2.sp, color = fg.copy(alpha = 0.85f)
+                        )
+                    )
+                    // The wheel is far bigger than this box: its centre is below the bottom edge, so only the top of the arc shows.
+                    Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                        TagDial(labels, index, onIndex, ink = fg, cool = cool, warm = warm, modifier = Modifier.fillMaxSize())
                     }
                 }
             }
@@ -643,25 +657,65 @@ private fun WeatherTile(
     }
 }
 
-/** A small pill for the weather location: filled when it is the active source, outlined otherwise. */
+/**
+ * The search field and the auto-fetch button: one pill broken into two connected pieces. Pressing either opens
+ * all of its corners out to a full round (Material 3 Expressive) and springs back.
+ */
 @Composable
-private fun LocationChip(
-    selected: Boolean, fg: Color, face: Color, onClick: () -> Unit,
-    modifier: Modifier = Modifier, content: @Composable RowScope.(Color) -> Unit
-) {
+private fun LocationPair(auto: Boolean, fg: Color, face: Color, onAuto: () -> Unit, onSearch: () -> Unit) {
     val view = LocalView.current
-    Row(
-        modifier
-            .height(30.dp)
-            .clip(CircleShape)
-            .background(if (selected) fg else Color.Transparent)
-            .border(1.5.dp, fg, CircleShape)
-            .clickable { view.tick(Tick.Press); onClick() }
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) { content(if (selected) face else fg) }
+    val searchSrc = remember { MutableInteractionSource() }
+    val autoSrc = remember { MutableInteractionSource() }
+    val searchShape = PressCornerShape(20.dp, 6.dp, 6.dp, 20.dp, pressMorph(searchSrc))
+    val autoShape = PressCornerShape(6.dp, 20.dp, 20.dp, 6.dp, pressMorph(autoSrc))
+    Row(Modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .clip(searchShape)
+                .border(1.5.dp, if (auto) fg.copy(alpha = 0.5f) else fg, searchShape)
+                .clickable(interactionSource = searchSrc, indication = null) { view.tick(Tick.Press); onSearch() }
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            androidx.compose.foundation.Canvas(Modifier.size(16.dp)) {
+                val st = 1.8.dp.toPx()
+                drawCircle(fg, radius = size.minDimension * 0.30f, center = Offset(size.width * 0.42f, size.height * 0.42f), style = androidx.compose.ui.graphics.drawscope.Stroke(st))
+                drawLine(fg, Offset(size.width * 0.64f, size.height * 0.64f), Offset(size.width * 0.9f, size.height * 0.9f), st, androidx.compose.ui.graphics.StrokeCap.Round)
+            }
+            Text(
+                "Search", maxLines = 1,
+                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = fg.copy(alpha = 0.6f))
+            )
+        }
+        Box(
+            Modifier
+                .width(46.dp)
+                .fillMaxHeight()
+                .clip(autoShape)
+                .background(if (auto) fg else Color.Transparent)
+                .border(1.5.dp, fg, autoShape)
+                .clickable(interactionSource = autoSrc, indication = null) { view.tick(Tick.Press); onAuto() },
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
+                val c = if (auto) face else fg
+                val w = size.width
+                val h = size.height
+                drawCircle(c, w * 0.34f, Offset(w / 2f, h * 0.38f))
+                val tail = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(w * 0.18f, h * 0.52f); lineTo(w / 2f, h * 0.96f); lineTo(w * 0.82f, h * 0.52f); close()
+                }
+                drawPath(tail, c)
+                drawCircle(if (auto) fg else face, w * 0.13f, Offset(w / 2f, h * 0.38f))
+            }
+        }
+    }
 }
+
+private fun ease(t: Float) = t * t * (3f - 2f * t)
 
 @Composable
 private fun StravaTile(
