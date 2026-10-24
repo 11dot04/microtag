@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package com.microtag.ui
 
 import android.view.HapticFeedbackConstants
