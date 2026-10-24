@@ -60,7 +60,6 @@ fun PinScreen(onBack: () -> Unit) {
 
     SubScreen(onBack, spacing = 10.dp) {
         Spacer(Modifier.height(12.dp))
-        MicroStrip(6, "Pin", jp = "固定")
         FitText(
             AnnotatedString("Pin"),
             TextStyle(
@@ -76,7 +75,7 @@ fun PinScreen(onBack: () -> Unit) {
         )
         Spacer(Modifier.height(6.dp))
 
-        SectionLabel("Pinned now", 1)
+        SectionLabel("Pinned now")
         if (pins.isEmpty()) {
             Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(TagColors.Surface).padding(18.dp)) {
                 Text(
@@ -96,7 +95,7 @@ fun PinScreen(onBack: () -> Unit) {
             }
         }
 
-        SectionLabel("Settings", 2)
+        SectionLabel("Settings")
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(TagColors.Surface).padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -133,8 +132,8 @@ fun PinScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun SectionLabel(text: String, index: Int? = null) {
-    MicroHeader(text, Modifier.padding(start = 4.dp, top = 8.dp), index)
+private fun SectionLabel(text: String) {
+    TagSectionLabel(text, Modifier.padding(start = 4.dp, top = 8.dp))
 }
 
 @Composable

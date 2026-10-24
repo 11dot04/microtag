@@ -158,7 +158,6 @@ fun LogsScreen(onBack: () -> Unit) {
         }
     ) {
         item { Spacer(Modifier.height(12.dp)) }
-        item { MicroStrip(3, "Logs", jp = "記録") }
         item {
             FitText(
                 AnnotatedString("Logs"),
@@ -234,15 +233,19 @@ fun LogsScreen(onBack: () -> Unit) {
 
         if (rows.isEmpty()) {
             item {
-                Text(
-                    if (entries.isEmpty()) "Nothing logged yet. Entries show up here as notifications are handled."
-                    else "No entries match these filters.",
-                    modifier = Modifier.padding(top = 24.dp),
-                    style = TextStyle(
-                        fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 15.sp,
-                        lineHeight = 21.sp, color = TagColors.Outline
+                Column(Modifier.padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        if (entries.isEmpty()) "Nothing logged yet. Entries show up here as notifications are handled."
+                        else "No entries match these filters.",
+                        style = TextStyle(
+                            fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 15.sp,
+                            lineHeight = 21.sp, color = TagColors.Outline
+                        )
                     )
-                )
+                    // the empty state's one micrographic
+                    MicroLabel(if (entries.isEmpty()) "Offline : standby // log.000" else "Filtered : standby // log.${"%03d".format(entries.size)}", wrap = false)
+                    MicroBracket("?")
+                }
             }
         }
 
@@ -252,7 +255,7 @@ fun LogsScreen(onBack: () -> Unit) {
             contentType = { r -> if (r is LogRow.Header) 0 else 1 }
         ) { row ->
             when (row) {
-                is LogRow.Header -> MicroHeader(row.label, Modifier.padding(top = 14.dp, start = 4.dp))
+                is LogRow.Header -> TagSectionLabel(row.label, Modifier.padding(top = 14.dp, start = 4.dp))
                 is LogRow.Item -> {
                     val id = System.identityHashCode(row.entry)
                     LogCard(row.entry, meta[row.entry.pkg], id in expanded) {

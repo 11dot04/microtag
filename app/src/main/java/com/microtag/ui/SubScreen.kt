@@ -99,8 +99,6 @@ private fun SubFrame(
             .background(TagColors.Black)
     ) {
         body()
-        // A faint vertical annotation in the right gutter (micrographics).
-        MicroVerticalLabel("TAG — NOTIFICATION INTERCEPTOR", 230.dp, Modifier.align(Alignment.CenterEnd).padding(end = 3.dp))
 
         // Fade under the status bar.
         val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()

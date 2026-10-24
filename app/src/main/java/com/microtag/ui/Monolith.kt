@@ -83,6 +83,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.sp
 import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.Lifecycle
@@ -198,41 +199,31 @@ fun MonolithPoster(
         val metaX = geo.x0 + with(density) { 16.dp.toPx() }
         val metaTop = geo.y0 - geo.length
         val metaWidth = with(density) { (axisX - with(density) { 30.dp.toPx() } - metaX).coerceAtLeast(60f).toDp() }
+        val peakHour = hourly.indices.maxByOrNull { hourly[it] }?.takeIf { hourly[it] > 0 }
         if (!TagColors.MicroOn) {
-            // Micrographics off: one plain caption in place of the annotation column.
-            Column(Modifier.offset { IntOffset(metaX.roundToInt(), metaTop.roundToInt()) }.width(metaWidth)) {
-                Text("INTERCEPTIONS", maxLines = 1, softWrap = false, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.sp, color = ink))
-                Text("so far", maxLines = 1, softWrap = false, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = TagColors.Outline))
-            }
+            // Micrographics off: the caption runs up the numeral's right side, so it can never wrap.
+            VerticalCaption(
+                "INTERCEPTIONS SO FAR", with(density) { geo.length.toDp() },
+                Modifier.offset { IntOffset((geo.x0 + with(density) { 12.dp.toPx() }).roundToInt(), metaTop.roundToInt()) },
+                ink
+            )
         } else Column(
             Modifier
                 .offset { IntOffset(metaX.roundToInt(), metaTop.roundToInt()) }
                 .width(metaWidth),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                "—" + today.toString().padStart(2, '0'),
-                modifier = Modifier.clearAndSetSemantics { },
-                style = mono(16, ink, FontWeight.Bold, 0f)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MicroSysStatus(on = !paused)
+                    MicroRunBlock(running = !paused, target = "Listener")
+                }
+                MicroKatakana(if (paused) "オフライン" else "オンライン", color = TagColors.Outline)
+            }
+            MicroLayerCaption(
+                "Listener — " + (if (paused) "Idle" else "Active"),
+                "Today " + today.toString().padStart(2, '0') + " | Peak " + (peakHour?.let { "%02dH".format(it) } ?: "--")
             )
-            MicroLabel("Today", color = TagColors.Outline)
-            Spacer(Modifier.height(8.dp))
-            MicroLabel("Interceptions", color = ink, bold = true, wrap = false)
-            MicroLabel("So far", color = TagColors.Outline, wrap = false)
-            Spacer(Modifier.height(8.dp))
-            MicroLabel("( $date )", color = TagColors.Outline, wrap = false)
-            MicroLabel("V$versionName", color = TagColors.Outline)
-            MicroLabel("傍受", color = TagColors.White)
-            if (paused) {
-                Spacer(Modifier.height(6.dp))
-                MicroLabel("Paused", color = TagColors.Lime, bold = true)
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                PixelGlyph(Pixel.Bell, size = 14.dp, color = TagColors.Outline)
-                MicroGlyph(Micro.Slashes, size = 14.dp, color = TagColors.Outline)
-                PixelGlyph(Pixel.Bolt, size = 14.dp, color = TagColors.Outline)
-            }
         }
 
         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
@@ -258,13 +249,13 @@ fun MonolithPoster(
 
             Spacer(Modifier.height(18.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                ControlSegment(TagShapes.JoinLeft, paused, onTogglePause) { tint ->
+                ControlSegment(27.dp, 6.dp, 6.dp, 27.dp, paused, onTogglePause) { tint ->
                     TagIcon(if (paused) R.drawable.ic_play else R.drawable.ic_pause, tint, size = 26.dp)
                 }
-                ControlSegment(RoundedCornerShape(6.dp), paused, onStats) { tint ->
+                ControlSegment(6.dp, 6.dp, 6.dp, 6.dp, paused, onStats) { tint ->
                     TagIcon(R.drawable.ic_stats, tint, size = 26.dp)
                 }
-                ControlSegment(TagShapes.JoinRight, paused, onLogs, padH = 24.dp) { tint ->
+                ControlSegment(6.dp, 27.dp, 27.dp, 6.dp, paused, onLogs, padH = 24.dp) { tint ->
                     Text(
                         "Logs",
                         style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 20.sp, color = tint)
@@ -275,27 +266,57 @@ fun MonolithPoster(
     }
 }
 
+/** A line of text set on its side, reading upward from the bottom of [length]. */
+@Composable
+private fun VerticalCaption(text: String, length: Dp, modifier: Modifier, color: Color) {
+    val context = LocalContext.current
+    val face = remember { ResourcesCompat.getFont(context, R.font.montserrat_bold) }
+    val paint = remember { Paint(Paint.ANTI_ALIAS_FLAG) }
+    Canvas(modifier.width(22.dp).height(length).clearAndSetSemantics { }) {
+        paint.typeface = face
+        paint.letterSpacing = 0.12f
+        paint.color = color.toArgb()
+        // fit the whole line to the numeral's length, but never bigger than 14sp
+        paint.textSize = 14.sp.toPx()
+        val wide = paint.measureText(text)
+        if (wide > size.height) paint.textSize *= size.height / wide
+        drawIntoCanvas { c ->
+            val n = c.nativeCanvas
+            n.save()
+            n.translate(size.width * 0.5f + paint.textSize * 0.35f, size.height)
+            n.rotate(-90f)
+            n.drawText(text, 0f, 0f, paint)
+            n.restore()
+        }
+    }
+}
+
 private fun mono(size: Int, color: Color, weight: FontWeight, spacing: Float) = TextStyle(
     fontFamily = Mono, fontWeight = weight, fontSize = size.sp, lineHeight = (size + 4).sp,
     letterSpacing = spacing.sp, color = color
 )
 
-/** The poster has no slab behind it any more, so the buttons are raised surfaces; paused, the segments light up. */
+/**
+ * The poster has no slab behind it, so the buttons are raised surfaces; paused, the segments light up. The three
+ * sit side by side as one connected group (tight inner corners); pressing one opens all its corners to a full round.
+ */
 @Composable
 private fun ControlSegment(
-    shape: Shape,
+    tl: Dp, tr: Dp, br: Dp, bl: Dp,
     paused: Boolean,
     onClick: () -> Unit,
     padH: Dp = 22.dp,
     content: @Composable (tint: Color) -> Unit
 ) {
     val view = LocalView.current
+    val source = remember { MutableInteractionSource() }
+    val shape = PressCornerShape(tl, tr, br, bl, pressMorph(source))
     Box(
         Modifier
             .height(54.dp)
             .clip(shape)
             .background(if (paused) TagColors.Lime else TagColors.Surface)
-            .clickable { view.tick(Tick.Press); onClick() }
+            .clickable(interactionSource = source, indication = null) { view.tick(Tick.Press); onClick() }
             .padding(horizontal = padH),
         contentAlignment = Alignment.Center
     ) { content(if (paused) TagColors.OnLime else TagColors.AccentText) }
@@ -411,6 +432,8 @@ fun MonolithOverlay(
     // composition. After that it rolls digit by digit.
     val spin = remember { Animatable(0f) }
     val kick = remember { Animatable(1f) }
+    // The two printed plates slide in from out of register each time the numeral spins up (1 = at rest).
+    val reg = remember { Animatable(1f) }
     var spun by remember { mutableStateOf(!TagMotion.enabled) }
     var replays by remember { mutableIntStateOf(0) }
     DisposableEffect(view) {
@@ -431,9 +454,14 @@ fun MonolithOverlay(
         // Reduced motion, or the poster is scrolled away (the docked counter shouldn't spin): just show the value.
         if (!TagMotion.enabled || scroll.value > collapseDistance * 0.5f) {
             spun = true
+            reg.snapTo(1f)
             return@LaunchedEffect
         }
         spun = false
+        launch {
+            reg.snapTo(0f)
+            reg.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = 90f))
+        }
         spin.snapTo(0f)
         spin.animateTo(1f, tween(1100, easing = TagEase.Reveal))
         spun = true
@@ -495,8 +523,9 @@ fun MonolithOverlay(
         val paint = remember { Paint(Paint.ANTI_ALIAS_FLAG) }
         val bandPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL } }
         val overlapPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL } }
-        val band1 = remember { NativePath() }
-        val band2 = remember { NativePath() }
+        val plateBase = remember { NativePath().also { TagMark.buildPath(it) } }
+        val plateA = remember { NativePath() }
+        val plateB = remember { NativePath() }
         val glyph = remember { NativePath() }
         val tmp = remember { NativePath() }
         val matrix = remember { Matrix() }
@@ -529,36 +558,73 @@ fun MonolithOverlay(
             val pose = poseAt(p, kick.value)
             val rolling = roll.value < 1f
 
-            // --- two flat diagonal bands at the foot of the poster; they scroll away with it
+            // --- the TAG mark, printed twice a little out of register across the foot of the poster. It scrolls away with
+            // the poster and slides into register each time the numeral spins up.
             val sy = -scroll.value.toFloat()
-            val baseY = posterPx * 0.93f + sy
-            fun band(path: NativePath, ax: Float, len: Float, bw: Float) {
-                path.rewind()
-                path.moveTo(ax, baseY)
-                path.lineTo(ax + len, baseY - len)
-                path.lineTo(ax + len + bw, baseY - len)
-                path.lineTo(ax + bw, baseY)
-                path.close()
+            val unit = wPx * 0.36f
+            val slide = 1f - reg.value
+            fun place(path: NativePath, cx: Float, cy: Float, scale: Float, angle: Float) {
+                matrix.reset()
+                matrix.postTranslate(-TagMark.WIDTH / 2f, -TagMark.HEIGHT / 2f)
+                matrix.postScale(scale, scale)
+                matrix.postRotate(angle)
+                matrix.postTranslate(cx, cy)
+                path.set(plateBase)
+                path.transform(matrix)
             }
-            band(band1, -wPx * 0.10f, wPx * 0.46f, wPx * 0.22f)
-            band(band2, wPx * 0.18f, wPx * 0.30f, wPx * 0.09f)
+            val ax = wPx * 0.27f - slide * wPx * 0.30f
+            val ay = posterPx * 0.80f + sy + slide * posterPx * 0.05f
+            val bx = wPx * 0.47f + slide * wPx * 0.30f
+            val by = posterPx * 0.74f + sy - slide * posterPx * 0.05f
+            place(plateA, ax, ay, unit, 28f)
+            place(plateB, bx, by, unit * 0.8f, 28f)
             val bandAlpha = (1f - p) * (if (paused) 0.22f else 1f)
             val c1 = TagColors.Lime
             val c2 = if (TagColors.HasTones) TagColors.Secondary else TagColors.Lime.copy(alpha = 0.55f)
+            val numeralColor = TagColors.White
+            fun mixOf(plate: Color): Color = if (TagColors.IsLight) {
+                // multiply, like ink printed over ink
+                Color(numeralColor.red * plate.red, numeralColor.green * plate.green, numeralColor.blue * plate.blue)
+            } else {
+                lerp(plate, numeralColor, 0.55f)
+            }
 
             drawIntoCanvas { canvas ->
                 val n = canvas.nativeCanvas
                 if (bandAlpha > 0.01f) {
                     bandPaint.color = c1.toArgb(); bandPaint.alpha = (c1.alpha * 255 * bandAlpha).toInt()
-                    n.drawPath(band1, bandPaint)
+                    n.drawPath(plateA, bandPaint)
                     bandPaint.color = c2.toArgb(); bandPaint.alpha = (c2.alpha * 255 * bandAlpha).toInt()
-                    n.drawPath(band2, bandPaint)
+                    n.drawPath(plateB, bandPaint)
+                    // where the two impressions overlap, the colours mix
+                    tmp.set(plateA)
+                    if (tmp.op(plateB, NativePath.Op.INTERSECT)) {
+                        val ab = if (TagColors.IsLight) {
+                            Color(c1.red * c2.red, c1.green * c2.green, c1.blue * c2.blue)
+                        } else lerp(c1, c2, 0.5f)
+                        overlapPaint.color = ab.toArgb()
+                        overlapPaint.alpha = (255 * bandAlpha).toInt()
+                        n.drawPath(tmp, overlapPaint)
+                    }
+                    // the string: a hairline from the punch of the first plate, out toward the edge
+                    val hx = (TagMark.HOLE_X - TagMark.WIDTH / 2f) * unit
+                    val hy = (TagMark.HOLE_Y - TagMark.HEIGHT / 2f) * unit
+                    val rad = Math.toRadians(28.0)
+                    val rx = (hx * Math.cos(rad) - hy * Math.sin(rad)).toFloat()
+                    val ry = (hx * Math.sin(rad) + hy * Math.cos(rad)).toFloat()
+                    val len = Math.hypot(rx.toDouble(), ry.toDouble()).toFloat().coerceAtLeast(1f)
+                    val reach = wPx * 0.55f
+                    bandPaint.color = numeralColor.toArgb()
+                    bandPaint.alpha = (140 * bandAlpha).toInt()
+                    bandPaint.strokeWidth = 1.2.dp.toPx()
+                    bandPaint.style = Paint.Style.STROKE
+                    n.drawLine(ax + rx, ay + ry, ax + rx + rx / len * reach, ay + ry + ry / len * reach, bandPaint)
+                    bandPaint.style = Paint.Style.FILL
                 }
 
                 paint.typeface = typeface
                 paint.textSize = s0
                 paint.letterSpacing = NUMERAL_LS
-                val numeralColor = TagColors.White
                 if (paused) {
                     paint.style = Paint.Style.STROKE
                     paint.strokeWidth = 3.dp.toPx() / pose.scale
@@ -608,21 +674,15 @@ fun MonolithOverlay(
                     matrix.postRotate(pose.angle)
                     matrix.postTranslate(pose.ox, pose.oy)
                     glyph.transform(matrix)
-                    fun overlap(band: NativePath, fill: Color) {
+                    fun overlap(plate: NativePath, fill: Color) {
                         tmp.set(glyph)
-                        if (!tmp.op(band, NativePath.Op.INTERSECT)) return
-                        val mixed = if (TagColors.IsLight) {
-                            // multiply, like ink printed over ink
-                            Color(numeralColor.red * fill.red, numeralColor.green * fill.green, numeralColor.blue * fill.blue)
-                        } else {
-                            lerp(fill, numeralColor, 0.55f)
-                        }
-                        overlapPaint.color = mixed.toArgb()
+                        if (!tmp.op(plate, NativePath.Op.INTERSECT)) return
+                        overlapPaint.color = mixOf(fill).toArgb()
                         overlapPaint.alpha = (255 * bandAlpha).toInt()
                         n.drawPath(tmp, overlapPaint)
                     }
-                    overlap(band1, c1)
-                    overlap(band2, c2)
+                    overlap(plateA, c1)
+                    overlap(plateB, c2)
                 }
             }
         }

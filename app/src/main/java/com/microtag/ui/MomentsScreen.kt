@@ -28,7 +28,7 @@ import com.microtag.inspect.PillPrefs
 import java.text.DateFormat
 import java.util.Date
 
-/** Moments found so far. The rest stay "???" so there is still something to stumble on. */
+/** Moments found so far. The rest stay "[ ? ]" so there is still something to stumble on. */
 @Composable
 fun MomentsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -41,8 +41,9 @@ fun MomentsScreen(onBack: () -> Unit) {
         FitText(
             AnnotatedString("Moments"),
             TextStyle(
-                fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 56.sp,
-                lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White
+                fontFamily = TagFonts.display, fontWeight = FontWeight.Black, fontSize = 56.sp,
+                lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White,
+                fontSynthesis = TagFonts.NoSynthesis
             ),
             Modifier.fillMaxWidth()
         )
@@ -53,21 +54,21 @@ fun MomentsScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(6.dp))
 
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            MomentsLogic.ALL.forEach { m ->
+            MomentsLogic.ALL.forEachIndexed { i, m ->
                 val f = found[m.id]
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
+                        .clip(connectedShape(i, MomentsLogic.ALL.size))
                         .background(TagColors.Surface)
                         .padding(horizontal = 18.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        if (f != null) m.pill else "???", modifier = Modifier.width(64.dp),
+                        if (f != null) m.pill else "[ ? ]", modifier = Modifier.width(64.dp),
                         style = TextStyle(
                             fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-                            color = if (f != null) TagColors.Lime else TagColors.Outline
+                            color = if (f != null) TagColors.AccentText else TagColors.Outline
                         )
                     )
                     Column(Modifier.weight(1f)) {

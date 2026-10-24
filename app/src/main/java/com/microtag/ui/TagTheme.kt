@@ -34,6 +34,12 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -122,6 +128,21 @@ import kotlin.math.max
 // cream and White is simply dark. Lime fill = on. Outline only = off.
 // ==========================================================
 
+/** Axis values for one use of a variable font. The weight axis always comes from the requested FontWeight. */
+data class FlexAxes(
+    val width: Float = 100f,      // wdth: 25 (very narrow) to 151 (very wide)
+    val roundness: Float = 0f,    // ROND: 0 (sharp terminals) to 100 (fully round)
+    val slant: Float = 0f,        // slnt: -10 (leaning) to 0 (upright)
+    val opsz: Float = 18f         // opsz: 1 to 144, the size the letterforms are drawn for (small = sturdier)
+)
+
+/** How a variable font is set in each role. This is the one place to tune it. */
+data class FlexTuning(
+    val body: FlexAxes = FlexAxes(),
+    val display: FlexAxes = FlexAxes(),
+    val label: FlexAxes = FlexAxes()
+)
+
 data class TagPalette(
     val id: String,
     val name: String,
@@ -155,7 +176,9 @@ data class TagPalette(
     val display: String? = null,
     val mono: String? = null,
     /** Optional body/label face (Montserrat everywhere else). The Material palette uses Google Sans Flex. */
-    val body: String? = null
+    val body: String? = null,
+    /** Axis settings when the faces above are one variable font file (see [FlexTuning]). */
+    val flex: FlexTuning? = null
 ) {
     val isLight: Boolean get() = base.luminance() > 0.5f
 
@@ -289,7 +312,14 @@ object TagPalettes {
         signal = Color(0xFFF2B8B5),
         paper = Color(0xFFE6E1E5), paperInk = Color(0xFF1C1B1F),
         secondary = Color(0xFFCCC2DC), tertiary = Color(0xFFEFB8C8),
-        display = "google_sans_flex", body = "google_sans_flex"
+        display = "google_sans_flex", body = "google_sans_flex", mono = "google_sans_flex",
+        // Google Sans Flex has five axes here (weight comes from each text style): soft terminals everywhere, a wider
+        // and fully round face for headings, a narrower one for the small caps labels.
+        flex = FlexTuning(
+            body = FlexAxes(width = 100f, roundness = 60f, opsz = 16f),
+            display = FlexAxes(width = 110f, roundness = 100f, opsz = 72f),
+            label = FlexAxes(width = 90f, roundness = 40f, opsz = 12f)
+        )
     )
 
     val All = listOf(Lime, Material, Atelier, Signal, Maison, Rouge, Verdant, Vermilion, Dusk, Sage)
@@ -508,6 +538,8 @@ object TagColors {
         get() = if (palette.signal.luminance() > 0.4f) Color(0xFF14110F) else Color(0xFFF6F6F6)
     val Extras: List<Color> get() = palette.supporting
     val Name: String get() = palette.name
+    /** Axis settings of the active palette's variable font, if it has one. */
+    val Flex: FlexTuning? get() = palette.flex
     /** res/font base names of this palette's display, body and mono faces, or null for Montserrat. */
     val BodyBase: String? get() = palette.body
     val DisplayBase: String? get() = palette.display
@@ -589,12 +621,41 @@ object TagFonts {
     val NoSynthesis = FontSynthesis.None
 
     fun apply(context: Context, p: TagPalette) {
-        _bodyFamily = p.body?.let { family(context, it) } ?: MontserratBase
-        _displayFamily = p.display?.let { family(context, it) } ?: _bodyFamily
-        val customMono = p.mono?.let { family(context, it) }
+        val flex = p.flex
+        // One variable file drawn with role-specific axes when the palette has a tuning; plain static files otherwise.
+        fun face(base: String?, axes: FlexAxes?): ComposeFontFamily? = base?.let { b ->
+            (if (axes != null) variableFamily(context, b, axes) else null) ?: family(context, b)
+        }
+        _bodyFamily = face(p.body, flex?.body) ?: MontserratBase
+        _displayFamily = face(p.display, flex?.display) ?: _bodyFamily
+        val customMono = face(p.mono, flex?.label)
         _monoFamily = customMono ?: _bodyFamily
-        _dataFamily = customMono ?: FontFamily.Monospace
+        // Timestamps and log lines want a real monospace unless the palette brings a mono face of its own.
+        _dataFamily = if (flex != null) FontFamily.Monospace else (customMono ?: FontFamily.Monospace)
     }
+
+    /** One variable font file as a family of weights, with the axes set for a role. */
+    fun variableFamily(context: Context, base: String, axes: FlexAxes): ComposeFontFamily? {
+        val id = context.resources.getIdentifier(base, "font", context.packageName)
+        if (id == 0) return null
+        fun font(w: FontWeight) = Font(
+            id, w,
+            variationSettings = FontVariation.Settings(
+                FontVariation.weight(w.weight),
+                FontVariation.width(axes.width),
+                FontVariation.slant(axes.slant),
+                FontVariation.Setting("ROND", axes.roundness),
+                FontVariation.Setting("opsz", axes.opsz)
+            )
+        )
+        return ComposeFontFamily(
+            font(FontWeight.Light), font(FontWeight.Normal), font(FontWeight.Medium), font(FontWeight.Bold), font(FontWeight.Black)
+        )
+    }
+
+    /** The same axes as a string for android.graphics.Paint.setFontVariationSettings (the shared stats card). */
+    fun variationString(weight: Int, axes: FlexAxes): String =
+        "'wght' $weight, 'wdth' ${axes.width}, 'slnt' ${axes.slant}, 'ROND' ${axes.roundness}, 'opsz' ${axes.opsz}"
 
     /** A native Typeface from res/font for canvas drawing (the shared card): the first of [weights] that exists. */
     fun typeface(context: Context, base: String?, weights: List<String> = listOf("black", "bold", "regular", "")): android.graphics.Typeface? {
@@ -1147,4 +1208,46 @@ fun TagSwitch(
                 .background(thumb)
         )
     }
+}
+
+// ==========================================================
+// CONNECTED GROUPS (Material 3 Expressive)
+// Buttons and tiles that sit side by side with tight inner corners open every corner out to a full round
+// when pressed, then spring back.
+// ==========================================================
+
+/** A rounded rectangle at the given corner radii, opening to a full half-height round as `t` goes 0 to 1. */
+class PressCornerShape(
+    private val tl: Dp, private val tr: Dp, private val br: Dp, private val bl: Dp, private val t: Float
+) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val full = min(size.width, size.height) / 2f
+        fun r(d: Dp): CornerRadius {
+            val from = with(density) { d.toPx() }.coerceAtMost(full)
+            val v = from + (full - from) * t
+            return CornerRadius(v, v)
+        }
+        return Outline.Rounded(RoundRect(0f, 0f, size.width, size.height, r(tl), r(tr), r(br), r(bl)))
+    }
+}
+
+/** 0 at rest, 1 while pressed, animated with a spring. Feed it to [PressCornerShape]. */
+@Composable
+fun pressMorph(source: InteractionSource): Float {
+    val pressed by source.collectIsPressedAsState()
+    val t by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = if (TagMotion.enabled) spring(dampingRatio = 0.55f, stiffness = 650f) else snap(),
+        label = "pressMorph"
+    )
+    return t
+}
+
+/** A row in a connected block: big corners on the block's outside, tight (6dp) where rows meet. */
+fun connectedShape(index: Int, count: Int): Shape {
+    val big = CornerSize(22.dp)
+    val small = CornerSize(6.dp)
+    val top = if (index == 0) big else small
+    val bottom = if (index == count - 1) big else small
+    return RoundedCornerShape(topStart = top, topEnd = top, bottomEnd = bottom, bottomStart = bottom)
 }

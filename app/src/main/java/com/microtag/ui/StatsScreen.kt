@@ -175,7 +175,6 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
         }
     ) {
         Spacer(Modifier.height(12.dp))
-        MicroStrip(2, "Stats", jp = "統計")
         FitText(
             AnnotatedString("Interceptions"),
             TextStyle(
@@ -238,7 +237,16 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             }
         }
 
-        SectionLabel("WEEK AT A GLANCE", 1)
+        // The one micrographic on this screen: a ruled caption with live figures, and a row of rings.
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MicroLayerCaption(
+                "Listener — Active",
+                "Selected $total | Peak " + (peakHour?.let { "%02dH".format(it) } ?: "--"),
+                Modifier.weight(1f)
+            )
+            MicroRings()
+        }
+        SectionLabel("WEEK AT A GLANCE")
         Text(
             "Tap a row to look at just that day.",
             style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = TagColors.Outline)
@@ -248,13 +256,7 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             selected = setOf(day)
         }
 
-        SectionLabel("TIME OF DAY", 2)
-        // A 24-hour clock of dots (micrographics); the bars below it stay.
-        MicroClockRing(
-            values, nowHour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) },
-            modifier = Modifier.fillMaxWidth().height(210.dp),
-            centerBottom = peakHour?.let { "PEAK %02d".format(it) }
-        )
+        SectionLabel("TIME OF DAY")
         TimeOfDay(values)
 
         ByType(scoped)
@@ -490,8 +492,8 @@ private fun StatTile(caption: String, value: String, sub: String?, shape: Shape,
 }
 
 @Composable
-private fun SectionLabel(text: String, index: Int? = null) {
-    MicroHeader(text, Modifier.padding(top = 8.dp), index)
+private fun SectionLabel(text: String) {
+    TagSectionLabel(text, Modifier.padding(top = 8.dp))
 }
 
 @Composable
@@ -605,7 +607,7 @@ private fun ByType(sessions: List<Session>) {
     if (rows.isEmpty()) return
     val maxN = rows.maxOf { it.second }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SectionLabel("BY TYPE", 3)
+        SectionLabel("BY TYPE")
         rows.forEach { (path, n) ->
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -640,7 +642,7 @@ private fun Sources(rows: List<Pair<String, Int>>) {
     }
     val maxN = rows.maxOf { it.second }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SectionLabel("TOP SOURCES", 4)
+        SectionLabel("TOP SOURCES")
         Text(
             "One notification is one interception, however many times it updates.",
             style = TextStyle(

@@ -88,26 +88,18 @@ object StatsCard {
         val medium = ResourcesCompat.getFont(context, R.font.montserrat_medium)
         val mono = TagFonts.typeface(context, TagColors.MonoBase, listOf("medium", "regular", "")) ?: Typeface.MONOSPACE
 
+        // A variable display face (the Material palette's Google Sans Flex) gets its axes set on the paint.
+        val displayAxes = TagColors.Flex?.display
         fun paint(color: Int, size: Float, face: Typeface?, spacingEm: Float = 0f) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color
             textSize = size
             typeface = face
             letterSpacing = spacingEm
+            if (face === heavy && displayAxes != null) setFontVariationSettings(TagFonts.variationString(900, displayAxes))
         }
 
         c.drawColor(black)
 
-        // registration crosses in the four corners, like the rest of the app
-        val crossPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = grey; strokeWidth = 3f }
-        fun cross(x: Float, y: Float, r: Float = 14f) {
-            c.drawLine(x - r, y, x + r, y, crossPaint)
-            c.drawLine(x, y - r, x, y + r, crossPaint)
-        }
-        if (TagColors.MicroOn) {
-            cross(36f, 36f); cross(w - 36f, 36f); cross(36f, h - 36f); cross(w - 36f, h - 36f)
-            val annotation = paint(grey, 26f, mono, 0.08f).apply { textAlign = Paint.Align.RIGHT }
-            c.drawText("TAG / STATS", w - 72f, 120f, annotation)
-        }
 
         // wordmark, in the accent
         ContextCompat.getDrawable(context, R.drawable.ic_tag_wordmark)?.mutate()?.let {

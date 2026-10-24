@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -230,73 +231,6 @@ fun MicroLabel(
     )
 }
 
-/**
- * A section heading in the micrographic style: an optional two-digit index, the label, then a hairline
- * that runs out to the edge and ends in a registration cross. The label stays readable text; the index
- * and the rule are decoration.
- */
-@Composable
-fun MicroHeader(label: String, modifier: Modifier = Modifier, index: Int? = null, color: Color = TagColors.AccentText) {
-    if (!TagColors.MicroOn) {
-        // Micrographics off: just the label.
-        Text(
-            label.uppercase(),
-            modifier = modifier,
-            style = TextStyle(
-                fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-                letterSpacing = 1.2.sp, color = color
-            )
-        )
-        return
-    }
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        if (index != null) {
-            Text(
-                "%02d".format(index),
-                modifier = Modifier.clearAndSetSemantics { },
-                style = TextStyle(
-                    fontFamily = TagFonts.data, fontWeight = FontWeight.Medium, fontSize = 10.sp,
-                    letterSpacing = 0.6.sp, color = TagColors.Outline
-                )
-            )
-            Spacer(Modifier.width(8.dp))
-        }
-        Text(
-            label.uppercase(),
-            style = TextStyle(
-                fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-                letterSpacing = 1.2.sp, color = color
-            )
-        )
-        Spacer(Modifier.width(10.dp))
-        Canvas(Modifier.weight(1f).height(10.dp).clearAndSetSemantics { }) {
-            val y = size.height / 2f
-            val tail = 9.dp.toPx()
-            drawLine(TagColors.Outline.copy(alpha = 0.45f), Offset(0f, y), Offset(size.width - tail, y), 1.dp.toPx())
-            microGlyph(Micro.Cross, Offset(size.width - tail / 2f, y), 7.dp.toPx(), TagColors.Outline)
-        }
-    }
-}
-
-/** The line above a screen title: a cross, "TAG / NAME" on the left, the screen's number on the right. */
-@Composable
-fun MicroStrip(code: Int, name: String, modifier: Modifier = Modifier, jp: String? = null) {
-    if (!TagColors.MicroOn) return
-    Row(
-        modifier.fillMaxWidth().padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        MicroGlyph(Micro.Cross, size = 10.dp)
-        MicroLabel("TAG / $name")
-        if (jp != null) MicroLabel(jp, color = TagColors.White)
-        Canvas(Modifier.weight(1f).height(1.dp).clearAndSetSemantics { }) {
-            drawLine(TagColors.Outline.copy(alpha = 0.3f), Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx())
-        }
-        MicroLabel("—" + code.toString().padStart(2, '0'), color = TagColors.White, bold = true)
-    }
-}
-
 /** A tile's state as a bare dot: solid when on, a ring when off. No text, so it can't collide with the subtitle. */
 @Composable
 fun MicroStatus(on: Boolean, color: Color, modifier: Modifier = Modifier) {
@@ -350,125 +284,148 @@ fun MicroHoursBar(startMin: Int, endMin: Int, modifier: Modifier = Modifier, now
     }
 }
 
-/** A bracketed state tag: `[ GRANTED ]`. */
+// ==========================================================
+// PLAIN SECTION LABEL
+// ==========================================================
+
+/** A section heading: mono caps in the accent text colour. Nothing around it. */
 @Composable
-fun MicroTag(text: String, modifier: Modifier = Modifier, color: Color = TagColors.AccentText) {
-    MicroLabel("[ $text ]", modifier, color, bold = true)
-}
-
-// ---------- pixel glyphs: 8 x 8 dot-matrix marks ----------
-
-enum class Pixel(val rows: List<String>) {
-    Bell(listOf("...##...", "..####..", ".######.", ".######.", ".######.", "########", "........", "...##...")),
-    Bolt(listOf("....##..", "...##...", "..##....", ".######.", "....##..", "...##...", "..##....", ".##.....")),
-    Clock(listOf("..####..", ".#....#.", "#..#...#", "#..#...#", "#..###.#", "#......#", ".#....#.", "..####..")),
-    Arrow(listOf("...#####", "....####", ".....###", "....#.##", "...#...#", "..#.....", ".#......", "#.......")),
-    Star(listOf("...##...", "#..##..#", ".#.##.#.", "..####..", "########", "..####..", ".#.##.#.", "#..##..#")),
-    Check(listOf("........", ".......#", "......##", "#....##.", "##..##..", ".####...", "..##....", "........"))
-}
-
-/** An 8 x 8 dot-matrix glyph. */
-@Composable
-fun PixelGlyph(kind: Pixel, modifier: Modifier = Modifier, size: Dp = 16.dp, color: Color = TagColors.Outline) {
-    if (!TagColors.MicroOn) return
-    Canvas(modifier.size(size).clearAndSetSemantics { }) {
-        val cell = this.size.minDimension / 8f
-        kind.rows.forEachIndexed { r, row ->
-            row.forEachIndexed { c, ch ->
-                if (ch == '#') drawRect(color, Offset(c * cell, r * cell), Size(cell * 0.86f, cell * 0.86f))
-            }
-        }
-    }
-}
-
-// ---------- a vertical annotation along a screen edge ----------
-
-/** Mono text set on its side, reading upward. Decorative. */
-@Composable
-fun MicroVerticalLabel(text: String, length: Dp, modifier: Modifier = Modifier, color: Color = TagColors.Outline) {
-    if (!TagColors.MicroOn) return
-    val paint = androidx.compose.runtime.remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG) }
-    Canvas(modifier.width(14.dp).height(length).clearAndSetSemantics { }) {
-        paint.textSize = 10.sp.toPx()
-        paint.typeface = android.graphics.Typeface.MONOSPACE
-        paint.letterSpacing = 0.12f
-        paint.color = color.copy(alpha = 0.6f).toArgb()
-        drawIntoCanvas { c ->
-            val n = c.nativeCanvas
-            n.save()
-            n.translate(size.width / 2f + 3.dp.toPx(), size.height)
-            n.rotate(-90f)
-            n.drawText(text.uppercase(), 0f, 0f, paint)
-            n.restore()
-        }
-    }
-}
-
-// ---------- the dotted clock ring ----------
-
-/**
- * A 24-hour clock face made of dots: midnight at the top, hours running clockwise. Each dot swells and
- * brightens with that hour's activity; the current hour is the accent and pulses. Cardinal hours are labelled
- * and the middle shows [centerTop] over [centerBottom].
- */
-@Composable
-fun MicroClockRing(
-    values: IntArray,
-    nowHour: Int?,
-    modifier: Modifier = Modifier,
-    centerTop: String = "24H",
-    centerBottom: String? = null
-) {
-    if (!TagColors.MicroOn) return
-    val pulse by androidx.compose.animation.core.rememberInfiniteTransition(label = "ringPulse").animateFloat(
-        initialValue = if (TagMotion.enabled) 0.35f else 1f,
-        targetValue = 1f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            androidx.compose.animation.core.tween(900), androidx.compose.animation.core.RepeatMode.Reverse
-        ),
-        label = "pulse"
+fun TagSectionLabel(label: String, modifier: Modifier = Modifier) {
+    Text(
+        label.uppercase(),
+        modifier = modifier,
+        style = TextStyle(
+            fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+            letterSpacing = 1.2.sp, color = TagColors.AccentText
+        )
     )
-    val paint = androidx.compose.runtime.remember { android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG) }
-    Canvas(modifier.clearAndSetSemantics { }) {
-        val c = center
-        val ring = size.minDimension * 0.38f
-        val maxV = maxOf(1, values.maxOrNull() ?: 1)
-        val ink = TagColors.White
-        val accent = TagColors.Lime
-        val mark = TagColors.Outline
-        drawCircle(mark.copy(alpha = 0.22f), ring * 0.74f, c, style = Stroke(1.dp.toPx()))
-        for (h in 0 until 24) {
-            val a = Math.toRadians(h * 15.0 - 90.0)
-            val p = Offset(c.x + kotlin.math.cos(a).toFloat() * ring, c.y + kotlin.math.sin(a).toFloat() * ring)
-            val v = if (h < values.size && values[h] > 0) values[h] / maxV.toFloat() else 0f
-            val isNow = h == nowHour
-            val r = (2f + 4.2f * v).dp.toPx() * (if (isNow) 1.25f else 1f)
-            val color = when {
-                isNow -> accent.copy(alpha = pulse)
-                v > 0f -> ink.copy(alpha = 0.45f + 0.5f * v)
-                else -> mark.copy(alpha = 0.32f)
-            }
-            drawCircle(color, r, p)
+}
+
+// ==========================================================
+// THE ELEMENTS
+// A short list of marks taken from the micrographics reference: a status readout with a ring, a run / target /
+// state block with two small pills, a ruled caption, interlocking rings, a boxed burst and bracketed tags.
+// Each is used in one or two places only (the Monolith, the stats header, an empty state, the credits screen).
+// ==========================================================
+
+/** `SYSTM ○ ON` / `SYSTM ○ OFF`: bold mono with a ring between, lit in the accent when on. */
+@Composable
+fun MicroSysStatus(on: Boolean, modifier: Modifier = Modifier) {
+    if (!TagColors.MicroOn) return
+    val ink = TagColors.White
+    val style = TextStyle(fontFamily = TagFonts.data, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ink)
+    Row(
+        modifier.clearAndSetSemantics { },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text("SYSTM", style = style, maxLines = 1, softWrap = false)
+        Canvas(Modifier.size(14.dp)) {
+            val r = size.minDimension / 2f - 1.dp.toPx()
+            drawCircle(ink, r, style = Stroke(1.5.dp.toPx()))
+            if (on) drawCircle(TagColors.Lime, r * 0.55f)
         }
-        paint.typeface = android.graphics.Typeface.MONOSPACE
-        paint.textSize = 10.sp.toPx()
-        paint.color = mark.toArgb()
-        drawIntoCanvas { cv ->
-            val n = cv.nativeCanvas
-            val lr = ring + 17.dp.toPx()
-            paint.textAlign = android.graphics.Paint.Align.CENTER
-            n.drawText("00", c.x, c.y - lr + 4.dp.toPx(), paint)
-            n.drawText("12", c.x, c.y + lr + 4.dp.toPx(), paint)
-            n.drawText("06", c.x + lr, c.y + 4.dp.toPx(), paint)
-            n.drawText("18", c.x - lr, c.y + 4.dp.toPx(), paint)
-            paint.color = ink.toArgb()
-            paint.textSize = 12.sp.toPx()
-            n.drawText(centerTop, c.x, c.y + (if (centerBottom != null) -2.dp.toPx() else 4.dp.toPx()), paint)
-            if (centerBottom != null) {
-                paint.color = mark.toArgb()
-                paint.textSize = 10.sp.toPx()
-                n.drawText(centerBottom, c.x, c.y + 14.dp.toPx(), paint)
-            }
+        Text(if (on) "ON" else "OFF", style = style, maxLines = 1, softWrap = false)
+    }
+}
+
+/** A small outlined pill, optionally lit. */
+@Composable
+private fun MicroPill(lit: Boolean, modifier: Modifier = Modifier) {
+    val ink = TagColors.White
+    val accent = TagColors.Lime
+    Canvas(modifier.size(width = 22.dp, height = 9.dp)) {
+        val r = androidx.compose.ui.geometry.CornerRadius(size.height / 2f)
+        if (lit) drawRoundRect(accent, cornerRadius = r)
+        drawRoundRect(if (lit) accent else ink.copy(alpha = 0.7f), cornerRadius = r, style = Stroke(1.2.dp.toPx()))
+    }
+}
+
+/** `RUN` with two pills, then `TARGET:` and `STATE:` lines. */
+@Composable
+fun MicroRunBlock(running: Boolean, target: String, modifier: Modifier = Modifier) {
+    if (!TagColors.MicroOn) return
+    Column(modifier.clearAndSetSemantics { }, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            MicroLabel("Run", color = TagColors.White, bold = true, wrap = false)
+            MicroPill(running)
+            MicroPill(false)
+        }
+        MicroLabel("Target: $target", wrap = false)
+        MicroLabel("State: " + (if (running) "Active" else "Paused"), wrap = false)
+    }
+}
+
+/** A hairline, a bold title and one line of figures underneath. */
+@Composable
+fun MicroLayerCaption(title: String, line: String, modifier: Modifier = Modifier) {
+    if (!TagColors.MicroOn) return
+    Column(modifier.clearAndSetSemantics { }, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(1.dp)) {
+            drawLine(TagColors.Outline.copy(alpha = 0.6f), Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx())
+        }
+        Spacer(Modifier.height(3.dp))
+        MicroLabel(title, color = TagColors.White, bold = true, wrap = false)
+        MicroLabel(line, wrap = false)
+    }
+}
+
+/** Two interlocking rings, a dotted ring and an arrow in a row. */
+@Composable
+fun MicroRings(modifier: Modifier = Modifier) {
+    if (!TagColors.MicroOn) return
+    val mark = TagColors.White.copy(alpha = 0.8f)
+    Canvas(modifier.size(width = 84.dp, height = 20.dp).clearAndSetSemantics { }) {
+        val r = 7.dp.toPx()
+        val cy = size.height / 2f
+        val st = Stroke(1.3.dp.toPx())
+        drawCircle(mark, r, Offset(10.dp.toPx(), cy), style = st)
+        drawCircle(mark, r, Offset(19.dp.toPx(), cy), style = st)
+        // the dotted ring
+        val dc = Offset(44.dp.toPx(), cy)
+        for (i in 0 until 12) {
+            val a = i * PI.toFloat() / 6f
+            drawCircle(mark, 0.9.dp.toPx(), Offset(dc.x + cos(a) * r, dc.y + sin(a) * r))
+        }
+        // the arrow
+        microGlyph(Micro.ArrowRight, Offset(70.dp.toPx(), cy), 14.dp.toPx(), mark, 1.3.dp.toPx())
+    }
+}
+
+/** A square with one chamfered corner, holding an eight-ray burst inside a ring. */
+@Composable
+fun MicroBurstBox(modifier: Modifier = Modifier, size: Dp = 64.dp) {
+    if (!TagColors.MicroOn) return
+    val mark = TagColors.White
+    Canvas(modifier.size(size).clearAndSetSemantics { }) {
+        val w = this.size.width
+        val cut = w * 0.22f
+        val frame = Path().apply {
+            moveTo(0f, 0f); lineTo(w, 0f); lineTo(w, w - cut); lineTo(w - cut, w); lineTo(0f, w); close()
+        }
+        drawPath(frame, mark.copy(alpha = 0.8f), style = Stroke(1.3.dp.toPx(), join = StrokeJoin.Miter))
+        val c = Offset(w * 0.46f, w * 0.46f)
+        drawCircle(mark.copy(alpha = 0.7f), w * 0.30f, c, style = Stroke(1.dp.toPx()))
+        microGlyph(Micro.Asterisk, c, w * 0.50f, TagColors.Lime, 1.4.dp.toPx())
+    }
+}
+
+/** A bracketed tag: `[ ? ]`. */
+@Composable
+fun MicroBracket(text: String, modifier: Modifier = Modifier, color: Color = TagColors.Outline) {
+    MicroLabel("[ $text ]", modifier, color, wrap = false)
+}
+
+/** Katakana set upright, one character per line, like the reference's vertical status word. */
+@Composable
+fun MicroKatakana(text: String, modifier: Modifier = Modifier, color: Color = TagColors.Outline) {
+    if (!TagColors.MicroOn) return
+    Column(modifier.clearAndSetSemantics { }, horizontalAlignment = Alignment.CenterHorizontally) {
+        text.forEach { ch ->
+            Text(
+                ch.toString(),
+                style = TextStyle(fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 13.sp, color = color)
+            )
         }
     }
 }

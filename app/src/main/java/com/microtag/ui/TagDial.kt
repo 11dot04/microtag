@@ -1,179 +1,243 @@
 package com.microtag.ui
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/** Refresh intervals, in minutes. Order = clockwise around the dial. */
+/** Refresh intervals, in minutes. Order = left to right along the wheel. */
 val WeatherSteps = listOf(30, 60, 120, 180, 360)
 
 fun intervalLabel(min: Int): String = if (min < 60) "${min}m" else "${min / 60}h"
 
-/** Fine marks between each pair of detents. */
-private const val MINOR_PER_STEP = 4
-/** The dial sweeps this far either side of straight up. Small enough that a dial clipped at its middle shows every step. */
-private const val HALF_SWEEP = 80f
+/** Degrees of wheel between neighbouring marks. */
+private const val TICK_DEG = 4f
+/** Every ninth mark is a value (a long tick with a firm detent); the rest are only for feel. */
+private const val MAJOR_EVERY = 9
+/** Marks further than this from the needle are not drawn. */
+private const val VISIBLE_DEG = 70f
 
 /**
- * A knob with detents and a scale. The big marks are the values; the small marks between them are only for
- * feel. Dragging runs the pointer through every mark with a light tick, a firm tick lands on each value, and
- * lifting your finger snaps to the nearest value with a confirm. Tapping jumps straight to a value.
+ * A wheel under a fixed needle. Drag along the arc and the marks turn beneath the needle; every mark that passes
+ * gives a light tick and every value a firm one. Lifting your finger settles the wheel on the nearest value, and
+ * tapping jumps to it. The value shows above the needle and rolls to the next as it changes.
  *
- * It is drawn as a full circle with its centre on the canvas centre, so a parent can push it down and clip it
- * to show only its top half (the label sits above the centre for that reason).
+ * The wheel is far larger than the room it has: its centre is below the bottom edge, so a parent that clips it
+ * shows only the top of the arc.
  */
 @Composable
 fun TagDial(
     steps: List<String>,
     index: Int,
     onIndex: (Int) -> Unit,
-    body: Color,
-    face: Color,
+    ink: Color,
+    cool: Color,
+    warm: Color,
     modifier: Modifier = Modifier
 ) {
     val view = LocalView.current
+    val scope = rememberCoroutineScope()
     val n = steps.size
-    val k = MINOR_PER_STEP + 1                       // marks per step, counting the big one
-    val marks = (n - 1) * k                           // index of the last mark
+    val majorDeg = MAJOR_EVERY * TICK_DEG
+    val travel = (n - 1) * majorDeg
+    fun angleOfIndex(i: Int) = i * majorDeg
+    fun nearest(a: Float) = (a / majorDeg).roundToInt().coerceIn(0, n - 1)
+
     val currentIndex by rememberUpdatedState(index)
     val callback by rememberUpdatedState(onIndex)
 
-    fun angleOfMark(m: Float) = -HALF_SWEEP + 2f * HALF_SWEEP * m / marks
-    fun angleOfIndex(i: Int) = angleOfMark((i * k).toFloat())
+    // The wheel's position in degrees along its travel. One source of truth, moved by the finger or by a settle.
+    var wheel by remember { mutableFloatStateOf(angleOfIndex(index)) }
+    var dragging by remember { mutableStateOf(false) }
+    var lastTick by remember { mutableIntStateOf(Int.MIN_VALUE) }
+    var prevAngle by remember { mutableFloatStateOf(0f) }
+    var settle by remember { mutableStateOf<Job?>(null) }
+    var box by remember { mutableStateOf(IntSize.Zero) }
 
-    // -1 when no finger is down; otherwise the finger's position in marks (a float, so the knob follows it).
-    var dragMark by remember { mutableFloatStateOf(-1f) }
-    var lastMark by remember { mutableIntStateOf(-1) }
-    var boxSize by remember { mutableStateOf(IntSize.Zero) }
-
-    val snapped by animateFloatAsState(
-        targetValue = angleOfIndex(index),
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = 450f),
-        label = "dialSweep"
-    )
-    val sweep = if (dragMark >= 0f) angleOfMark(dragMark) else snapped
-
-    fun markAt(p: Offset, size: IntSize): Float {
-        val dx = p.x - size.width / 2f
-        val dy = size.height / 2f - p.y
-        val deg = Math.toDegrees(atan2(dx.toDouble(), dy.toDouble())).toFloat()
-        return (deg.coerceIn(-HALF_SWEEP, HALF_SWEEP) + HALF_SWEEP) / (2f * HALF_SWEEP) * marks
-    }
-
-    fun indexOfMark(m: Float): Int = ((m + k / 2f) / k).toInt().coerceIn(0, n - 1)
-
-    /** Move the finger to [m]: a tick for every mark passed (a firm one if it was a value), then the value itself. */
-    fun moveTo(m: Float) {
-        dragMark = m
-        val mi = m.roundToInt().coerceIn(0, marks)
-        if (mi != lastMark) {
-            val crossedValue = if (lastMark < 0) false else {
-                val lo = minOf(lastMark, mi)
-                val hi = maxOf(lastMark, mi)
-                (lo..hi).any { it % k == 0 && it != lastMark }
-            }
-            if (lastMark >= 0) view.tick(if (crossedValue) Tick.Detent else Tick.Minor)
-            lastMark = mi
+    fun settleTo(target: Float) {
+        settle?.cancel()
+        settle = scope.launch {
+            Animatable(wheel).animateTo(target, spring(dampingRatio = 0.6f, stiffness = 380f)) { wheel = value }
         }
-        val i = indexOfMark(m)
-        if (i != currentIndex) callback(i)
     }
 
-    Box(modifier.onSizeChanged { boxSize = it }, contentAlignment = Alignment.Center) {
+    // A value changed from outside (not by this dial): follow it.
+    LaunchedEffect(index) {
+        if (!dragging && nearest(wheel) != index) settleTo(angleOfIndex(index))
+    }
+
+    // Geometry. The arc's top sits 40% down the box; its centre is R below that.
+    fun radius(w: Float) = w * 0.62f
+    fun arcTop(h: Float) = h * 0.40f
+
+    /** The pointer's angle from straight up around the wheel's centre, clockwise positive, in degrees. */
+    fun angleAt(p: Offset): Float {
+        val cx = box.width / 2f
+        val cy = arcTop(box.height.toFloat()) + radius(box.width.toFloat())
+        return Math.toDegrees(atan2((p.x - cx).toDouble(), (cy - p.y).toDouble())).toFloat()
+    }
+
+    Box(modifier.onSizeChanged { box = it }) {
         Canvas(
             Modifier
                 .fillMaxSize()
                 .pointerInput(n) {
                     detectTapGestures { p ->
-                        val i = indexOfMark(markAt(p, size))
-                        if (i != currentIndex) {
-                            view.tick(Tick.Detent)
-                            callback(i)
-                        }
+                        // the mark under the finger is the one at that angle from the needle
+                        val target = (wheel + angleAt(p)).coerceIn(0f, travel)
+                        val i = nearest(target)
+                        view.tick(Tick.Detent)
+                        callback(i)
+                        settleTo(angleOfIndex(i))
                     }
                 }
                 .pointerInput(n) {
                     detectDragGestures(
                         onDragStart = { p ->
-                            val m = markAt(p, size)
-                            lastMark = m.roundToInt().coerceIn(0, marks)
-                            dragMark = m
+                            settle?.cancel()
+                            dragging = true
+                            prevAngle = angleAt(p)
+                            lastTick = (wheel / TICK_DEG).roundToInt()
                         },
                         onDragEnd = {
-                            dragMark = -1f
-                            lastMark = -1
+                            dragging = false
                             view.tick(Tick.Confirm)
+                            settleTo(angleOfIndex(nearest(wheel)))
                         },
-                        onDragCancel = { dragMark = -1f; lastMark = -1 },
-                        onDrag = { change, _ -> change.consume(); moveTo(markAt(change.position, size)) }
+                        onDragCancel = { dragging = false; settleTo(angleOfIndex(nearest(wheel))) },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            val a = angleAt(change.position)
+                            var d = a - prevAngle
+                            if (d > 180f) d -= 360f
+                            if (d < -180f) d += 360f
+                            prevAngle = a
+                            // the wheel turns with the finger: marks move clockwise, so the position falls
+                            wheel = (wheel - d).coerceIn(0f, travel)
+
+                            val tickNow = (wheel / TICK_DEG).roundToInt()
+                            if (tickNow != lastTick) {
+                                val lo = minOf(lastTick, tickNow)
+                                val hi = maxOf(lastTick, tickNow)
+                                val crossedValue = (lo..hi).any { it % MAJOR_EVERY == 0 && it != lastTick }
+                                view.tick(if (crossedValue) Tick.Detent else Tick.Minor)
+                                lastTick = tickNow
+                            }
+                            val i = nearest(wheel)
+                            if (i != currentIndex) callback(i)
+                        }
                     )
                 }
         ) {
-            val c = center
-            val r = size.minDimension / 2f
-            // the scale: a long mark for every value, short marks between
-            for (m in 0..marks) {
-                val a = Math.toRadians(angleOfMark(m.toFloat()).toDouble() - 90.0)
-                val isValue = m % k == 0
-                val selected = isValue && m / k == currentIndex
-                val r1 = r * (if (isValue) 0.80f else 0.88f)
-                val r2 = r * (if (selected) 1f else if (isValue) 0.93f else 0.95f)
+            val w = size.width
+            val h = size.height
+            val r = radius(w)
+            val cx = w / 2f
+            val top = arcTop(h)
+            val cy = top + r
+
+            // the marks, turning with the wheel
+            val last = (n - 1) * MAJOR_EVERY
+            for (j in 0..last) {
+                val screen = j * TICK_DEG - wheel               // degrees from straight up, clockwise
+                if (abs(screen) > VISIBLE_DEG) continue
+                val major = j % MAJOR_EVERY == 0
+                val len = (if (major) 17.dp else 10.dp).toPx()
+                val rad = Math.toRadians(screen.toDouble())
+                val dx = sin(rad).toFloat()
+                val dy = -cos(rad).toFloat()
+                val side = (abs(screen) / 55f).coerceIn(0f, 1f)
+                val tint = lerp(ink, if (screen < 0f) cool else warm, side)
+                val fade = 1f - (abs(screen) / VISIBLE_DEG).let { it * it }
                 drawLine(
-                    color = if (isValue) body else body.copy(alpha = 0.55f),
-                    start = Offset(c.x + cos(a).toFloat() * r1, c.y + sin(a).toFloat() * r1),
-                    end = Offset(c.x + cos(a).toFloat() * r2, c.y + sin(a).toFloat() * r2),
-                    strokeWidth = (if (selected) 4.dp else if (isValue) 2.dp else 1.2.dp).toPx(),
+                    color = tint.copy(alpha = fade * (if (major) 1f else 0.8f)),
+                    start = Offset(cx + dx * r, cy + dy * r),
+                    end = Offset(cx + dx * (r - len), cy + dy * (r - len)),
+                    strokeWidth = (if (major) 2.4.dp else 1.5.dp).toPx(),
                     cap = StrokeCap.Round
                 )
             }
-            drawCircle(body, radius = r * 0.70f, center = c)
-            val a = Math.toRadians(sweep.toDouble() - 90.0)
-            drawCircle(
-                color = face,
-                radius = r * 0.08f,
-                center = Offset(c.x + cos(a).toFloat() * r * 0.57f, c.y + sin(a).toFloat() * r * 0.57f)
+
+            // the needle: fixed at the top, fading as it runs down into the clip
+            val nw = 4.dp.toPx()
+            val nTop = top - 12.dp.toPx()
+            drawRoundRect(
+                brush = Brush.verticalGradient(listOf(ink, ink.copy(alpha = 0f)), startY = nTop, endY = h),
+                topLeft = Offset(cx - nw / 2f, nTop),
+                size = Size(nw, h - nTop),
+                cornerRadius = CornerRadius(nw / 2f)
             )
         }
-        // The value sits above the knob's centre, so it stays in view when the lower half is clipped away.
-        FitText(
-            text = AnnotatedString(steps[index]),
-            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 40.sp, color = face),
+
+        // The value, above the needle. It rolls up or down as it changes.
+        AnimatedContent(
+            targetState = index,
             modifier = Modifier
-                .fillMaxSize(0.5f)
-                .offset { IntOffset(0, -(boxSize.height * 0.16f).roundToInt()) },
-            contentAlignment = Alignment.Center
-        )
+                .align(Alignment.TopCenter)
+                .offset { IntOffset(0, (box.height * 0.40f - 12.dp.toPx() - 44.dp.toPx()).roundToInt().coerceAtLeast(0)) },
+            transitionSpec = {
+                val up = targetState > initialState
+                (slideInVertically(tween(220)) { if (up) it else -it } + fadeIn(tween(160))) togetherWith
+                    (slideOutVertically(tween(220)) { if (up) -it else it } + fadeOut(tween(120))) using
+                    SizeTransform(clip = false)
+            },
+            label = "frequencyValue"
+        ) { i ->
+            Text(
+                steps[i.coerceIn(0, n - 1)],
+                style = TextStyle(
+                    fontFamily = TagFonts.display, fontWeight = FontWeight.Light, fontSize = 34.sp,
+                    color = ink, fontSynthesis = TagFonts.NoSynthesis
+                )
+            )
+        }
     }
 }

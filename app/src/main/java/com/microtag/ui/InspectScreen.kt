@@ -178,7 +178,6 @@ fun InspectScreen(onBack: () -> Unit, onOpenPriority: () -> Unit = {}) {
     remember { PillPrefs.attach(context) }
     SubScreen(onBack, spacing = 10.dp) {
         Spacer(Modifier.height(12.dp))
-        MicroStrip(4, "Inspect", jp = "検査")
         FitText(
             AnnotatedString("Inspect"),
             TextStyle(
@@ -226,14 +225,14 @@ fun InspectScreen(onBack: () -> Unit, onOpenPriority: () -> Unit = {}) {
             )
         }
         Spacer(Modifier.height(6.dp))
-        Blocks.forEachIndexed { i, b -> TipBlock(b, i + 1) }
+        Blocks.forEach { TipBlock(it) }
         Spacer(Modifier.height(24.dp))
     }
 }
 
 @Composable
-private fun TipBlock(block: TipBlockSpec, index: Int) {
-    MicroHeader(block.label, Modifier.padding(start = 4.dp, top = 8.dp), index)
+private fun TipBlock(block: TipBlockSpec) {
+    TagSectionLabel(block.label, Modifier.padding(start = 4.dp, top = 8.dp))
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         block.tips.forEachIndexed { i, tip -> TipRow(tip, tipShape(i, block.tips.size)) }
     }

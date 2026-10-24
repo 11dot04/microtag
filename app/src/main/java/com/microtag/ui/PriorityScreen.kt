@@ -1,6 +1,8 @@
 package com.microtag.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -55,8 +57,9 @@ fun PriorityScreen(onBack: () -> Unit) {
         FitText(
             AnnotatedString("Priority"),
             TextStyle(
-                fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 56.sp,
-                lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White
+                fontFamily = TagFonts.display, fontWeight = FontWeight.Black, fontSize = 56.sp,
+                lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White,
+                fontSynthesis = TagFonts.NoSynthesis
             ),
             Modifier.fillMaxWidth()
         )
@@ -76,7 +79,7 @@ fun PriorityScreen(onBack: () -> Unit) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
+                        .clip(connectedShape(i, state.order.size))
                         .background(TagColors.Surface)
                         .padding(start = 18.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -93,12 +96,15 @@ fun PriorityScreen(onBack: () -> Unit) {
                     if (pinned) {
                         Text(
                             "SET",
-                            style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.sp, color = TagColors.Lime)
+                            style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.sp, color = TagColors.AccentText)
                         )
                         Spacer(Modifier.width(6.dp))
                     }
-                    Nudge(up = true, enabled = i > 0) { view.tick(Tick.Press); PriorityStore.move(kind, -1); rev++ }
-                    Nudge(up = false, enabled = i < state.order.lastIndex) { view.tick(Tick.Press); PriorityStore.move(kind, 1); rev++ }
+                    // The two arrows are one connected pair: pressing one opens all of its corners out.
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Nudge(up = true, enabled = i > 0, left = true) { view.tick(Tick.Press); PriorityStore.move(kind, -1); rev++ }
+                        Nudge(up = false, enabled = i < state.order.lastIndex, left = false) { view.tick(Tick.Press); PriorityStore.move(kind, 1); rev++ }
+                    }
                 }
             }
         }
@@ -120,13 +126,17 @@ fun PriorityScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun Nudge(up: Boolean, enabled: Boolean, onClick: () -> Unit) {
+private fun Nudge(up: Boolean, enabled: Boolean, left: Boolean, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val t = pressMorph(source)
+    val shape = if (left) PressCornerShape(22.dp, 6.dp, 6.dp, 22.dp, t) else PressCornerShape(6.dp, 22.dp, 22.dp, 6.dp, t)
     Box(
         Modifier
             .size(44.dp)
-            .clip(CircleShape)
+            .clip(shape)
+            .background(lerp(TagColors.Surface, TagColors.White, 0.08f))
             .alpha(if (enabled) 1f else 0.25f)
-            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
+            .then(if (enabled) Modifier.clickable(interactionSource = source, indication = null, onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center
     ) {
         TagIcon(R.drawable.ic_chevron_right, TagColors.White, Modifier.rotate(if (up) -90f else 90f), 22.dp)

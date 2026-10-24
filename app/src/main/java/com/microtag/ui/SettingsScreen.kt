@@ -7,6 +7,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +47,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.microtag.R
@@ -61,9 +63,7 @@ private class Item(
     /** Shown in accent at the end of an action row instead of the chevron (a time, a choice). */
     val value: String? = null,
     /** Draw the value in the quiet outline colour instead of the accent (e.g. "Missing"). */
-    val valueMuted: Boolean = false,
-    /** A bracketed state tag under the description, e.g. "Granted" (shown only with micrographics on). */
-    val tag: String? = null
+    val valueMuted: Boolean = false
 )
 
 
@@ -86,12 +86,11 @@ private fun pickTime(context: Context, initial: Int, onPicked: (Int) -> Unit) {
  * Rows in a block interlock like the Simulate / Stats / Logs buttons on the dashboard,
  * only stacked: big radius on the block's outer corners, a tight 6dp where rows meet.
  */
-private fun groupShape(index: Int, count: Int): Shape {
-    val big = CornerSize(22.dp)
-    val small = CornerSize(6.dp)
-    val top = if (index == 0) big else small
-    val bottom = if (index == count - 1) big else small
-    return RoundedCornerShape(topStart = top, topEnd = top, bottomEnd = bottom, bottomStart = bottom)
+/** Corner radii (top-left, top-right, bottom-right, bottom-left): big on the block's outside, tight where rows meet. */
+private fun groupCorners(index: Int, count: Int): List<Dp> {
+    val top = if (index == 0) 22.dp else 6.dp
+    val bottom = if (index == count - 1) 22.dp else 6.dp
+    return listOf(top, top, bottom, bottom)
 }
 
 @Composable
@@ -117,7 +116,6 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
 
     SubScreen(onBack, spacing = 10.dp) {
         Spacer(Modifier.height(12.dp))
-        MicroStrip(5, "Settings", jp = "設定")
         FitText(
             AnnotatedString("Settings"),
             TextStyle(
@@ -132,11 +130,11 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
         Block(
             "Permissions",
             listOf(
-                Item("Notification listener", "Lets TAG see notifications. Opens system settings.", perms.hasListener, { perms.openListenerSettings() }, tag = if (perms.hasListener) "Granted" else "Missing"),
-                Item("Post notifications", "Lets TAG show its chips.", perms.hasNotif, { perms.requestNotifications() }, tag = if (perms.hasNotif) "Granted" else "Missing"),
-                Item("Calendar", "For the events countdown.", perms.hasCalendar, { perms.requestCalendar() }, tag = if (perms.hasCalendar) "Granted" else "Missing"),
-                Item("Nearby devices", "Lets the Bluetooth chip read a device's name.", perms.hasNearby, { perms.requestNearby() }, tag = if (perms.hasNearby) "Granted" else "Missing"),
-                Item("Shizuku", "Optional. Clipboard access in the background.", perms.hasShizuku, { perms.requestShizuku() }, tag = if (perms.hasShizuku) "Running" else "Off")
+                Item("Notification listener", "Lets TAG see notifications. Opens system settings.", perms.hasListener, { perms.openListenerSettings() }),
+                Item("Post notifications", "Lets TAG show its chips.", perms.hasNotif, { perms.requestNotifications() }),
+                Item("Calendar", "For the events countdown.", perms.hasCalendar, { perms.requestCalendar() }),
+                Item("Nearby devices", "Lets the Bluetooth chip read a device's name.", perms.hasNearby, { perms.requestNearby() }),
+                Item("Shizuku", "Optional. Clipboard access in the background.", perms.hasShizuku, { perms.requestShizuku() })
             ) + if (sensitiveNotificationsApply()) listOf(
                 // State only, no switch: it is granted through Shizuku (or adb), not from this screen.
                 Item(
@@ -187,7 +185,7 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
         Block(
             "Look and feel",
             listOf(
-                Item("Micrographics", "Tiny technical marks, rules and annotations around the app.", micro, {
+                Item("Micrographics", "The small technical marks on the main screen. Off keeps it clean.", micro, {
                     micro = it
                     settings.micro = it
                     TagColors.useMicro(it)
@@ -233,13 +231,12 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
 private fun Block(label: String, items: List<Item>) {
     // Each block's switches wear their own accent: permissions the main one, battery the second, look and feel the third.
     val tone = when (label) { "Battery" -> 1; "Look and feel" -> 2; else -> 0 }
-    val index = when (label) { "Permissions" -> 1; "Battery" -> 2; "Look and feel" -> 4; "Intro" -> 5; "About" -> 6; else -> null }
-    TileTone(tone) { BlockBody(label, items, index) }
+    TileTone(tone) { BlockBody(label, items) }
 }
 
 @Composable
-private fun BlockBody(label: String, items: List<Item>, index: Int?) {
-    MicroHeader(label, Modifier.padding(start = 4.dp, top = 8.dp), index)
+private fun BlockBody(label: String, items: List<Item>) {
+    TagSectionLabel(label, Modifier.padding(start = 4.dp, top = 8.dp))
     Column(
         Modifier.then(
             if (TagMotion.enabled) Modifier.animateContentSize(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow))
@@ -247,21 +244,24 @@ private fun BlockBody(label: String, items: List<Item>, index: Int?) {
         ),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        items.forEachIndexed { i, item -> SettingRow(item, groupShape(i, items.size)) }
+        items.forEachIndexed { i, item -> SettingRow(item, groupCorners(i, items.size)) }
     }
 }
 
 @Composable
-private fun SettingRow(item: Item, shape: Shape) {
+private fun SettingRow(item: Item, corners: List<Dp>) {
     val view = LocalView.current
     val interactive = item.checked != null || item.onClick != null
+    // Rows in a block are a connected group: pressing one opens all four of its corners to a full round.
+    val source = remember { MutableInteractionSource() }
+    val shape = PressCornerShape(corners[0], corners[1], corners[2], corners[3], if (interactive) pressMorph(source) else 0f)
     Row(
         Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(TagColors.Surface)
             .then(
-                if (interactive) Modifier.clickable {
+                if (interactive) Modifier.clickable(interactionSource = source, indication = null) {
                     if (item.checked != null) item.onChange(!item.checked) else {
                         view.tick(Tick.Press)
                         item.onClick?.invoke()
@@ -283,13 +283,6 @@ private fun SettingRow(item: Item, shape: Shape) {
                     lineHeight = 18.sp, color = TagColors.Outline
                 )
             )
-            if (item.tag != null && TagColors.MicroOn) {
-                MicroTag(
-                    item.tag,
-                    Modifier.padding(top = 4.dp),
-                    color = if (item.tag == "Granted" || item.tag == "Running") TagColors.AccentText else TagColors.Outline
-                )
-            }
         }
         when {
             item.checked != null -> TagSwitch(checked = item.checked, onChange = item.onChange)
@@ -315,7 +308,7 @@ private fun SettingRow(item: Item, shape: Shape) {
 private fun PalettePicker(selected: String, onPick: (TagPalette) -> Unit) {
     val context = LocalContext.current
     val view = LocalView.current
-    MicroHeader("Palette", Modifier.padding(start = 4.dp, top = 8.dp), 3)
+    TagSectionLabel("Palette", Modifier.padding(start = 4.dp, top = 8.dp))
     val state = rememberCarouselState { TagPalettes.All.size }
     HorizontalMultiBrowseCarousel(
         state = state,
