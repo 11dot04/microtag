@@ -1,1 +1,60 @@
-
+name: Bug report
+description: A chip is wrong, missing, or stuck
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A Logs entry makes this much faster to fix. Redact anything private (names, numbers, codes).
+  - type: input
+    id: version
+    attributes:
+      label: TAG version
+      description: Settings, About
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: "Pixel 9, Android 16"
+    validations:
+      required: true
+  - type: dropdown
+    id: shizuku
+    attributes:
+      label: Is Shizuku on?
+      options:
+        - "Yes"
+        - "No"
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: App whose notification is involved
+      placeholder: "e.g. Strava"
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect the chip to do?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs entry
+      description: Open Logs from the dashboard and paste the entry for that notification.
+      render: text
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag images here if they help.

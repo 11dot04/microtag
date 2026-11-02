@@ -1,0 +1,26 @@
+name: Feature or app request
+description: Suggest a new chip, an app TAG should understand, or an improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like TAG to do?
+      description: Say what the chip should show and when.
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: App involved (if any)
+      placeholder: "e.g. Duolingo"
+  - type: textarea
+    id: notification
+    attributes:
+      label: The notification
+      description: For a new app, paste its entry from the Logs screen (redacted). It usually lets a rule be written quickly.
+      render: text
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
