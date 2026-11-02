@@ -589,7 +589,7 @@ fun MonolithOverlay(
                 lerp(plate, numeralColor, 0.55f)
             }
 
-            drawIntoCanvas { canvas ->
+                    drawIntoCanvas { canvas ->
                 val n = canvas.nativeCanvas
                 if (bandAlpha > 0.01f) {
                     bandPaint.color = c1.toArgb(); bandPaint.alpha = (c1.alpha * 255 * bandAlpha).toInt()
@@ -606,20 +606,6 @@ fun MonolithOverlay(
                         overlapPaint.alpha = (255 * bandAlpha).toInt()
                         n.drawPath(tmp, overlapPaint)
                     }
-                    // the string: a hairline from the punch of the first plate, out toward the edge
-                    val hx = (TagMark.HOLE_X - TagMark.WIDTH / 2f) * unit
-                    val hy = (TagMark.HOLE_Y - TagMark.HEIGHT / 2f) * unit
-                    val rad = Math.toRadians(28.0)
-                    val rx = (hx * Math.cos(rad) - hy * Math.sin(rad)).toFloat()
-                    val ry = (hx * Math.sin(rad) + hy * Math.cos(rad)).toFloat()
-                    val len = Math.hypot(rx.toDouble(), ry.toDouble()).toFloat().coerceAtLeast(1f)
-                    val reach = wPx * 0.55f
-                    bandPaint.color = numeralColor.toArgb()
-                    bandPaint.alpha = (140 * bandAlpha).toInt()
-                    bandPaint.strokeWidth = 1.2.dp.toPx()
-                    bandPaint.style = Paint.Style.STROKE
-                    n.drawLine(ax + rx, ay + ry, ax + rx + rx / len * reach, ay + ry + ry / len * reach, bandPaint)
-                    bandPaint.style = Paint.Style.FILL
                 }
 
                 paint.typeface = typeface
