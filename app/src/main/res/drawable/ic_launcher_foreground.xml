@@ -1,44 +1,33 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="100"
-    android:viewportHeight="100">
+    android:viewportWidth="108"
+    android:viewportHeight="108">
 
-    <!-- Groups the path to center and scale the bounding box perfectly within the 108dp adaptive icon safe zone -->
+    <!-- The TAG mark, same outline as TagMark.kt. Each piece keeps its traced coordinates and is
+         scaled to 52dp wide and centred on the 108dp canvas, inside the adaptive-icon safe zone.
+         Group translate = centring offset + scale * the piece's original SVG translate. -->
+
+    <!-- Right arm (traced origin 604,299) -->
     <group
-        android:translateX="-1.1"
-        android:translateY="8.6"
-        android:scaleX="1.15"
-        android:scaleY="1.15"
-        android:pivotX="51.1"
-        android:pivotY="41.4">
-
+        android:translateX="51.265"
+        android:translateY="34.164"
+        android:scaleX="0.07293"
+        android:scaleY="0.07293">
         <path
             android:fillColor="@color/icon_on_surface"
-            android:fillType="evenOdd"
-            android:pathData="
-                M 18.7,70.7
-                L 30.6,42.4
-                L 26.0,42.4
-                L 26.0,34.4
-                L 31.6,34.4
-                L 50.5,12.1
-                L 52.8,12.1
-                L 75.8,40.7
-                L 74.1,42.6
-                L 76.0,44.9
-                L 83.5,70.7
-                L 58.4,70.7
-                L 52.5,60.9
-                L 41.8,60.9
-                L 39.5,70.7
-                Z
-                M 41.3,41.6
-                L 51.6,28.8
-                L 65.5,52.7
-                L 53.6,52.7
-                L 49.0,60.0
-                L 32.0,60.0
-                Z" />
+            android:pathData="M0,0 L41,0 L46,5 L63,31 L76,51 L89,71 L102,91 L115,111 L130,134 L143,154 L156,174 L169,194 L182,214 L187,222 L187,224 L178,230 L188,246 L191,250 L191,252 L202,254 L210,257 L223,277 L236,297 L249,317 L262,337 L275,357 L288,377 L301,397 L314,417 L329,440 L340,457 L355,480 L368,500 L381,520 L394,540 L394,541 L315,542 L167,542 L152,519 L139,499 L126,479 L111,456 L104,445 L104,443 L142,442 L210,442 L197,422 L182,399 L171,382 L156,359 L143,339 L130,319 L117,299 L104,279 L91,259 L78,239 L65,219 L50,196 L37,176 L24,156 L21,151 L19,150 L17,155 L3,177 L-11,199 L-14,198 L-28,176 L-46,149 L-56,133 L-71,110 L-72,107 L-56,82 L-42,60 L-28,38 L-12,13 L-5,2 Z" />
     </group>
+
+    <!-- Left foot (traced origin 477,427) -->
+    <group
+        android:translateX="42.004"
+        android:translateY="43.500"
+        android:scaleX="0.07293"
+        android:scaleY="0.07293">
+        <path
+            android:fillColor="@color/icon_on_surface"
+            android:pathData="M0,0 L41,0 L48,9 L58,25 L75,51 L88,71 L99,88 L101,91 L100,96 L84,121 L70,143 L54,168 L40,190 L26,212 L10,237 L-4,259 L-20,284 L-34,306 L-40,316 L50,314 L65,291 L76,274 L87,257 L98,240 L109,223 L114,215 L128,214 L158,214 L166,225 L176,241 L191,264 L204,284 L217,304 L223,314 L170,315 L158,333 L147,350 L136,367 L123,387 L112,404 L105,415 L6,416 L-162,416 L-167,411 L-185,384 L-192,373 L-192,366 L-176,341 L-160,316 L-146,294 L-132,272 L-116,247 L-102,225 L-86,200 L-72,178 L-56,153 L-42,131 L-26,106 L-23,101 L-57,101 L-57,1 Z" />
+    </group>
+
 </vector>
