@@ -107,14 +107,20 @@ import kotlin.math.sin
 import kotlin.math.abs
 // ==========================================================
 // THE MONOLITH
-// The count is one huge numeral set on its side, reading up the left edge of the page, with a couple of
-// flat diagonal bands overprinted across its foot (where numeral and band overlap, the colours mix).
+// The count is one huge numeral set on its side, reading up the left edge of the page. A big TAG mark, turned
+// 90 degrees, is overprinted across its foot (where numeral and mark overlap, the colours mix), and a second,
+// smaller mark sits under the annotation text on the right.
 // A tiny annotation column and a vertical hour-by-hour readout sit to its right. There is no coloured slab:
 // the poster is the page. Scroll, and the numeral swings upright and shrinks into the dock while the tiles take
 // over. Pausing outlines the numeral.
 // ==========================================================
 
 private const val NUMERAL_LS = -0.02f   // em; tune to taste for the hero font
+
+/** The big mark under the numeral is turned this far clockwise (90 points its apex right; use -90f to point it left). */
+private const val MARK_TURN = -90f
+/** Rough height of the annotation text block, in dp, so the small mark can sit just under it. Tune to taste. */
+private const val TEXT_BLOCK_DP = 150f
 
 /** The hero numeral's typeface: res/font/style.ttf. Swap the file, never the name. */
 private fun heroTypeface(context: android.content.Context): Typeface? = ResourcesCompat.getFont(context, R.font.style)
@@ -558,10 +564,12 @@ fun MonolithOverlay(
             val pose = poseAt(p, kick.value)
             val rolling = roll.value < 1f
 
-            // --- the TAG mark, printed twice a little out of register across the foot of the poster. It scrolls away with
-            // the poster and slides into register each time the numeral spins up.
+            // --- the TAG mark, printed twice a little out of register. A big one lies on its side across the foot of
+            // the numeral and bleeds off the left edge; a small upright one sits under the annotation text on the
+            // right. Both scroll away with the poster and slide into register each time the numeral spins up.
             val sy = -scroll.value.toFloat()
-            val unit = wPx * 0.36f
+            val unitA = wPx * 0.72f
+            val unitB = wPx * 0.28f
             val slide = 1f - reg.value
             fun place(path: NativePath, cx: Float, cy: Float, scale: Float, angle: Float) {
                 matrix.reset()
@@ -572,12 +580,14 @@ fun MonolithOverlay(
                 path.set(plateBase)
                 path.transform(matrix)
             }
-            val ax = wPx * 0.27f - slide * wPx * 0.30f
-            val ay = posterPx * 0.80f + sy + slide * posterPx * 0.05f
-            val bx = wPx * 0.47f + slide * wPx * 0.30f
-            val by = posterPx * 0.74f + sy - slide * posterPx * 0.05f
-            place(plateA, ax, ay, unit, 28f)
-            place(plateB, bx, by, unit * 0.8f, 28f)
+            val numeralTop = (posterPx - bottomMargin) - l100 * s0 / 100f
+            val textBottom = numeralTop + TEXT_BLOCK_DP.dp.toPx()
+            val ax = wPx * 0.24f - slide * wPx * 0.30f
+            val ay = posterPx * 0.79f + sy + slide * posterPx * 0.05f
+            val bx = wPx * 0.66f + slide * wPx * 0.30f
+            val by = textBottom + 12.dp.toPx() + unitB * TagMark.HEIGHT / 2f + sy - slide * posterPx * 0.05f
+            place(plateA, ax, ay, unitA, MARK_TURN)
+            place(plateB, bx, by, unitB, 0f)
             val bandAlpha = (1f - p) * (if (paused) 0.22f else 1f)
             val c1 = TagColors.Lime
             val c2 = if (TagColors.HasTones) TagColors.Secondary else TagColors.Lime.copy(alpha = 0.55f)
@@ -589,7 +599,7 @@ fun MonolithOverlay(
                 lerp(plate, numeralColor, 0.55f)
             }
 
-                    drawIntoCanvas { canvas ->
+            drawIntoCanvas { canvas ->
                 val n = canvas.nativeCanvas
                 if (bandAlpha > 0.01f) {
                     bandPaint.color = c1.toArgb(); bandPaint.alpha = (c1.alpha * 255 * bandAlpha).toInt()
@@ -606,6 +616,21 @@ fun MonolithOverlay(
                         overlapPaint.alpha = (255 * bandAlpha).toInt()
                         n.drawPath(tmp, overlapPaint)
                     }
+                    // the string: a hairline from the tip of the big mark, out toward the hour ruler
+                    val hx = (TagMark.ANCHOR_X - TagMark.WIDTH / 2f) * unitA
+                    val hy = (TagMark.ANCHOR_Y - TagMark.HEIGHT / 2f) * unitA
+                    val rad = Math.toRadians(MARK_TURN.toDouble())
+                    val rx = (hx * Math.cos(rad) - hy * Math.sin(rad)).toFloat()
+                    val ry = (hx * Math.sin(rad) + hy * Math.cos(rad)).toFloat()
+                    val len = Math.hypot(rx.toDouble(), ry.toDouble()).toFloat().coerceAtLeast(1f)
+                    val startX = ax + rx
+                    val reach = (wPx * 0.86f - startX).coerceAtLeast(0f)
+                    bandPaint.color = numeralColor.toArgb()
+                    bandPaint.alpha = (140 * bandAlpha).toInt()
+                    bandPaint.strokeWidth = 1.2.dp.toPx()
+                    bandPaint.style = Paint.Style.STROKE
+                    n.drawLine(startX, ay + ry, startX + rx / len * reach, ay + ry + ry / len * reach, bandPaint)
+                    bandPaint.style = Paint.Style.FILL
                 }
 
                 paint.typeface = typeface
