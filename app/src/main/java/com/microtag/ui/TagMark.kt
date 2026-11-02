@@ -3,40 +3,46 @@ package com.microtag.ui
 import android.graphics.Path as NativePath
 
 /**
- * The TAG mark: an abstract luggage tag cut from straight lines only. A chamfered head with a square punch, a stepped
- * notch bitten out of one edge, a long diagonal cut across the foot, and three label slots cut through the body.
- * No curves anywhere: brutalist, like the wordmark's flat-cut T and slanted A.
+ * The TAG mark: a heavy, brutalist, stencil-cut 'A'.
+ * Composed of thick geometric strokes with a distinctive notch in the left leg 
+ * and a disconnected right foot. The crossbar is formed purely by negative space.
  *
- * Printed twice, slightly out of register, it is the Monolith's overprint. Alone it is the launcher icon
- * (see ic_launcher_foreground.xml, which is this same outline).
- *
- * Coordinates are in plate units: 1 wide, 1.9 tall, origin at the top-left.
+ * Coordinates are normalized to a 1x1 plate, origin at top-left.
  */
 object TagMark {
     const val WIDTH = 1f
-    const val HEIGHT = 1.9f
+    const val HEIGHT = 1f
 
-    /** The outline, clockwise from where the top-left chamfer ends. */
+    /** The outer heavy stroke of the A, traced clockwise from the bottom left corner. */
     private val outline = floatArrayOf(
-        0.16f, 0.00f, 0.84f, 0.00f, 1.00f, 0.16f, 1.00f, 1.46f, 0.56f, 1.90f,
-        0.00f, 1.90f, 0.00f, 0.60f, 0.12f, 0.60f, 0.12f, 0.44f, 0.00f, 0.44f, 0.00f, 0.16f
+        0.187f, 0.707f, // Bottom Left
+        0.306f, 0.424f, // Inner Left notch bottom
+        0.260f, 0.424f, // Inner Left notch top
+        0.260f, 0.344f, // Top left notch edge
+        0.316f, 0.344f, // Top left start of diagonal
+        0.505f, 0.121f, // Apex Left
+        0.528f, 0.121f, // Apex Right
+        0.758f, 0.407f, // Right edge notch top
+        0.741f, 0.426f, // Right edge notch depth
+        0.760f, 0.449f, // Right edge notch bottom
+        0.835f, 0.707f, // Bottom Right
+        0.584f, 0.707f, // Bottom Right inner
+        0.525f, 0.609f, // Crossbar right cut
+        0.418f, 0.609f, // Crossbar bottom edge
+        0.395f, 0.707f  // Bottom Left inner
     )
 
-    /** The punch: a square with one chamfered corner. */
-    private val hole = floatArrayOf(0.46f, 0.14f, 0.66f, 0.14f, 0.66f, 0.34f, 0.42f, 0.34f, 0.42f, 0.18f)
-
-    /** The label slots: two bars and a square. */
-    private val slots = listOf(
-        floatArrayOf(0.20f, 0.78f, 0.80f, 0.78f, 0.80f, 0.90f, 0.20f, 0.90f),
-        floatArrayOf(0.20f, 1.02f, 0.62f, 1.02f, 0.62f, 1.14f, 0.20f, 1.14f),
-        floatArrayOf(0.70f, 1.02f, 0.80f, 1.02f, 0.80f, 1.14f, 0.70f, 1.14f)
+    /** The negative space triangle cutting through the centre. */
+    private val hole = floatArrayOf(
+        0.413f, 0.416f, // Left corner
+        0.516f, 0.288f, // Top apex
+        0.655f, 0.527f, // Right corner
+        0.536f, 0.527f, // Step in
+        0.490f, 0.600f, // Drop down to crossbar
+        0.320f, 0.600f  // Cut left
     )
 
-    /** The punch's centre, in plate units. The tag's string hangs from here. */
-    const val HOLE_X = 0.54f
-    const val HOLE_Y = 0.24f
-
-    /** Builds the plate into [path] (even-odd, so the punch and slots are cut out). */
+    /** Builds the plate into [path] (even-odd, so the negative space is punched out). */
     fun buildPath(path: NativePath) {
         path.rewind()
         path.fillType = NativePath.FillType.EVEN_ODD
@@ -51,6 +57,5 @@ object TagMark {
         }
         poly(outline)
         poly(hole)
-        slots.forEach(::poly)
     }
 }
