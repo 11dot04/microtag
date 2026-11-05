@@ -122,7 +122,7 @@ private const val NUMERAL_THICK = 0.42f
 private const val NUMERAL_TOP_GAP = 0.06f
 
 /** The big mark under the numeral is turned this far clockwise (90 points its apex right; use -90f to point it left). */
-private const val MARK_TURN = 90f
+private const val MARK_TURN = -75f
 /** Rough height of the annotation text block, in dp, so the small mark can sit just under it. Tune to taste. */
 private const val TEXT_BLOCK_DP = 135f
 
