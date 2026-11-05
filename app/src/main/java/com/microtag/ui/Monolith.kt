@@ -116,11 +116,15 @@ import kotlin.math.abs
 // ==========================================================
 
 private const val NUMERAL_LS = -0.02f   // em; tune to taste for the hero font
+/** How thick the numeral may get, as a share of the page width (the annotation column lives in the rest). */
+private const val NUMERAL_THICK = 0.42f
+/** Clear space kept between the control buttons and the numeral's far end, as a share of the page width. */
+private const val NUMERAL_TOP_GAP = 0.06f
 
 /** The big mark under the numeral is turned this far clockwise (90 points its apex right; use -90f to point it left). */
-private const val MARK_TURN = -90f
+private const val MARK_TURN = 90f
 /** Rough height of the annotation text block, in dp, so the small mark can sit just under it. Tune to taste. */
-private const val TEXT_BLOCK_DP = 150f
+private const val TEXT_BLOCK_DP = 135f
 
 /** The hero numeral's typeface: res/font/style.ttf. Swap the file, never the name. */
 private fun heroTypeface(context: android.content.Context): Typeface? = ResourcesCompat.getFont(context, R.font.style)
@@ -137,13 +141,33 @@ private fun numeralInk(typeface: Typeface?, text: String): Rect {
 
 private fun smooth(t: Float) = t * t * (3f - 2f * t)
 
-/** The numeral lies along the left edge: its length fills most of the poster, its thickness stays modest. */
+/**
+ * The numeral lies along the left edge. Its thickness is capped by the annotation column; its length by the room
+ * between the control buttons and the foot of the poster. Both come from the measured ink, so a narrow digit string
+ * and a wide one (the font is proportional) each get the size that fits them.
+ */
 private fun fitSize(
     l100: Float, h100: Float, wPx: Float, posterPx: Float, margin: Float, bottomMargin: Float, controlsBottom: Float
 ): Float {
-    val availLen = min(posterPx * 0.62f, posterPx - bottomMargin - controlsBottom).coerceAtLeast(1f)
-    val availThick = (wPx * 0.42f - margin).coerceAtLeast(1f)
+    val availLen = (posterPx - bottomMargin - controlsBottom - wPx * NUMERAL_TOP_GAP).coerceAtLeast(1f)
+    val availThick = (wPx * NUMERAL_THICK - margin).coerceAtLeast(1f)
     return min(availLen / l100 * 100f, availThick / h100 * 100f)
+}
+
+/**
+ * The poster height that hugs the numeral: control buttons, a small gap, the numeral at its natural length, then the
+ * bottom margin. The length is measured from the real digits, so it changes with the count. Never shorter than the
+ * annotation column and the marks need.
+ */
+fun monolithPosterHeightPx(
+    typeface: Typeface?, count: Int, wPx: Float, margin: Float, bottomMargin: Float, controlsBottom: Float
+): Float {
+    val ink = numeralInk(typeface, count.toString())
+    val l100 = (ink.right - ink.left).toFloat().coerceAtLeast(1f)
+    val h100 = (ink.bottom - ink.top).toFloat().coerceAtLeast(1f)
+    val size = (wPx * NUMERAL_THICK - margin).coerceAtLeast(1f) / h100 * 100f
+    val hugging = controlsBottom + wPx * NUMERAL_TOP_GAP + l100 * size / 100f + bottomMargin
+    return max(hugging, controlsBottom + wPx * 0.9f)
 }
 
 /** Where the numeral sits in the poster state (rotated -90°, starting at the bottom-left and reading upward). */
@@ -568,8 +592,8 @@ fun MonolithOverlay(
             // the numeral and bleeds off the left edge; a small upright one sits under the annotation text on the
             // right. Both scroll away with the poster and slide into register each time the numeral spins up.
             val sy = -scroll.value.toFloat()
-            val unitA = wPx * 0.72f
-            val unitB = wPx * 0.28f
+            val unitA = wPx * 0.56f
+            val unitB = wPx * 0.12f
             val slide = 1f - reg.value
             fun place(path: NativePath, cx: Float, cy: Float, scale: Float, angle: Float) {
                 matrix.reset()
@@ -580,12 +604,15 @@ fun MonolithOverlay(
                 path.set(plateBase)
                 path.transform(matrix)
             }
-            val numeralTop = (posterPx - bottomMargin) - l100 * s0 / 100f
+            val numeralFoot = posterPx - bottomMargin
+            val numeralTop = numeralFoot - l100 * s0 / 100f
             val textBottom = numeralTop + TEXT_BLOCK_DP.dp.toPx()
-            val ax = wPx * 0.24f - slide * wPx * 0.30f
-            val ay = posterPx * 0.79f + sy + slide * posterPx * 0.05f
-            val bx = wPx * 0.66f + slide * wPx * 0.30f
-            val by = textBottom + 12.dp.toPx() + unitB * TagMark.HEIGHT / 2f + sy - slide * posterPx * 0.05f
+            // where the annotation column starts (same rule as MonolithPoster), so the small mark lines up with it
+            val metaX = margin + capH + 16.dp.toPx()
+            val ax = wPx * 0.20f - slide * wPx * 0.30f
+            val ay = numeralFoot + wPx * 0.03f - unitA / 2f + sy + slide * posterPx * 0.05f
+            val bx = metaX + unitB / 2f + slide * wPx * 0.30f
+            val by = textBottom + 28.dp.toPx() + unitB * TagMark.HEIGHT / 2f + sy - slide * posterPx * 0.05f
             place(plateA, ax, ay, unitA, MARK_TURN)
             place(plateB, bx, by, unitB, 0f)
             val bandAlpha = (1f - p) * (if (paused) 0.22f else 1f)
