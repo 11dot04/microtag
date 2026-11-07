@@ -138,6 +138,21 @@ class UserRuleBook(private val dir: File) {
         }
     }
 
+    /** What [rule] would show for this notification, or null when it does not match (or is not valid). For the live test in the builder. */
+    fun preview(rule: UserRule, title: String, text: String, limit: Int = PillText.LIMIT): String? {
+        if (validate(rule) != null) return null
+        val rx = SafeRegex.compile(rule.regex, rule.ignoreCase).getOrNull() ?: return null
+        val target = when (rule.field) {
+            UserRule.Field.TITLE -> title
+            UserRule.Field.TEXT -> text
+            UserRule.Field.BOTH -> "$title $text".trim()
+        }
+        val found = SafeRegex.find(rx, target) as? SafeRegex.Outcome.Found ?: return null
+        val full = RuleTemplate.expand(rule.pill, found.groups)
+        if (full.isBlank()) return null
+        return if (rule.pillMode == UserRule.PillMode.EXACT) full.take(EXACT_CAP) else if (full.length <= limit) full else PillText.cut(full, limit)
+    }
+
     /** The first enabled rule for [pkg] that matches, with its pill built and fitted. */
     fun evaluate(pkg: String, title: String, text: String, limit: Int = PillText.LIMIT): UserMatch? {
         for (rule in rules) {
