@@ -77,7 +77,7 @@ object WeatherWatcher {
             content = WeatherFormat.content(w, f),
             notificationId = ID,
             timeoutSeconds = 0,
-            iconName = "ic_weather",
+            iconName = com.microtag.weather.WeatherCodes.icon(w.code, w.isDay, w.windKmh),
             showAppName = false
         )
     }
