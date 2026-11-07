@@ -42,55 +42,55 @@ fun AiSettingsScreen(onBack: () -> Unit) {
     fun update(c: AiConfig) { cfg = c; Ai.save(context, c) }
 
     SubScreen(onBack, spacing = 10.dp) {
-        Gap(12)
-        ScreenTitle("AI")
-        Caption("Optional. It helps write rules and shortens long chips. Nothing is sent until you turn it on, and only a scrubbed copy of a notification is ever sent: long numbers, emails and names are masked first.")
-        Gap(4)
+        FormGap(12)
+        FormTitle("AI")
+        FormCaption("Optional. It helps write rules and shortens long chips. Nothing is sent until you turn it on, and only a scrubbed copy of a notification is ever sent: long numbers, emails and names are masked first.")
+        FormGap(4)
 
-        SwitchRow("Use AI", if (cfg.enabled && !hasKey) "Add a key below to finish" else null, cfg.enabled) { update(cfg.copy(enabled = it)) }
+        FormSwitch("Use AI", if (cfg.enabled && !hasKey) "Add a key below to finish" else null, cfg.enabled) { update(cfg.copy(enabled = it)) }
 
-        SectionLabel("Provider")
-        Wrap {
+        FormLabel("Provider")
+        FormWrap {
             AiProvider.values().forEach { p ->
-                TagChoice(p.label, cfg.provider == p, {
+                FormChoice(p.label, cfg.provider == p, {
                     if (cfg.provider != p) update(cfg.copy(provider = p, baseUrl = AiProtocol.defaultBase(p), model = AiProtocol.defaultModel(p)))
                 })
             }
         }
         if (cfg.provider == AiProvider.OPENAI_COMPATIBLE) {
-            Caption("OpenAI, Gemini's compatible address, OpenRouter, or a model running on your own network all work here.")
-            SectionLabel("Address")
-            TagField(cfg.baseUrl, { update(cfg.copy(baseUrl = it.trim())) }, "https://…", mono = true)
+            FormCaption("OpenAI, Gemini's compatible address, OpenRouter, or a model running on your own network all work here.")
+            FormLabel("Address")
+            FormField(cfg.baseUrl, { update(cfg.copy(baseUrl = it.trim())) }, "https://…", mono = true)
         }
-        SectionLabel("Model")
-        TagField(cfg.model, { update(cfg.copy(model = it.trim())) }, "model name", mono = true)
+        FormLabel("Model")
+        FormField(cfg.model, { update(cfg.copy(model = it.trim())) }, "model name", mono = true)
 
-        SectionLabel("Key")
+        FormLabel("Key")
         if (hasKey) {
-            Plate { Caption("A key is saved on this phone.", color = TagColors.White) }
+            FormPlate { FormCaption("A key is saved on this phone.", color = TagColors.White) }
             Row {
-                TagButton("Replace", { hasKey = false }, filled = false)
-                GapW()
-                TagButton("Remove", { Ai.setKey(context, ""); hasKey = false; update(cfg.copy(enabled = false)) }, filled = false, danger = true)
+                FormButton("Replace", { hasKey = false }, filled = false)
+                FormGapW()
+                FormButton("Remove", { Ai.setKey(context, ""); hasKey = false; update(cfg.copy(enabled = false)) }, filled = false, danger = true)
             }
         } else {
-            TagField(keyText, { keyText = it }, "Paste your key", mono = true, secret = true)
-            TagButton("Save key", {
+            FormField(keyText, { keyText = it }, "Paste your key", mono = true, secret = true)
+            FormButton("Save key", {
                 if (keyText.isNotBlank()) { Ai.setKey(context, keyText); keyText = ""; hasKey = Ai.hasKey(context) }
             }, enabled = keyText.isNotBlank())
         }
 
-        SectionLabel("What it may do")
-        SwitchRow("Shorten long chips", "Only for rules set to “Shorten with AI”.", cfg.condense) { update(cfg.copy(condense = it)) }
-        SwitchRow("Help write rules", "Adds an “Ask AI” button to the rule builder.", cfg.ruleHelp) { update(cfg.copy(ruleHelp = it)) }
+        FormLabel("What it may do")
+        FormSwitch("Shorten long chips", "Only for rules set to “Shorten with AI”.", cfg.condense) { update(cfg.copy(condense = it)) }
+        FormSwitch("Help write rules", "Adds an “Ask AI” button to the rule builder.", cfg.ruleHelp) { update(cfg.copy(ruleHelp = it)) }
 
-        SectionLabel("Limit")
-        Wrap {
-            listOf(10, 30, 100).forEach { n -> TagChoice("$n an hour", cfg.callsPerHour == n, { update(cfg.copy(callsPerHour = n)) }) }
+        FormLabel("Limit")
+        FormWrap {
+            listOf(10, 30, 100).forEach { n -> FormChoice("$n an hour", cfg.callsPerHour == n, { update(cfg.copy(callsPerHour = n)) }) }
         }
 
-        Gap(8)
-        TagButton(if (testing) "Testing…" else "Test it", {
+        FormGap(8)
+        FormButton(if (testing) "Testing…" else "Test it", {
             testing = true; result = null
             scope.launch {
                 val r = withContext(Dispatchers.IO) { runCatching { Ai.test(context) }.getOrNull() }
@@ -99,7 +99,7 @@ fun AiSettingsScreen(onBack: () -> Unit) {
                 result = if (r == null) "It could not be reached" else if (r.ok) "Working" else (r.error ?: "It did not answer")
             }
         }, enabled = !testing)
-        result?.let { if (failed) Notice(it) else Plate { Caption(it, color = TagColors.White) } }
-        Gap(24)
+        result?.let { if (failed) FormNotice(it) else FormPlate { FormCaption(it, color = TagColors.White) } }
+        FormGap(24)
     }
 }

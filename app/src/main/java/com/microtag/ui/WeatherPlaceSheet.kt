@@ -70,35 +70,35 @@ fun WeatherPlaceSheet(settings: TagSettings, onClose: () -> Unit) {
                 .verticalScroll(rememberScrollState())
         ) {
             Text("Weather for", style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 26.sp, color = TagColors.White))
-            Gap(12)
-            TagButton("Use my location", {
+            FormGap(12)
+            FormButton("Use my location", {
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) useAuto()
                 else permission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
             }, Modifier.fillMaxWidth(), filled = settings.weatherAuto)
-            Caption("Approximate location only, and only when the weather is fetched.")
-            SectionLabel("Or a city")
-            TagField(query, { query = it }, "Search")
-            Gap(8)
-            if (searching) Caption("Searching…")
-            else if (query.trim().length >= 2 && results.isEmpty()) Caption("Nothing found. Check the spelling, or try a bigger town nearby.")
+            FormCaption("Approximate location only, and only when the weather is fetched.")
+            FormLabel("Or a city")
+            FormField(query, { query = it }, "Search")
+            FormGap(8)
+            if (searching) FormCaption("Searching…")
+            else if (query.trim().length >= 2 && results.isEmpty()) FormCaption("Nothing found. Check the spelling, or try a bigger town nearby.")
             results.forEach { p ->
-                Plate(onClick = {
+                FormPlate(onClick = {
                     WeatherEngine.setCity(context, p); settings.weatherAuto = false; settings.weatherCity = p.label; finish()
                 }, modifier = Modifier.padding(bottom = 4.dp)) {
                     Column {
                         Text(p.name, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TagColors.White))
-                        Text(listOf(p.region, p.country).filter { it.isNotBlank() }.joinToString(", "), style = MonoStyle)
+                        Text(listOf(p.region, p.country).filter { it.isNotBlank() }.joinToString(", "), style = FormMono)
                     }
                 }
             }
-            SectionLabel("Units")
-            Wrap {
+            FormLabel("Units")
+            FormWrap {
                 listOf(Units.AUTO to "Automatic", Units.CELSIUS to "°C", Units.FAHRENHEIT to "°F").forEach { (u, l) ->
-                    TagChoice(l, units == u, { units = u; WeatherEngine.setUnits(context, u); WeatherWatcher.refresh(context) })
+                    FormChoice(l, units == u, { units = u; WeatherEngine.setUnits(context, u); WeatherWatcher.refresh(context) })
                 }
             }
-            Gap(14)
-            TagButton("Done", onClose, Modifier.fillMaxWidth(), filled = false)
+            FormGap(14)
+            FormButton("Done", onClose, Modifier.fillMaxWidth(), filled = false)
         }
     }
 }

@@ -47,32 +47,32 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private sealed interface Page {
-    object Home : Page
-    object Pick : Page
-    class Build(val pkg: String, val label: String, val rule: UserRule?) : Page
+private sealed interface RulesPage {
+    object Home : RulesPage
+    object Pick : RulesPage
+    class Build(val pkg: String, val label: String, val rule: UserRule?) : RulesPage
 }
 
-private data class AppEntry(val pkg: String, val label: String)
+private data class PickApp(val pkg: String, val label: String)
 
 /** Rules you write yourself: choose an app, point at what you want from one of its notifications, and it becomes a chip. */
 @Composable
 fun RulesScreen(onBack: () -> Unit, onOpenAi: () -> Unit) {
     val context = LocalContext.current
-    var page by remember { mutableStateOf<Page>(Page.Home) }
-    BackHandler { if (page is Page.Home) onBack() else page = if (page is Page.Build && (page as Page.Build).rule == null) Page.Pick else Page.Home }
+    var page by remember { mutableStateOf<RulesPage>(RulesPage.Home) }
+    BackHandler { if (page is RulesPage.Home) onBack() else page = if (page is RulesPage.Build && (page as RulesPage.Build).rule == null) RulesPage.Pick else RulesPage.Home }
 
     when (val p = page) {
-        Page.Home -> RulesHome(onBack, onOpenAi, onNew = { page = Page.Pick }, onEdit = { r -> page = Page.Build(r.pkg, r.appLabel, r) })
-        Page.Pick -> AppPicker({ page = Page.Home }) { e -> page = Page.Build(e.pkg, e.label, null) }
-        is Page.Build -> RuleBuilder(p.pkg, p.label, p.rule, onDone = { page = Page.Home })
+        RulesPage.Home -> RulesHomePage(onBack, onOpenAi, onNew = { page = RulesPage.Pick }, onEdit = { r -> page = RulesPage.Build(r.pkg, r.appLabel, r) })
+        RulesPage.Pick -> RuleAppPicker({ page = RulesPage.Home }) { e -> page = RulesPage.Build(e.pkg, e.label, null) }
+        is RulesPage.Build -> RuleBuilderPage(p.pkg, p.label, p.rule, onDone = { page = RulesPage.Home })
     }
 }
 
 // ------------------------------------------------------------------ home
 
 @Composable
-private fun RulesHome(onBack: () -> Unit, onOpenAi: () -> Unit, onNew: () -> Unit, onEdit: (UserRule) -> Unit) {
+private fun RulesHomePage(onBack: () -> Unit, onOpenAi: () -> Unit, onNew: () -> Unit, onEdit: (UserRule) -> Unit) {
     val context = LocalContext.current
     val book = remember { UserRules.book(context) }
     var version by remember { mutableIntStateOf(0) }
@@ -80,47 +80,47 @@ private fun RulesHome(onBack: () -> Unit, onOpenAi: () -> Unit, onNew: () -> Uni
     val aiOn = remember(version) { Ai.ready(context) }
 
     SubScreen(onBack, spacing = 10.dp) {
-        Gap(12)
-        ScreenTitle("Rules")
-        Caption("Your own rules, per app. When a notification matches, TAG shows what you chose instead of leaving it alone. They run before the built-in ones.")
+        FormGap(12)
+        FormTitle("Rules")
+        FormCaption("Your own rules, per app. When a notification matches, TAG shows what you chose instead of leaving it alone. They run before the built-in ones.")
         Row {
-            TagButton("New rule", onNew)
-            GapW()
-            TagButton(if (aiOn) "AI · On" else "AI · Off", onOpenAi, filled = false)
+            FormButton("New rule", onNew)
+            FormGapW()
+            FormButton(if (aiOn) "AI · On" else "AI · Off", onOpenAi, filled = false)
         }
         if (rules.isEmpty()) {
-            Plate { Caption("No rules yet. Pick an app, tap the words you want on the chip, and you are done.") }
+            FormPlate { FormCaption("No rules yet. Pick an app, tap the words you want on the chip, and you are done.") }
         } else {
             rules.forEach { r ->
-                Plate(onClick = { onEdit(r) }) {
+                FormPlate(onClick = { onEdit(r) }) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        AppGlyph(r.pkg, 36)
-                        GapW(12)
+                        RuleAppGlyph(r.pkg, 36)
+                        FormGapW(12)
                         Column(Modifier.weight(1f).padding(end = 10.dp)) {
                             Text(
                                 listOf(r.appLabel, r.name).filter { it.isNotBlank() }.joinToString(" · "),
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TagColors.White)
                             )
-                            Text(r.regex, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MonoStyle)
-                            if (r.contributed) Text("Shared", style = MonoStyle)
+                            Text(r.regex, maxLines = 1, overflow = TextOverflow.Ellipsis, style = FormMono)
+                            if (r.contributed) Text("Shared", style = FormMono)
                         }
                         TagSwitch(r.enabled, { book.setEnabled(r.id, it); version++ })
                     }
                 }
             }
         }
-        Gap(24)
+        FormGap(24)
     }
 }
 
 // ------------------------------------------------------------------ app picker
 
 @Composable
-private fun AppPicker(onBack: () -> Unit, onPick: (AppEntry) -> Unit) {
+private fun RuleAppPicker(onBack: () -> Unit, onPick: (PickApp) -> Unit) {
     val context = LocalContext.current
     BackHandler(onBack = onBack)
-    var apps by remember { mutableStateOf<List<AppEntry>>(emptyList()) }
+    var apps by remember { mutableStateOf<List<PickApp>>(emptyList()) }
     var query by remember { mutableStateOf("") }
     val recent = remember { NotificationSamples.apps() }
 
@@ -130,38 +130,38 @@ private fun AppPicker(onBack: () -> Unit, onPick: (AppEntry) -> Unit) {
             val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
             pm.queryIntentActivities(intent, 0).map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
                 .distinctBy { it.first }.filter { it.first != context.packageName }
-                .map { AppEntry(it.first, it.second) }.sortedBy { it.label.lowercase() }
+                .map { PickApp(it.first, it.second) }.sortedBy { it.label.lowercase() }
         }
     }
     fun labelOf(pkg: String) = apps.firstOrNull { it.pkg == pkg }?.label
         ?: runCatching { context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
 
     SubScreen(onBack, spacing = 10.dp) {
-        Gap(12)
-        ScreenTitle("Which app?")
-        TagField(query, { query = it }, "Search apps")
+        FormGap(12)
+        FormTitle("Which app?")
+        FormField(query, { query = it }, "Search apps")
         if (query.isBlank() && recent.isNotEmpty()) {
-            SectionLabel("Seen lately")
-            Caption("These sent a notification in the last half hour, so you can build from a real one.")
-            recent.take(8).forEach { (pkg, n) -> AppRow(pkg, labelOf(pkg), "$n notification" + if (n == 1) "" else "s") { onPick(AppEntry(pkg, labelOf(pkg))) } }
+            FormLabel("Seen lately")
+            FormCaption("These sent a notification in the last half hour, so you can build from a real one.")
+            recent.take(8).forEach { (pkg, n) -> RuleAppRow(pkg, labelOf(pkg), "$n notification" + if (n == 1) "" else "s") { onPick(PickApp(pkg, labelOf(pkg))) } }
         }
-        SectionLabel(if (query.isBlank()) "All apps" else "Matches")
+        FormLabel(if (query.isBlank()) "All apps" else "Matches")
         val shown = apps.filter { query.isBlank() || it.label.contains(query, ignoreCase = true) }.take(60)
-        shown.forEach { AppRow(it.pkg, it.label, null) { onPick(it) } }
-        if (apps.isEmpty()) Caption("Loading apps…")
-        Gap(24)
+        shown.forEach { RuleAppRow(it.pkg, it.label, null) { onPick(it) } }
+        if (apps.isEmpty()) FormCaption("Loading apps…")
+        FormGap(24)
     }
 }
 
 @Composable
-private fun AppRow(pkg: String, label: String, sub: String?, onClick: () -> Unit) {
-    Plate(onClick = onClick) {
+private fun RuleAppRow(pkg: String, label: String, sub: String?, onClick: () -> Unit) {
+    FormPlate(onClick = onClick) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            AppGlyph(pkg, 32)
-            GapW(12)
+            RuleAppGlyph(pkg, 32)
+            FormGapW(12)
             Column {
                 Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TagColors.White))
-                if (sub != null) Text(sub, style = MonoStyle)
+                if (sub != null) Text(sub, style = FormMono)
             }
         }
     }
@@ -169,7 +169,7 @@ private fun AppRow(pkg: String, label: String, sub: String?, onClick: () -> Unit
 
 /** The app's icon as the chip will draw it: a one-colour glyph, in the ink colour. */
 @Composable
-private fun AppGlyph(pkg: String, size: Int) {
+private fun RuleAppGlyph(pkg: String, size: Int) {
     val context = LocalContext.current
     val bmp = remember(pkg) { runCatching { AppIcons.render(context, pkg) }.getOrNull() }
     Box(Modifier.size(size.dp).clip(CircleShape).background(TagColors.Black), contentAlignment = Alignment.Center) {
@@ -180,7 +180,7 @@ private fun AppGlyph(pkg: String, size: Int) {
 // ------------------------------------------------------------------ builder
 
 @Composable
-private fun RuleBuilder(pkg: String, label: String, existing: UserRule?, onDone: () -> Unit) {
+private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, onDone: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val book = remember { UserRules.book(context) }
@@ -220,18 +220,18 @@ private fun RuleBuilder(pkg: String, label: String, existing: UserRule?, onDone:
     val aiPills = remember { Ai.ready(context) }
 
     SubScreen(onDone, spacing = 10.dp) {
-        Gap(12)
+        FormGap(12)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            AppGlyph(pkg, 44)
-            GapW(12)
-            Column { ScreenTitleSmall(label); Text(pkg, style = MonoStyle) }
+            RuleAppGlyph(pkg, 44)
+            FormGapW(12)
+            Column { ScreenTitleSmall(label); Text(pkg, style = FormMono) }
         }
 
         // ---- 1. a real notification to work from
-        SectionLabel("1 · A notification from this app")
-        if (seen.isEmpty()) Caption("None seen in the last half hour. Let the app send one, then come back, or type one below.")
+        FormLabel("1 · A notification from this app")
+        if (seen.isEmpty()) FormCaption("None seen in the last half hour. Let the app send one, then come back, or type one below.")
         samples.forEachIndexed { i, s ->
-            Plate(onClick = { chosen = i; picks.clear() }) {
+            FormPlate(onClick = { chosen = i; picks.clear() }) {
                 Column {
                     Text(
                         s.title.ifBlank { "(no title)" }, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -241,29 +241,29 @@ private fun RuleBuilder(pkg: String, label: String, existing: UserRule?, onDone:
                 }
             }
         }
-        TagField(manualTitle, { manualTitle = it }, "Or type a title")
-        TagField(manualText, { manualText = it }, "…and its text", singleLine = false, minHeight = 72)
+        FormField(manualTitle, { manualTitle = it }, "Or type a title")
+        FormField(manualText, { manualText = it }, "…and its text", singleLine = false, minHeight = 72)
 
         // ---- 2. tap what you want
         if (sample != null) {
-            SectionLabel("2 · Tap what you want on the chip")
+            FormLabel("2 · Tap what you want on the chip")
             val words = remember(sample) { "${sample.title} ${sample.text}".trim().split(Regex("""\s+""")).map { it.trim(',', '.', ';', ':', '!', '?', '(', ')', '"', '\'') }.filter { it.isNotEmpty() }.distinct().take(60) }
-            Wrap {
+            FormWrap {
                 words.forEach { w ->
-                    TagChoice(w, w in picks, { if (w in picks) picks.remove(w) else if (picks.size < 3) picks.add(w) })
+                    FormChoice(w, w in picks, { if (w in picks) picks.remove(w) else if (picks.size < 3) picks.add(w) })
                 }
             }
             Row {
-                TagButton("Build rule", {
+                FormButton("Build rule", {
                     val s = RuleSuggester.suggest(sample.target, picks.toList())
                     if (s == null) { problem = "That didn’t work from those words. Try different ones, or type the rule yourself."; note = null }
                     else { regex = s.regex; pill = s.pill; note = s.explain; problem = null; field = UserRule.Field.BOTH }
                 }, enabled = picks.isNotEmpty())
             }
             if (aiReady) {
-                SectionLabel("Or describe it")
-                TagField(wanted, { wanted = it }, "e.g. the minutes left, the sender")
-                TagButton(if (asking) "Asking…" else "Ask AI", {
+                FormLabel("Or describe it")
+                FormField(wanted, { wanted = it }, "e.g. the minutes left, the sender")
+                FormButton(if (asking) "Asking…" else "Ask AI", {
                     asking = true; problem = null
                     val req = AiRuleHelper.Request(label, pkg, positive = samples.take(5), wanted = wanted.ifBlank { "the important part" })
                     scope.launch {
@@ -279,77 +279,77 @@ private fun RuleBuilder(pkg: String, label: String, existing: UserRule?, onDone:
             }
         }
 
-        note?.let { Plate { Caption(it, color = TagColors.White) } }
+        note?.let { FormPlate { FormCaption(it, color = TagColors.White) } }
 
         // ---- 3. the rule itself
-        SectionLabel("3 · The rule")
-        TagField(name, { name = it }, "Name (optional)")
-        TagField(regex, { regex = it; note = null }, "Pattern", mono = true, singleLine = false, minHeight = 64)
-        TagField(pill, { pill = it }, "Chip text, e.g. \$1 or \$1 left", mono = true)
-        Caption("\$1, \$2 … are the bracketed parts of the pattern.")
+        FormLabel("3 · The rule")
+        FormField(name, { name = it }, "Name (optional)")
+        FormField(regex, { regex = it; note = null }, "Pattern", mono = true, singleLine = false, minHeight = 64)
+        FormField(pill, { pill = it }, "Chip text, e.g. \$1 or \$1 left", mono = true)
+        FormCaption("\$1, \$2 … are the bracketed parts of the pattern.")
 
-        SectionLabel("Look in")
-        Wrap {
-            TagChoice("Title", field == UserRule.Field.TITLE, { field = UserRule.Field.TITLE })
-            TagChoice("Text", field == UserRule.Field.TEXT, { field = UserRule.Field.TEXT })
-            TagChoice("Both", field == UserRule.Field.BOTH, { field = UserRule.Field.BOTH })
+        FormLabel("Look in")
+        FormWrap {
+            FormChoice("Title", field == UserRule.Field.TITLE, { field = UserRule.Field.TITLE })
+            FormChoice("Text", field == UserRule.Field.TEXT, { field = UserRule.Field.TEXT })
+            FormChoice("Both", field == UserRule.Field.BOTH, { field = UserRule.Field.BOTH })
         }
-        SectionLabel("Chip length")
-        Wrap {
-            TagChoice("Fit", pillMode == UserRule.PillMode.FIT, { pillMode = UserRule.PillMode.FIT })
-            TagChoice("Exact", pillMode == UserRule.PillMode.EXACT, { pillMode = UserRule.PillMode.EXACT })
-            if (aiPills || pillMode == UserRule.PillMode.AI) TagChoice("Shorten with AI", pillMode == UserRule.PillMode.AI, { pillMode = UserRule.PillMode.AI })
+        FormLabel("Chip length")
+        FormWrap {
+            FormChoice("Fit", pillMode == UserRule.PillMode.FIT, { pillMode = UserRule.PillMode.FIT })
+            FormChoice("Exact", pillMode == UserRule.PillMode.EXACT, { pillMode = UserRule.PillMode.EXACT })
+            if (aiPills || pillMode == UserRule.PillMode.AI) FormChoice("Shorten with AI", pillMode == UserRule.PillMode.AI, { pillMode = UserRule.PillMode.AI })
         }
-        Caption(when (pillMode) {
+        FormCaption(when (pillMode) {
             UserRule.PillMode.FIT -> "Cut to whole words so it fits the chip."
             UserRule.PillMode.EXACT -> "Show as written, up to ${com.microtag.rules.UserRuleBook.EXACT_CAP} characters."
             UserRule.PillMode.AI -> "Cut now, then replaced by a shorter version from the AI a moment later."
         })
-        SectionLabel("Icon")
-        Wrap {
-            TagChoice("App’s icon", iconMode == UserRule.IconMode.APP, { iconMode = UserRule.IconMode.APP })
-            TagChoice("TAG’s bolt", iconMode == UserRule.IconMode.BUILTIN, { iconMode = UserRule.IconMode.BUILTIN })
-            TagChoice("None", iconMode == UserRule.IconMode.NONE, { iconMode = UserRule.IconMode.NONE })
+        FormLabel("Icon")
+        FormWrap {
+            FormChoice("App’s icon", iconMode == UserRule.IconMode.APP, { iconMode = UserRule.IconMode.APP })
+            FormChoice("TAG’s bolt", iconMode == UserRule.IconMode.BUILTIN, { iconMode = UserRule.IconMode.BUILTIN })
+            FormChoice("None", iconMode == UserRule.IconMode.NONE, { iconMode = UserRule.IconMode.NONE })
         }
-        SectionLabel("Stays up")
-        Wrap { listOf(10, 15, 30, 60, 0).forEach { s -> TagChoice(if (s == 0) "Until gone" else "$s s", timeout == s, { timeout = s }) } }
-        SwitchRow("Ignore capital letters", null, ignoreCase) { ignoreCase = it }
+        FormLabel("Stays up")
+        FormWrap { listOf(10, 15, 30, 60, 0).forEach { s -> FormChoice(if (s == 0) "Until gone" else "$s s", timeout == s, { timeout = s }) } }
+        FormSwitch("Ignore capital letters", null, ignoreCase) { ignoreCase = it }
 
         // ---- live test
         val rule = draft()
         val err = remember(regex, pill, field, ignoreCase) { if (regex.isBlank()) null else book.validate(rule) }
-        SectionLabel("Test")
-        if (regex.isBlank()) Caption("Build or write a pattern to see what it does to each notification above.")
-        err?.let { Notice(it) }
+        FormLabel("Test")
+        if (regex.isBlank()) FormCaption("Build or write a pattern to see what it does to each notification above.")
+        err?.let { FormNotice(it) }
         if (regex.isNotBlank() && err == null) {
-            if (samples.isEmpty()) Caption("Nothing to test against yet.")
+            if (samples.isEmpty()) FormCaption("Nothing to test against yet.")
             samples.forEach { s ->
                 val out = book.preview(rule.copy(pillMode = if (pillMode == UserRule.PillMode.AI) UserRule.PillMode.FIT else pillMode), s.title, s.text)
-                Plate {
+                FormPlate {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             out ?: "no match", modifier = Modifier.width(110.dp), maxLines = 1,
                             style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (out != null) TagColors.AccentText else TagColors.Dim)
                         )
-                        Text(s.target, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MonoStyle)
+                        Text(s.target, maxLines = 1, overflow = TextOverflow.Ellipsis, style = FormMono)
                     }
                 }
             }
         }
-        problem?.let { Notice(it) }
+        problem?.let { FormNotice(it) }
 
         // ---- save / share
-        Gap(6)
+        FormGap(6)
         Row {
-            TagButton("Save", {
+            FormButton("Save", {
                 val e = book.upsert(draft())
                 if (e == null) onDone() else problem = e
             }, enabled = regex.isNotBlank())
-            if (existing != null) { GapW(); TagButton("Delete", { book.delete(existing.id); onDone() }, filled = false, danger = true) }
+            if (existing != null) { FormGapW(); FormButton("Delete", { book.delete(existing.id); onDone() }, filled = false, danger = true) }
         }
-        SectionLabel("Share")
-        Caption("Think others would want it? This opens a ready-filled issue on the project’s GitHub page. Numbers, emails and names in the sample are masked first, and nothing is sent until you press Submit there.")
-        TagButton("Contribute this rule", {
+        FormLabel("Share")
+        FormCaption("Think others would want it? This opens a ready-filled issue on the project’s GitHub page. Numbers, emails and names in the sample are masked first, and nothing is sent until you press Submit there.")
+        FormButton("Contribute this rule", {
             val r = draft()
             val e = book.upsert(r)
             if (e != null) problem = e else {
@@ -359,7 +359,7 @@ private fun RuleBuilder(pkg: String, label: String, existing: UserRule?, onDone:
                     .onFailure { problem = "No browser to open it with" }
             }
         }, filled = false, enabled = regex.isNotBlank())
-        Gap(28)
+        FormGap(28)
     }
 }
 

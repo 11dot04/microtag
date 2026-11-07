@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.sp
 
 /** The big screen title, the same as Moments and Pin. */
 @Composable
-fun ScreenTitle(text: String) {
+fun FormTitle(text: String) {
     FitText(
         AnnotatedString(text),
         TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 56.sp, lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White),
@@ -50,12 +50,12 @@ fun ScreenTitle(text: String) {
 }
 
 @Composable
-fun Caption(text: String, modifier: Modifier = Modifier, color: androidx.compose.ui.graphics.Color = TagColors.Outline) {
+fun FormCaption(text: String, modifier: Modifier = Modifier, color: androidx.compose.ui.graphics.Color = TagColors.Outline) {
     Text(text, modifier, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 15.sp, lineHeight = 21.sp, color = color))
 }
 
 @Composable
-fun SectionLabel(text: String) {
+fun FormLabel(text: String) {
     Text(
         text.uppercase(), modifier = Modifier.padding(top = 14.dp, start = 4.dp),
         style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.2.sp, color = TagColors.Outline)
@@ -64,7 +64,7 @@ fun SectionLabel(text: String) {
 
 /** A sentence about what went wrong, on the warning colour. */
 @Composable
-fun Notice(text: String) {
+fun FormNotice(text: String) {
     Text(
         text,
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(TagColors.Signal).padding(horizontal = 18.dp, vertical = 12.dp),
@@ -73,7 +73,7 @@ fun Notice(text: String) {
 }
 
 @Composable
-fun Plate(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
+fun FormPlate(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val view = LocalView.current
     Box(
         modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(TagColors.Surface)
@@ -83,7 +83,7 @@ fun Plate(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content:
 }
 
 @Composable
-fun TagField(
+fun FormField(
     value: String, onChange: (String) -> Unit, hint: String, modifier: Modifier = Modifier,
     mono: Boolean = false, singleLine: Boolean = true, secret: Boolean = false, number: Boolean = false, minHeight: Int = 48
 ) {
@@ -110,7 +110,7 @@ fun TagField(
 
 /** A pill button. Filled is the main action; outlined is everything else. */
 @Composable
-fun TagButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, filled: Boolean = true, enabled: Boolean = true, danger: Boolean = false) {
+fun FormButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, filled: Boolean = true, enabled: Boolean = true, danger: Boolean = false) {
     val view = LocalView.current
     val bg = if (!filled) androidx.compose.ui.graphics.Color.Transparent else if (danger) TagColors.Signal else TagColors.Lime
     val fg = if (!filled) (if (danger) TagColors.Signal else TagColors.White) else if (danger) TagColors.OnSignal else TagColors.OnLime
@@ -127,7 +127,7 @@ fun TagButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier,
 
 /** One option of a small set. Selected fills with the accent. */
 @Composable
-fun TagChoice(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun FormChoice(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val view = LocalView.current
     Box(
         modifier.heightIn(min = 38.dp).clip(CircleShape)
@@ -142,8 +142,8 @@ fun TagChoice(label: String, selected: Boolean, onClick: () -> Unit, modifier: M
 }
 
 @Composable
-fun SwitchRow(title: String, sub: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Plate(onClick = { onChange(!checked) }) {
+fun FormSwitch(title: String, sub: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
+    FormPlate(onClick = { onChange(!checked) }) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(title, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TagColors.White))
@@ -157,16 +157,16 @@ fun SwitchRow(title: String, sub: String?, checked: Boolean, onChange: (Boolean)
 /** Choices that wrap onto new lines. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun Wrap(content: @Composable () -> Unit) {
+fun FormWrap(content: @Composable () -> Unit) {
     androidx.compose.foundation.layout.FlowRow(
         Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)
     ) { content() }
 }
 
 @Composable
-fun Gap(h: Int = 8) = Spacer(Modifier.height(h.dp))
+fun FormGap(h: Int = 8) = Spacer(Modifier.height(h.dp))
 
 @Composable
-fun GapW(w: Int = 8) = Spacer(Modifier.width(w.dp))
+fun FormGapW(w: Int = 8) = Spacer(Modifier.width(w.dp))
 
-val MonoStyle get() = TextStyle(fontFamily = TagFonts.data, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = TagColors.Outline)
+val FormMono get() = TextStyle(fontFamily = TagFonts.data, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = TagColors.Outline)

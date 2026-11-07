@@ -40,7 +40,7 @@ import com.microtag.meds.Medication
 import com.microtag.meds.MedicationReceiver
 import kotlinx.coroutines.delay
 
-private fun clock(context: Context, minute: Int): String {
+private fun medClock(context: Context, minute: Int): String {
     val h = minute / 60; val m = minute % 60
     return if (android.text.format.DateFormat.is24HourFormat(context)) "%02d:%02d".format(h, m)
     else "%d:%02d %s".format(if (h % 12 == 0) 12 else h % 12, m, if (h < 12) "AM" else "PM")
@@ -64,7 +64,7 @@ fun MedsScreen(onBack: () -> Unit) {
     }
 
     if (editing != null || adding) {
-        MedEditor(editing, onDone = { editing = null; adding = false; if (it) changed() })
+        MedEditorPage(editing, onDone = { editing = null; adding = false; if (it) changed() })
         return
     }
     BackHandler(onBack = onBack)
@@ -82,17 +82,17 @@ fun MedsScreen(onBack: () -> Unit) {
     }
 
     SubScreen(onBack, spacing = 10.dp) {
-        Gap(12)
-        ScreenTitle("Meds")
-        Caption("Reminders show as a chip when a dose is due, with Taken, Snooze and Skip on it. They ignore quiet hours, and nothing leaves this phone.")
-        TagButton("Add medicine", { adding = true })
+        FormGap(12)
+        FormTitle("Meds")
+        FormCaption("Reminders show as a chip when a dose is due, with Taken, Snooze and Skip on it. They ignore quiet hours, and nothing leaves this phone.")
+        FormButton("Add medicine", { adding = true })
 
         if (exactMissing) {
-            Plate {
+            FormPlate {
                 Column {
-                    Caption("Android may delay reminders unless exact alarms are allowed.", color = TagColors.White)
-                    Gap(8)
-                    TagButton("Allow exact alarms", {
+                    FormCaption("Android may delay reminders unless exact alarms are allowed.", color = TagColors.White)
+                    FormGap(8)
+                    FormButton("Allow exact alarms", {
                         runCatching { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     }, filled = false)
                 }
@@ -100,68 +100,68 @@ fun MedsScreen(onBack: () -> Unit) {
         }
 
         if (meds.isNotEmpty()) {
-            Plate {
+            FormPlate {
                 Row(Modifier.fillMaxWidth()) {
-                    Stat("$streak", if (streak == 1) "day in a row" else "days in a row", Modifier.weight(1f))
-                    Stat(adherence?.let { "$it%" } ?: "—", "taken, last 30 days", Modifier.weight(1f))
+                    MedStat("$streak", if (streak == 1) "day in a row" else "days in a row", Modifier.weight(1f))
+                    MedStat(adherence?.let { "$it%" } ?: "—", "taken, last 30 days", Modifier.weight(1f))
                 }
             }
         }
 
-        SectionLabel("Today")
-        if (doses.isEmpty()) Caption(if (meds.isEmpty()) "Nothing set up yet." else "Nothing to take today.")
+        FormLabel("Today")
+        if (doses.isEmpty()) FormCaption(if (meds.isEmpty()) "Nothing set up yet." else "Nothing to take today.")
         doses.forEach { d ->
             val st = MedLogic.status(d, log, now, zone)
-            Plate {
+            FormPlate {
                 Column {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(clock(context, d.minute), modifier = Modifier.width(86.dp), style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (st == DoseStatus.DUE || st == DoseStatus.LATE) TagColors.AccentText else TagColors.Outline))
+                        Text(medClock(context, d.minute), modifier = Modifier.width(86.dp), style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (st == DoseStatus.DUE || st == DoseStatus.LATE) TagColors.AccentText else TagColors.Outline))
                         Column(Modifier.weight(1f)) {
                             Text(d.med.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TagColors.White))
-                            Text(listOf(d.med.dose, statusWord(st)).filter { it.isNotBlank() }.joinToString(" · "), style = MonoStyle)
+                            Text(listOf(d.med.dose, statusWord(st)).filter { it.isNotBlank() }.joinToString(" · "), style = FormMono)
                         }
                     }
                     if (st != DoseStatus.TAKEN && st != DoseStatus.SKIPPED) {
-                        Gap(8)
+                        FormGap(8)
                         Row {
-                            TagButton("Taken", { book.mark(d, DoseState.TAKEN, System.currentTimeMillis()); changed() })
-                            GapW()
-                            TagButton("Skip", { book.mark(d, DoseState.SKIPPED, System.currentTimeMillis()); changed() }, filled = false)
+                            FormButton("Taken", { book.mark(d, DoseState.TAKEN, System.currentTimeMillis()); changed() })
+                            FormGapW()
+                            FormButton("Skip", { book.mark(d, DoseState.SKIPPED, System.currentTimeMillis()); changed() }, filled = false)
                         }
                     } else {
-                        Gap(6)
-                        TagButton("Undo", { book.unmark(d, System.currentTimeMillis()); changed() }, filled = false)
+                        FormGap(6)
+                        FormButton("Undo", { book.unmark(d, System.currentTimeMillis()); changed() }, filled = false)
                     }
                 }
             }
         }
 
-        SectionLabel("Medicines")
+        FormLabel("Medicines")
         meds.forEach { m ->
-            Plate(onClick = { editing = m }) {
+            FormPlate(onClick = { editing = m }) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).padding(end = 10.dp)) {
                         Text(listOf(m.name, m.dose).filter { it.isNotBlank() }.joinToString(" "), maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TagColors.White))
                         val sup = MedLogic.daysOfSupply(m)
                         Text(
-                            m.minutes.joinToString(", ") { clock(context, it) } + (sup?.let { " · $it d of pills" } ?: ""),
+                            m.minutes.joinToString(", ") { medClock(context, it) } + (sup?.let { " · $it d of pills" } ?: ""),
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            style = MonoStyle.copy(color = if (MedLogic.refillDue(m)) TagColors.Signal else TagColors.Outline)
+                            style = FormMono.copy(color = if (MedLogic.refillDue(m)) TagColors.Signal else TagColors.Outline)
                         )
                     }
                     TagSwitch(m.active, { book.upsert(m.copy(active = it)); changed() })
                 }
             }
         }
-        Gap(28)
+        FormGap(28)
     }
 }
 
 @Composable
-private fun Stat(big: String, small: String, modifier: Modifier) {
+private fun MedStat(big: String, small: String, modifier: Modifier) {
     Column(modifier) {
         Text(big, style = TextStyle(fontFamily = TagFonts.display, fontWeight = FontWeight.Light, fontSize = 34.sp, color = TagColors.White, fontSynthesis = TagFonts.NoSynthesis))
-        Text(small, style = MonoStyle)
+        Text(small, style = FormMono)
     }
 }
 
@@ -177,10 +177,10 @@ private fun statusWord(s: DoseStatus) = when (s) {
 
 // ------------------------------------------------------------------ editor
 
-private val DAYS = listOf(1 to "Mon", 2 to "Tue", 3 to "Wed", 4 to "Thu", 5 to "Fri", 6 to "Sat", 7 to "Sun")
+private val MED_DAYS = listOf(1 to "Mon", 2 to "Tue", 3 to "Wed", 4 to "Thu", 5 to "Fri", 6 to "Sat", 7 to "Sun")
 
 @Composable
-private fun MedEditor(existing: Medication?, onDone: (changed: Boolean) -> Unit) {
+private fun MedEditorPage(existing: Medication?, onDone: (changed: Boolean) -> Unit) {
     val context = LocalContext.current
     val book = remember { MedStore.book(context) }
     BackHandler { onDone(false) }
@@ -203,50 +203,50 @@ private fun MedEditor(existing: Medication?, onDone: (changed: Boolean) -> Unit)
     }
 
     SubScreen({ onDone(false) }, spacing = 10.dp) {
-        Gap(12)
-        ScreenTitle(if (existing == null) "New" else "Edit")
-        TagField(name, { name = it }, "Name")
-        TagField(dose, { dose = it }, "Dose, e.g. 500 mg")
+        FormGap(12)
+        FormTitle(if (existing == null) "New" else "Edit")
+        FormField(name, { name = it }, "Name")
+        FormField(dose, { dose = it }, "Dose, e.g. 500 mg")
 
-        SectionLabel("Times")
+        FormLabel("Times")
         times.sorted().forEach { t ->
-            Plate(onClick = { pickTime(t) { n -> val i = times.indexOf(t); if (i >= 0) times[i] = n } }) {
+            FormPlate(onClick = { pickTime(t) { n -> val i = times.indexOf(t); if (i >= 0) times[i] = n } }) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(clock(context, t), Modifier.weight(1f), style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TagColors.White))
-                    if (times.size > 1) TagButton("Remove", { times.remove(t) }, filled = false)
+                    Text(medClock(context, t), Modifier.weight(1f), style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TagColors.White))
+                    if (times.size > 1) FormButton("Remove", { times.remove(t) }, filled = false)
                 }
             }
         }
-        TagButton("Add a time", { pickTime(1200) { n -> if (n !in times) times.add(n) } }, filled = false)
+        FormButton("Add a time", { pickTime(1200) { n -> if (n !in times) times.add(n) } }, filled = false)
 
-        SectionLabel("Days")
-        Wrap { DAYS.forEach { (n, l) -> TagChoice(l, n in days, { if (n in days) days.remove(n) else days.add(n) }) } }
-        Caption("None picked means every day.")
-        SectionLabel("Repeat")
-        Wrap { listOf(1 to "Daily", 2 to "Every 2 days", 3 to "Every 3 days").forEach { (n, l) -> TagChoice(l, every == n, { every = n }) } }
-        SectionLabel("Course")
-        Wrap {
+        FormLabel("Days")
+        FormWrap { MED_DAYS.forEach { (n, l) -> FormChoice(l, n in days, { if (n in days) days.remove(n) else days.add(n) }) } }
+        FormCaption("None picked means every day.")
+        FormLabel("Repeat")
+        FormWrap { listOf(1 to "Daily", 2 to "Every 2 days", 3 to "Every 3 days").forEach { (n, l) -> FormChoice(l, every == n, { every = n }) } }
+        FormLabel("Course")
+        FormWrap {
             (listOf(0, 7, 14, 30) + listOfNotNull(course.takeIf { it > 0 && it !in listOf(7, 14, 30) })).forEach { n ->
-                TagChoice(if (n == 0) "No end" else "$n days", course == n, { course = n })
+                FormChoice(if (n == 0) "No end" else "$n days", course == n, { course = n })
             }
         }
 
-        SectionLabel("Pills")
+        FormLabel("Pills")
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TagField(pills, { pills = it.filter(Char::isDigit) }, "Pills left (optional)", Modifier.weight(1f), number = true)
-            GapW()
-            TagField(perDose, { perDose = it.filter(Char::isDigit) }, "Per dose", Modifier.width(110.dp), number = true)
+            FormField(pills, { pills = it.filter(Char::isDigit) }, "Pills left (optional)", Modifier.weight(1f), number = true)
+            FormGapW()
+            FormField(perDose, { perDose = it.filter(Char::isDigit) }, "Per dose", Modifier.width(110.dp), number = true)
         }
-        Caption("With pills counted, TAG tells you when about 5 days are left.")
+        FormCaption("With pills counted, TAG tells you when about 5 days are left.")
 
-        SectionLabel("Privacy")
-        SwitchRow("Discreet", "The chip says “Meds” instead of the name.", discreet) { discreet = it }
-        if (!discreet) TagField(note, { note = it }, "Note, e.g. with food")
+        FormLabel("Privacy")
+        FormSwitch("Discreet", "The chip says “Meds” instead of the name.", discreet) { discreet = it }
+        if (!discreet) FormField(note, { note = it }, "Note, e.g. with food")
 
-        problem?.let { Notice(it) }
-        Gap(6)
+        problem?.let { FormNotice(it) }
+        FormGap(6)
         Row {
-            TagButton("Save", {
+            FormButton("Save", {
                 val m = Medication(
                     id = existing?.id ?: java.util.UUID.randomUUID().toString().take(8), name = name.trim(), dose = dose.trim(),
                     minutes = times.distinct().sorted(), weekdays = days.toSet(), everyNDays = every, startDay = startDay,
@@ -256,8 +256,8 @@ private fun MedEditor(existing: Medication?, onDone: (changed: Boolean) -> Unit)
                 val e = book.upsert(m)
                 if (e == null) onDone(true) else problem = e
             })
-            if (existing != null) { GapW(); TagButton("Delete", { book.delete(existing.id); onDone(true) }, filled = false, danger = true) }
+            if (existing != null) { FormGapW(); FormButton("Delete", { book.delete(existing.id); onDone(true) }, filled = false, danger = true) }
         }
-        Gap(28)
+        FormGap(28)
     }
 }
