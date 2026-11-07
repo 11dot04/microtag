@@ -26,11 +26,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
+import com.microtag.ai.Ai
 import com.microtag.core.MicrotagPrefs
+import com.microtag.meds.MedScheduler
 import com.microtag.rules.RuleEngine
 import com.microtag.shizuku.ShizukuBridge
 
-private enum class Screen { Onboarding, Dashboard, Inspect, Priority, Pin, Moments, Settings, Stats, Logs }
+private enum class Screen { Onboarding, Dashboard, Inspect, Priority, Pin, Moments, Rules, Meds, Ai, Settings, Stats, Logs }
 
 class MainActivity : ComponentActivity() {
 
@@ -39,6 +41,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         RuleEngine.init(applicationContext)
         ShizukuBridge.init(applicationContext)
+        Ai.init(applicationContext)
+        // Keep the next medicine alarm set whenever the app is opened (boot and updates also do this on their own).
+        MedScheduler.reschedule(applicationContext)
 
         // Apply saved look-and-feel before the first frame, so there is no lime flash.
         val settings = TagSettings(applicationContext)
@@ -56,6 +61,8 @@ class MainActivity : ComponentActivity() {
 
                     // Onboarding sits on the accent colour, and so does the top of the dashboard until you scroll.
                     var dashboardLight by remember { mutableStateOf(false) }
+                    // The AI screen is reached from the dashboard and from Rules; back goes to whichever opened it.
+                    var aiBack by remember { mutableStateOf(Screen.Dashboard) }
                     val lightBackdrop = when (screen) {
                         Screen.Onboarding -> TagColors.Lime.luminance() > 0.5f
                         Screen.Dashboard -> dashboardLight
@@ -80,6 +87,9 @@ class MainActivity : ComponentActivity() {
                                 Screen.Priority -> TransformOrigin(0.30f, 0.30f)   // the button on Inspect
                                 Screen.Pin -> TransformOrigin(0.50f, 0.92f)        // the Pin tile, at the foot
                                 Screen.Moments -> TransformOrigin(0.50f, 0.97f)    // the Moments tile, below it
+                                Screen.Rules -> TransformOrigin(0.25f, 0.98f)      // the Rules tile, further down
+                                Screen.Meds -> TransformOrigin(0.75f, 0.98f)       // the Meds tile beside it
+                                Screen.Ai -> TransformOrigin(0.50f, 0.99f)         // the AI tile at the very foot
                                 else -> TransformOrigin.Center
                             }
                             if (targetState == Screen.Dashboard) {
@@ -111,6 +121,9 @@ class MainActivity : ComponentActivity() {
                                 onOpenInspect = { screen = Screen.Inspect },
                                 onOpenPin = { screen = Screen.Pin },
                                 onOpenMoments = { screen = Screen.Moments },
+                                onOpenRules = { screen = Screen.Rules },
+                                onOpenMeds = { screen = Screen.Meds },
+                                onOpenAi = { aiBack = Screen.Dashboard; screen = Screen.Ai },
                                 onOpenSettings = { screen = Screen.Settings },
                                 onOpenStats = { screen = Screen.Stats },
                                 onOpenLogs = { screen = Screen.Logs },
@@ -120,6 +133,9 @@ class MainActivity : ComponentActivity() {
                             Screen.Priority -> PriorityScreen(onBack = { screen = Screen.Inspect })
                             Screen.Pin -> PinScreen(onBack = { screen = Screen.Dashboard })
                             Screen.Moments -> MomentsScreen(onBack = { screen = Screen.Dashboard })
+                            Screen.Rules -> RulesScreen(onBack = { screen = Screen.Dashboard }, onOpenAi = { aiBack = Screen.Rules; screen = Screen.Ai })
+                            Screen.Meds -> MedsScreen(onBack = { screen = Screen.Dashboard })
+                            Screen.Ai -> AiSettingsScreen(onBack = { screen = aiBack })
                             Screen.Stats -> StatsScreen(prefs = prefs, onBack = { screen = Screen.Dashboard })
                             Screen.Logs -> LogsScreen(onBack = { screen = Screen.Dashboard })
                             Screen.Settings -> SettingsScreen(

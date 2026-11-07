@@ -101,6 +101,13 @@ import com.microtag.core.MicrotagPrefs
 import com.microtag.core.MicrotagReminder
 import com.microtag.listener.BluetoothWatcher
 import com.microtag.listener.MicrotagLogActivity
+import com.microtag.listener.WeatherWatcher
+import com.microtag.weather.Weather
+import com.microtag.weather.WeatherCodes
+import com.microtag.weather.WeatherEngine
+import com.microtag.weather.WeatherFormat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 // ==========================================================
 // STATE
@@ -138,6 +145,9 @@ fun DashboardScreen(
     onOpenInspect: () -> Unit,
     onOpenPin: () -> Unit = {},
     onOpenMoments: () -> Unit = {},
+    onOpenRules: () -> Unit = {},
+    onOpenMeds: () -> Unit = {},
+    onOpenAi: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onOpenStats: () -> Unit,
     onOpenLogs: () -> Unit,
@@ -194,6 +204,31 @@ fun DashboardScreen(
 
     val bluetoothPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) bluetooth.set(true)
+    }
+
+    // Auto needs the phone's approximate location; without it the tile stays on the chosen city.
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) {
+            WeatherEngine.setAuto(context)
+            weatherAuto = true; settings.weatherAuto = true
+            WeatherWatcher.refresh(context)
+        }
+    }
+    // The live reading shown on the open tile. Fetched when it opens or the place changes (the engine rate-limits itself).
+    var weatherNow by remember { mutableStateOf<Weather?>(WeatherEngine.cached(context)) }
+    var weatherF by remember { mutableStateOf(false) }
+    LaunchedEffect(weatherOpen, weatherAuto, weatherCity, sheet) {
+        if (weatherOpen && sheet == null) {
+            val r = withContext(Dispatchers.IO) { runCatching { WeatherEngine.refresh(context) }.getOrNull() }
+            if (r is WeatherEngine.Result.Ok) { weatherNow = r.weather; weatherF = r.fahrenheit }
+        }
+    }
+    // The chip follows the tile: switching it on or off, or changing how often, starts, stops or retimes it.
+    var weatherFirst by remember { mutableStateOf(true) }
+    LaunchedEffect(weather.on, weatherIdx) {
+        if (weatherFirst) { weatherFirst = false; return@LaunchedEffect }
+        delay(600)
+        WeatherWatcher.refresh(context)
     }
 
     val perms = rememberPermissions()
@@ -343,7 +378,15 @@ fun DashboardScreen(
                     RoundedCornerShape((100f + (26f - 100f) * weatherGrow).dp),
                     weather, weatherOpen, weatherIdx, intervalLabels,
                     auto = weatherAuto, city = weatherCity,
-                    onAuto = { weatherAuto = true; settings.weatherAuto = true },
+                    temp = weatherNow?.let { "${WeatherFormat.temp(it.tempC, weatherF)}°${if (weatherF) "F" else "C"}" } ?: "—°",
+                    iconName = weatherNow?.let { WeatherCodes.icon(it.code, it.isDay, it.windKmh) },
+                    onAuto = {
+                        if (androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            WeatherEngine.setAuto(context)
+                            weatherAuto = true; settings.weatherAuto = true
+                            WeatherWatcher.refresh(context)
+                        } else locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                    },
                     onPickCity = { sheet = DashSheet.City },
                     onIndex = { weatherIdx = it; settings.weatherIntervalMin = WeatherSteps[it] },
                     onOpenChange = { weatherOpen = it }
@@ -411,6 +454,12 @@ fun DashboardScreen(
 
             // ---- Moments: not there at all until the first one has been found.
             if (hasMoments) TileTone(1) { MomentsTile(Modifier.cell(0f, b3 + 3f, 4f, 1f), onOpenMoments) }
+
+            // ---- Your own: rules, medicine reminders, and the AI helper. Each opens its own screen.
+            val own = b3 + 3f + (if (hasMoments) 1f else 0f)
+            TileTone(2) { NavTile(Modifier.cell(0f, own, 2f, 1f), "Rules", "Your own", onOpenRules) }
+            TileTone(0) { NavTile(Modifier.cell(2f, own, 2f, 1f), "Meds", "Reminders", onOpenMeds) }
+            TileTone(1) { NavTile(Modifier.cell(0f, own + 1f, 4f, 1f), "AI", "Helps write rules, shortens chips", onOpenAi) }
         }
         Spacer(Modifier.height(40.dp))
         }
@@ -435,10 +484,11 @@ fun DashboardScreen(
     when (sheet) {
         DashSheet.Streaks -> StreaksSheet(settings) { sheet = null }
         DashSheet.Calendar -> CalendarSheet(settings) { sheet = null }
-        DashSheet.City -> CitySheet(settings) {
+        DashSheet.City -> WeatherPlaceSheet(settings) {
             sheet = null
             weatherAuto = settings.weatherAuto
             weatherCity = settings.weatherCity
+            weatherNow = WeatherEngine.cached(context)
         }
         null -> Unit
     }
@@ -535,6 +585,17 @@ private fun MomentsTile(modifier: Modifier, onClick: () -> Unit) {
     }
 }
 
+/** A plain tile that opens a screen: label, small line under it, no icon and no on/off. */
+@Composable
+private fun NavTile(modifier: Modifier, bold: String, light: String, onClick: () -> Unit) {
+    TagTile(modifier, TagShapes.Pill, TileState.Static, onClick) { fg ->
+        Row(Modifier.fillMaxSize().padding(start = 26.dp, end = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            TagLabel(bold, light, fg, Modifier.weight(1f), 16.sp)
+            TagIcon(R.drawable.ic_chevron_right, fg, size = 22.dp)
+        }
+    }
+}
+
 /** Opens the Pin screen. */
 @Composable
 private fun PinTile(modifier: Modifier, onClick: () -> Unit) {
@@ -590,7 +651,7 @@ private fun PillTile(
 @Composable
 private fun WeatherTile(
     modifier: Modifier, shape: androidx.compose.ui.graphics.Shape, t: PrefToggle, open: Boolean, index: Int, labels: List<String>,
-    auto: Boolean, city: String, onAuto: () -> Unit, onPickCity: () -> Unit,
+    auto: Boolean, city: String, temp: String, iconName: String?, onAuto: () -> Unit, onPickCity: () -> Unit,
     onIndex: (Int) -> Unit, onOpenChange: (Boolean) -> Unit
 ) {
     TagTile(modifier, shape, t.state, t::toggle) { fg ->
@@ -622,10 +683,15 @@ private fun WeatherTile(
                     }
                     LocationPair(auto, fg, face, onAuto, onPickCity)
                     Spacer(Modifier.height(8.dp))
-                    // Current temperature (the weather service is not connected yet) and where it is for.
+                    // Current temperature and where it is for.
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                        val ctx = LocalContext.current
+                        val iconRes = remember(iconName) { iconName?.let { ctx.resources.getIdentifier(it, "drawable", ctx.packageName) } ?: 0 }
+                        if (iconRes != 0) {
+                            TagIcon(iconRes, fg, Modifier.padding(end = 8.dp, bottom = 3.dp), 26.dp)
+                        }
                         Text(
-                            "—°C",
+                            temp,
                             style = TextStyle(
                                 fontFamily = TagFonts.display, fontWeight = FontWeight.Light, fontSize = 26.sp,
                                 color = fg, fontSynthesis = TagFonts.NoSynthesis
