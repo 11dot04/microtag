@@ -55,17 +55,18 @@ object WeatherCodes {
         else -> "Weather"
     }
 
-    /** A short key for the icon: the UI maps it to a drawable. */
-    fun icon(code: Int, isDay: Boolean): String = when (code) {
-        0, 1 -> if (isDay) "sun" else "moon"
-        2 -> if (isDay) "partly" else "partly_night"
-        3 -> "cloud"
-        45, 48 -> "fog"
-        in 51..57 -> "drizzle"
-        in 61..67, in 80..82 -> "rain"
-        in 71..77, 85, 86 -> "snow"
-        in 95..99 -> "storm"
-        else -> "cloud"
+    /** The drawable for a condition (res/drawable/ic_<name>.xml). Wind only matters on an otherwise dry, not-stormy day. */
+    fun icon(code: Int, isDay: Boolean, windKmh: Double = 0.0): String = when {
+        code in 95..99 && windKmh >= 75 -> "ic_severe"
+        code == 96 || code == 99 -> "ic_hail"
+        code == 95 -> "ic_thunder"
+        code in 51..67 || code in 80..82 -> "ic_rain"
+        code in 71..77 || code == 85 || code == 86 -> "ic_snow"
+        code == 45 || code == 48 -> "ic_haze"
+        windKmh >= 75 -> "ic_severe"
+        windKmh >= 40 && code <= 3 -> "ic_breezy"
+        code == 0 || code == 1 -> "ic_sunny"
+        else -> "ic_cloud"
     }
 
     fun isWet(code: Int) = code in 51..67 || code in 80..82 || code in 95..99
