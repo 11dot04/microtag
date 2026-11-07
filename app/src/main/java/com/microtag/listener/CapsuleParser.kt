@@ -52,7 +52,7 @@ object CapsuleParser {
     private val stravaPacePattern = Regex("""\b\d{1,2}:\d{2}\s?/\s?(?:km|mi)\b""", RegexOption.IGNORE_CASE)
 
     private fun isMedia(extras: Bundle) = extras.containsKey(Notification.EXTRA_MEDIA_SESSION)
-    private fun isAmbient(pkg: String) = pkg == "com.kieronquinn.app.ambientmusicmod" || pkg.contains("intelligence.sense")
+    private fun isAmbient(pkg: String, channelId: String? = null, title: String = "") = NowPlaying.isSource(pkg, channelId, title)
     private fun isCalendar(pkg: String) = pkg == "com.google.android.calendar" || pkg.contains("calendar")
     private fun isStrava(pkg: String) = pkg == "com.strava" || pkg.contains("workout") || pkg.contains("fitness")
     private fun isDiscord(pkg: String) = pkg == "com.discord" || pkg.contains("discord")
@@ -140,9 +140,10 @@ object CapsuleParser {
      * caller can skip parsing entirely when that tile is off. Null = decided after parsing
      * (system UI) or not tied to a tile (generic progress is handled as Downloads).
      */
-    fun tileFor(pkg: String, extras: Bundle): String? = when {
+    fun tileFor(pkg: String, extras: Bundle, channelId: String? = null): String? = when {
+        // Before the media test: a recogniser that posts a media-style notification is still not the player.
+        isAmbient(pkg, channelId, extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()) -> TagKeys.AMBIENT_MUSIC
         isMedia(extras) -> TagKeys.SONG_NEXT
-        isAmbient(pkg) -> TagKeys.AMBIENT_MUSIC
         isCalendar(pkg) -> TagKeys.CALENDAR
         pkg == "com.android.bluetooth" || pkg == "com.android.systemui" -> null
         pkg == "ch.protonvpn.android" -> MicrotagPrefs.KEY_PROTON
@@ -189,8 +190,8 @@ object CapsuleParser {
         val combined = "$title $text $subText".trim()
 
         val parsed = when {
+            isAmbient(pkg, notif.channelId, title) -> parseAmbientMusic(notif, title, text, subText)
             isMedia(extras) -> parseMedia(notif, title, text, subText)
-            isAmbient(pkg) -> parseAmbientMusic(notif, title, text)
             // The calendar provider drives countdowns when it's readable; the notification is a fallback.
             isCalendar(pkg) -> if (ctx.calendarProviderActive) null else parseCalendar(notif, title, text, ctx)
             pkg == "com.android.bluetooth" || pkg == "com.android.systemui" -> parseSystemUi(pkg, notif, title, text, combined)
@@ -246,21 +247,13 @@ object CapsuleParser {
         )
     }
 
-    private fun parseAmbientMusic(notif: Notification, title: String, text: String): ParsedCapsule? {
-        // Ignore the app's permanent foreground-service notification; it isn't a song.
-        if (title.contains("Ambient Music Mod", ignoreCase = true) ||
-            text.contains("running in the background", ignoreCase = true)
-        ) return null
-
-        val rawSong = title.replace("Now Playing", "", ignoreCase = true).trim().ifBlank { 
-            text.split("-").firstOrNull()?.trim() ?: "Music" 
-        }
-        val songName = cleanSongTitle(rawSong, "")
-
+    private fun parseAmbientMusic(notif: Notification, title: String, text: String, subText: String = ""): ParsedCapsule? {
+        // The app's permanent notification, "searching", "no match" and the like are not songs; NowPlaying knows them.
+        val track = NowPlaying.parse(title, text, subText) ?: return null
         return ParsedCapsule(
-            pillText = songName,
+            pillText = NowPlaying.pill(track),
             title = "Now Playing",
-            content = rawSong,
+            content = track.line,
             iconName = ICON_AMBIENT,
             timeoutSeconds = 8,
             actions = notif.actions?.toList() ?: emptyList()
