@@ -24,6 +24,13 @@ import com.microtag.core.MicrotagLog.Decision
 import com.microtag.core.MicrotagPrefs
 import com.microtag.core.MicrotagReminder
 import com.microtag.core.TileGate
+import com.microtag.ai.Ai
+import com.microtag.rules.MatchResult
+import com.microtag.rules.NotificationSamples
+import com.microtag.rules.UserRule
+import com.microtag.rules.UserRules
+import com.microtag.rules.AppIcons
+import com.microtag.streaks.StreakStore
 import com.microtag.calendar.CalendarCountdown
 import com.microtag.rules.RuleEngine
 import com.microtag.shizuku.ShizukuBridge
@@ -111,12 +118,16 @@ class MicrotagNotificationService : NotificationListenerService() {
         settings = TagSettings(applicationContext)
         MicrotagLog.init(applicationContext)
         Interceptions.init(applicationContext)
+        UserRules.init(applicationContext)
+        Ai.init(applicationContext)
         migrateInterceptions()
         RuleEngine.init(applicationContext)
         CountryCodes.init(applicationContext)
         getSharedPreferences("microtag_prefs", Context.MODE_PRIVATE)
             .registerOnSharedPreferenceChangeListener(prefsListener)
         getSharedPreferences("tag_settings", Context.MODE_PRIVATE)
+            .registerOnSharedPreferenceChangeListener(prefsListener)
+        getSharedPreferences("microtag_weather", Context.MODE_PRIVATE)
             .registerOnSharedPreferenceChangeListener(prefsListener)
     }
 
@@ -155,6 +166,8 @@ class MicrotagNotificationService : NotificationListenerService() {
             .unregisterOnSharedPreferenceChangeListener(prefsListener)
         getSharedPreferences("tag_settings", Context.MODE_PRIVATE)
             .unregisterOnSharedPreferenceChangeListener(prefsListener)
+        getSharedPreferences("microtag_weather", Context.MODE_PRIVATE)
+            .unregisterOnSharedPreferenceChangeListener(prefsListener)
         handler.removeCallbacksAndMessages(null)
         if (powerReceiverRegistered) {
             try { unregisterReceiver(powerReceiver) } catch (_: Exception) {}
@@ -162,6 +175,7 @@ class MicrotagNotificationService : NotificationListenerService() {
         }
         setRingerWatching(false)
         BluetoothWatcher.stop()
+        WeatherWatcher.stop()
         MomentsWatcher.stop(applicationContext)
         CalendarCountdown.stop()
         MicrotagLog.flush()
@@ -175,6 +189,7 @@ class MicrotagNotificationService : NotificationListenerService() {
         CalendarCountdown.start(applicationContext)
         setRingerWatching(prefs.isAppEnabled(TagKeys.SOUND_MODE))
         BluetoothWatcher.refresh(applicationContext)
+        WeatherWatcher.refresh(applicationContext)
     }
 
     private fun setRingerWatching(on: Boolean) {
@@ -241,6 +256,7 @@ class MicrotagNotificationService : NotificationListenerService() {
                     TagKeys.CALENDAR -> CalendarCountdown.refresh()
                     TagKeys.SOUND_MODE -> setRingerWatching(enabled)
                     TagKeys.BLUETOOTH -> BluetoothWatcher.refresh(applicationContext)
+                    TagKeys.WEATHER -> WeatherWatcher.refresh(applicationContext)
                 }
                 if (enabled) pollActiveNotifications()
             }
@@ -251,7 +267,10 @@ class MicrotagNotificationService : NotificationListenerService() {
                 stale.forEach(::clearCapsule)
                 pollActiveNotifications()
             }
+            // The place or units were changed on the dashboard (Auto, a picked city, °C/°F).
+            key == "place" -> WeatherWatcher.refresh(applicationContext)
             key == "weather_interval_min" -> {
+                WeatherWatcher.refresh(applicationContext)
                 cancelAllDeferred()
                 pollActiveNotifications()
             }
@@ -344,16 +363,61 @@ class MicrotagNotificationService : NotificationListenerService() {
         val id = capsuleIdFor(sbn.key)
 
         // Night hours / Battery Saver: stay silent, except for OTP codes.
-        val routedTile = CapsuleParser.tileFor(pkg, extras)
+        val routedTile = CapsuleParser.tileFor(pkg, extras, notif.channelId)
         if (quiet(routedTile)) {
             if (capsuleIds.containsKey(sbn.key)) clearCapsule(sbn.key)
             logDecision(sbn, "PARSER", Decision.SKIPPED, "quiet: ${settings.quietReason()}")
             return
         }
 
+        // The weather chip comes from the API while it is working; the system weather app's notification is not a second chip.
+        if (routedTile == TagKeys.WEATHER && WeatherWatcher.owns(applicationContext)) {
+            logDecision(sbn, "PARSER", Decision.SKIPPED, "weather chip comes from the weather service")
+            return
+        }
+
+        // Streaks: one reader for any app the person picked. A chip shows when something changed (a new day, a risk, a loss),
+        // not on every repeated reminder. Text that is not about a streak falls through to the rules below.
+        if (TileGate.isOn(prefs, TagKeys.STREAKS) && settings.streakApps.any { it.equals(pkg, ignoreCase = true) } && StreakStore.reads(title, text)) {
+            val sig = "streak|$title|$text"
+            if (lastShown[sbn.key] == sig) return
+            lastShown[sbn.key] = sig
+            val show = StreakStore.onNotification(applicationContext, pkg, title, text)
+            if (show == null) {
+                logDecision(sbn, "STREAK", Decision.UNCHANGED, "streak: nothing new to show")
+                return
+            }
+            val countKey = "streak:$pkg:${show.day}"
+            if (!Interceptions.isOpen(countKey)) bump(countKey, pkg, "STREAK")
+            val timeout = if (show.urgent) 30 else 12
+            capsuleIds[sbn.key] = id
+            remember(sbn.key, pkg, TagKeys.STREAKS)
+            trackTimeout(sbn.key, timeout)
+            logDecision(sbn, "STREAK", Decision.PROMOTED, "streak: ${show.title}", show.pill, null)
+            MicrotagReminder.showCapsule(
+                context = applicationContext,
+                pillText = show.pill,
+                title = show.title,
+                content = show.content,
+                notificationId = id,
+                timeoutSeconds = timeout,
+                iconName = "ic_capsule_bolt",
+                customIcon = AppIcons.icon(applicationContext, pkg),
+                sourcePackage = pkg,
+                sourceIntent = notif.contentIntent,
+                showAppName = true
+            )
+            return
+        }
+
         // 1. Dynamic rules (custom_rules.json). The gate runs before each rule's regex, so a rule
         //    that is off (tile off, app not picked for streaks) is never matched against the text.
-        val match = RuleEngine.evaluate(pkg, title, text) { rule ->
+        //    Rules the person made (UserRules) come first, then the built-in file.
+        NotificationSamples.record(pkg, title, text) // memory only, for the rule builder's sample picker
+        val userMatch = UserRules.evaluate(applicationContext, pkg, title, text)
+        val match = userMatch?.let {
+            MatchResult(pillText = it.pill, iconName = it.rule.iconName, timeoutSeconds = it.rule.timeoutSeconds, tile = UserRules.TILE)
+        } ?: RuleEngine.evaluate(pkg, title, text) { rule ->
             TileGate.ruleAllowed(applicationContext, prefs, settings, rule)
         }
         if (match != null) {
@@ -382,18 +446,28 @@ class MicrotagNotificationService : NotificationListenerService() {
             remember(sbn.key, pkg, match.tile)
             trackTimeout(sbn.key, match.timeoutSeconds)
             if (isNew) bump(sbn.key, pkg, "RULE")
-            MicrotagReminder.showCapsule(
+            // A rule of the person's own can wear the app's monochrome icon, and can ask the model for a better pill.
+            val ruleIcon = userMatch?.let { UserRules.iconFor(applicationContext, it.rule) }
+            val showName = userMatch?.let { it.rule.iconMode != UserRule.IconMode.APP } ?: namesApp(match.tile)
+            fun post(pill: String) = MicrotagReminder.showCapsule(
                 context = applicationContext,
-                pillText = match.pillText,
+                pillText = pill,
                 title = title.ifBlank { MicrotagReminder.appLabel(applicationContext, pkg) },
                 content = text,
                 notificationId = id,
                 timeoutSeconds = match.timeoutSeconds,
                 iconName = match.iconName,
+                customIcon = ruleIcon,
                 sourcePackage = pkg,
                 sourceIntent = notif.contentIntent,
-                showAppName = namesApp(match.tile)
+                showAppName = showName
             )
+            post(match.pillText)
+            if (userMatch?.aiCandidate == true) {
+                Ai.condenseAsync(userMatch.rule.appLabel, title, text, match.pillText) { better ->
+                    if (capsuleIds[sbn.key] == id) post(better)
+                }
+            }
             return
         }
 
