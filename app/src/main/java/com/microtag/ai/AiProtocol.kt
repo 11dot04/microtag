@@ -78,11 +78,18 @@ object AiProtocol {
             AiProvider.OPENAI_COMPATIBLE -> AiRequest(
                 url = "$base/chat/completions",
                 headers = mapOf("Authorization" to "Bearer $key", "content-type" to "application/json"),
-                body = """{"model":${jsonString(cfg.model)},"max_tokens":$maxTokens,"temperature":0,""" +
+                body = """{"model":${jsonString(cfg.model)},"max_tokens":$maxTokens,"temperature":0,${thinkingOff(base, cfg.model)}""" +
                     """"messages":[{"role":"system","content":${jsonString(system)}},{"role":"user","content":${jsonString(user)}}]}"""
             )
         }
     }
+
+    /**
+     * Gemini 2.5 Flash "thinks" before answering, and the thinking counts against max_tokens, so a short answer could be
+     * cut off before it started. For that model alone the thinking is switched off; other models are left as they are.
+     */
+    private fun thinkingOff(base: String, model: String): String =
+        if (base.contains("generativelanguage.googleapis.com") && model.startsWith("gemini-2.5-flash")) """"reasoning_effort":"none",""" else ""
 
     /** The reply's text, or null if the body is not in the shape the provider promises. */
     fun parse(cfg: AiConfig, body: String): String? = runCatching {
