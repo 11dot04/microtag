@@ -74,12 +74,16 @@ class AiRuleHelper(private val completer: () -> Completer?) {
         var feedback: String? = null
         var last = "The model gave no usable answer"
         repeat(2) {
-            val reply = c.complete(SYSTEM, prompt(r, feedback), 400)
+            val reply = c.complete(SYSTEM, prompt(r, feedback), 2000)
             val text = reply.text ?: return Answer.Failed(reply.error ?: last)
             val json = AiProtocol.extractJson(text)
             val regex = json?.optString("regex").orEmpty()
             val pill = json?.optString("pill").orEmpty()
-            if (json == null || regex.isBlank()) { feedback = "it was not a JSON object with a regex"; last = feedback!!; return@repeat }
+            if (json == null || regex.isBlank()) {
+                feedback = "it was not a JSON object with a regex"
+                last = "The AI’s answer was cut off or not in the expected shape. Try again"
+                return@repeat
+            }
             val problem = check(r, regex, pill)
             if (problem == null) return Answer.Ok(regex, pill, json.optString("explain").take(200))
             feedback = problem; last = "Tried twice; the last problem was: $problem"
