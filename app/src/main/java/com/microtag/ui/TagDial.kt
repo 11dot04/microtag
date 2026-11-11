@@ -81,7 +81,9 @@ fun TagDial(
     ink: Color,
     cool: Color,
     warm: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** False when the caller draws the value itself (a small box has no room for the big one above the needle). */
+    showValue: Boolean = true
 ) {
     val view = LocalView.current
     val scope = rememberCoroutineScope()
@@ -218,7 +220,7 @@ fun TagDial(
         }
 
         // The value, above the needle. It rolls up or down as it changes.
-        AnimatedContent(
+        if (showValue) AnimatedContent(
             targetState = index,
             modifier = Modifier
                 .align(Alignment.TopCenter)
