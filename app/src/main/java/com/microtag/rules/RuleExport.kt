@@ -10,7 +10,7 @@ import java.net.URLEncoder
  */
 object RuleExport {
     /** Where contributions go. Set to the project's repository ("owner/name"). */
-    var repo = "microtag/microtag"
+    var repo = "11dot04/microtag"
 
     /** One entry of custom_rules.json. The tile is left for the maintainer to choose. */
     fun builtinEntry(rule: UserRule): String {
