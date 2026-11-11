@@ -59,6 +59,15 @@ fun AiSettingsScreen(onBack: () -> Unit) {
         }
         if (cfg.provider == AiProvider.OPENAI_COMPATIBLE) {
             FormCaption("OpenAI, Gemini's compatible address, OpenRouter, or a model running on your own network all work here.")
+            FormLabel("Presets")
+            FormWrap {
+                val gemini = "https://generativelanguage.googleapis.com/v1beta/openai"
+                FormChoice("Gemini", cfg.baseUrl == gemini, { update(cfg.copy(baseUrl = gemini, model = "gemini-2.5-flash")) })
+                FormChoice("OpenAI", cfg.baseUrl == AiProtocol.defaultBase(AiProvider.OPENAI_COMPATIBLE), {
+                    update(cfg.copy(baseUrl = AiProtocol.defaultBase(AiProvider.OPENAI_COMPATIBLE), model = AiProtocol.defaultModel(AiProvider.OPENAI_COMPATIBLE)))
+                })
+            }
+            if (cfg.baseUrl.contains("generativelanguage.googleapis.com")) FormCaption("Key from Google AI Studio. The free tier is rate-limited. Use gemini-2.5-flash: the gemini-flash-latest alias is rejected.")
             FormLabel("Address")
             FormField(cfg.baseUrl, { update(cfg.copy(baseUrl = it.trim())) }, "https://…", mono = true)
         }

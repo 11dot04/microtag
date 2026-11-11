@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -47,6 +48,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** A notification to start a rule from, handed over by the Logs screen: the app and the raw title and text. */
+class RulePrefill(val pkg: String, val label: String, val title: String, val text: String)
+
 private sealed interface RulesPage {
     object Home : RulesPage
     object Pick : RulesPage
@@ -57,15 +61,25 @@ private data class PickApp(val pkg: String, val label: String)
 
 /** Rules you write yourself: choose an app, point at what you want from one of its notifications, and it becomes a chip. */
 @Composable
-fun RulesScreen(onBack: () -> Unit, onOpenAi: () -> Unit) {
+fun RulesScreen(onBack: () -> Unit, onOpenAi: () -> Unit, prefill: RulePrefill? = null) {
     val context = LocalContext.current
-    var page by remember { mutableStateOf<RulesPage>(RulesPage.Home) }
-    BackHandler { if (page is RulesPage.Home) onBack() else page = if (page is RulesPage.Build && (page as RulesPage.Build).rule == null) RulesPage.Pick else RulesPage.Home }
+    // Coming from a log entry, the builder opens straight away on that app and notification.
+    var page by remember { mutableStateOf<RulesPage>(if (prefill != null) RulesPage.Build(prefill.pkg, prefill.label, null) else RulesPage.Home) }
+    var sample by remember { mutableStateOf(prefill) }
+    BackHandler {
+        when {
+            // Back out of a builder opened from Logs goes back to Logs.
+            sample != null -> onBack()
+            page is RulesPage.Home -> onBack()
+            page is RulesPage.Build && (page as RulesPage.Build).rule == null -> page = RulesPage.Pick
+            else -> page = RulesPage.Home
+        }
+    }
 
     when (val p = page) {
         RulesPage.Home -> RulesHomePage(onBack, onOpenAi, onNew = { page = RulesPage.Pick }, onEdit = { r -> page = RulesPage.Build(r.pkg, r.appLabel, r) })
         RulesPage.Pick -> RuleAppPicker({ page = RulesPage.Home }) { e -> page = RulesPage.Build(e.pkg, e.label, null) }
-        is RulesPage.Build -> RuleBuilderPage(p.pkg, p.label, p.rule, onDone = { page = RulesPage.Home })
+        is RulesPage.Build -> RuleBuilderPage(p.pkg, p.label, p.rule, sample?.takeIf { it.pkg == p.pkg }, onDone = { sample = null; page = RulesPage.Home })
     }
 }
 
@@ -146,7 +160,7 @@ private fun RuleAppPicker(onBack: () -> Unit, onPick: (PickApp) -> Unit) {
             recent.take(8).forEach { (pkg, n) -> RuleAppRow(pkg, labelOf(pkg), "$n notification" + if (n == 1) "" else "s") { onPick(PickApp(pkg, labelOf(pkg))) } }
         }
         FormLabel(if (query.isBlank()) "All apps" else "Matches")
-        val shown = apps.filter { query.isBlank() || it.label.contains(query, ignoreCase = true) }.take(60)
+        val shown = apps.filter { query.isBlank() || it.label.contains(query, ignoreCase = true) }
         shown.forEach { RuleAppRow(it.pkg, it.label, null) { onPick(it) } }
         if (apps.isEmpty()) FormCaption("Loading apps…")
         FormGap(24)
@@ -171,23 +185,31 @@ private fun RuleAppRow(pkg: String, label: String, sub: String?, onClick: () -> 
 @Composable
 private fun RuleAppGlyph(pkg: String, size: Int) {
     val context = LocalContext.current
-    val bmp = remember(pkg) { runCatching { AppIcons.render(context, pkg) }.getOrNull() }
+    // Rendered off the main thread so a few hundred rows do not stall the list.
+    val bmp by produceState<android.graphics.Bitmap?>(null, pkg) {
+        value = withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { AppIcons.render(context, pkg) }.getOrNull() }
+    }
     Box(Modifier.size(size.dp).clip(CircleShape).background(TagColors.Black), contentAlignment = Alignment.Center) {
-        if (bmp != null) Image(bmp.asImageBitmap(), null, Modifier.size((size * 0.75f).dp), colorFilter = ColorFilter.tint(TagColors.White))
+        bmp?.let { b -> Image(b.asImageBitmap(), null, Modifier.size((size * 0.75f).dp), colorFilter = ColorFilter.tint(TagColors.White)) }
     }
 }
 
 // ------------------------------------------------------------------ builder
 
 @Composable
-private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, onDone: () -> Unit) {
+private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, prefill: RulePrefill?, onDone: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val book = remember { UserRules.book(context) }
     BackHandler(onBack = onDone)
 
     // What this app has sent lately, plus one the person types or pastes.
-    val seen = remember { NotificationSamples.recent(pkg).map { AiRuleHelper.Sample(it.title, it.text) } }
+    val seen = remember {
+        // The log entry comes first, so it is the sample that is picked when the builder opens.
+        val fromLog = prefill?.let { listOf(AiRuleHelper.Sample(it.title, it.text)) }.orEmpty()
+        fromLog + NotificationSamples.recent(pkg).map { AiRuleHelper.Sample(it.title, it.text) }
+            .filterNot { s -> prefill != null && s.title == prefill.title && s.text == prefill.text }
+    }
     var manualTitle by remember { mutableStateOf("") }
     var manualText by remember { mutableStateOf("") }
     val samples = remember(manualTitle, manualText, seen) {

@@ -102,7 +102,7 @@ private fun dayLabel(ms: Long): String {
 }
 
 @Composable
-fun LogsScreen(onBack: () -> Unit) {
+fun LogsScreen(onBack: () -> Unit, onBuildRule: (MicrotagLog.Entry) -> Unit = {}) {
     val context = LocalContext.current
     var entries by remember { mutableStateOf(MicrotagLog.snapshot()) }
     var recording by remember { mutableStateOf(MicrotagLog.enabled) }
@@ -258,7 +258,7 @@ fun LogsScreen(onBack: () -> Unit) {
                 is LogRow.Header -> TagSectionLabel(row.label, Modifier.padding(top = 14.dp, start = 4.dp))
                 is LogRow.Item -> {
                     val id = System.identityHashCode(row.entry)
-                    LogCard(row.entry, meta[row.entry.pkg], id in expanded) {
+                    LogCard(row.entry, meta[row.entry.pkg], id in expanded, onBuildRule = { onBuildRule(row.entry) }) {
                         expanded = if (id in expanded) expanded - id else expanded + id
                     }
                 }
@@ -328,7 +328,7 @@ internal fun FilterChip(text: String, selected: Boolean, icon: ImageBitmap? = nu
 }
 
 @Composable
-private fun LogCard(e: MicrotagLog.Entry, meta: AppMeta?, expanded: Boolean, onToggle: () -> Unit) {
+private fun LogCard(e: MicrotagLog.Entry, meta: AppMeta?, expanded: Boolean, onBuildRule: () -> Unit, onToggle: () -> Unit) {
     val context = LocalContext.current
     val time = remember(e.timeMs) { SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(e.timeMs)) }
     val iconRes = remember(e.icon) { e.icon?.let { context.resources.getIdentifier(it, "drawable", context.packageName) } ?: 0 }
@@ -392,6 +392,10 @@ private fun LogCard(e: MicrotagLog.Entry, meta: AppMeta?, expanded: Boolean, onT
                 Detail("REASON", e.reason)
                 if (e.meta.isNotBlank()) Detail("META", e.meta)
                 Detail("KEY", e.key)
+            }
+            // Only worth offering when there is something to build from.
+            if (e.pkg.isNotBlank() && (e.title.isNotBlank() || e.text.isNotBlank())) {
+                FormButton("Build rule from this", onBuildRule, Modifier.padding(top = 12.dp), filled = false)
             }
         }
     }

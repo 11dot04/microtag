@@ -63,6 +63,8 @@ class MainActivity : ComponentActivity() {
                     var dashboardLight by remember { mutableStateOf(false) }
                     // The AI screen is reached from the dashboard and from Rules; back goes to whichever opened it.
                     var aiBack by remember { mutableStateOf(Screen.Dashboard) }
+                    // Set when Rules was opened from a Logs entry; back then returns to Logs.
+                    var rulePrefill by remember { mutableStateOf<RulePrefill?>(null) }
                     val lightBackdrop = when (screen) {
                         Screen.Onboarding -> TagColors.Lime.luminance() > 0.5f
                         Screen.Dashboard -> dashboardLight
@@ -121,7 +123,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenInspect = { screen = Screen.Inspect },
                                 onOpenPin = { screen = Screen.Pin },
                                 onOpenMoments = { screen = Screen.Moments },
-                                onOpenRules = { screen = Screen.Rules },
+                                onOpenRules = { rulePrefill = null; screen = Screen.Rules },
                                 onOpenMeds = { screen = Screen.Meds },
                                 onOpenAi = { aiBack = Screen.Dashboard; screen = Screen.Ai },
                                 onOpenSettings = { screen = Screen.Settings },
@@ -133,11 +135,22 @@ class MainActivity : ComponentActivity() {
                             Screen.Priority -> PriorityScreen(onBack = { screen = Screen.Inspect })
                             Screen.Pin -> PinScreen(onBack = { screen = Screen.Dashboard })
                             Screen.Moments -> MomentsScreen(onBack = { screen = Screen.Dashboard })
-                            Screen.Rules -> RulesScreen(onBack = { screen = Screen.Dashboard }, onOpenAi = { aiBack = Screen.Rules; screen = Screen.Ai })
+                            Screen.Rules -> RulesScreen(
+                                onBack = { if (rulePrefill != null) { rulePrefill = null; screen = Screen.Logs } else screen = Screen.Dashboard },
+                                onOpenAi = { aiBack = Screen.Rules; screen = Screen.Ai },
+                                prefill = rulePrefill
+                            )
                             Screen.Meds -> MedsScreen(onBack = { screen = Screen.Dashboard })
                             Screen.Ai -> AiSettingsScreen(onBack = { screen = aiBack })
                             Screen.Stats -> StatsScreen(prefs = prefs, onBack = { screen = Screen.Dashboard })
-                            Screen.Logs -> LogsScreen(onBack = { screen = Screen.Dashboard })
+                            Screen.Logs -> LogsScreen(
+                                onBack = { screen = Screen.Dashboard },
+                                onBuildRule = { e ->
+                                    val label = runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(e.pkg, 0)).toString() }.getOrDefault(e.pkg)
+                                    rulePrefill = RulePrefill(e.pkg, label, e.title, e.text)
+                                    screen = Screen.Rules
+                                }
+                            )
                             Screen.Settings -> SettingsScreen(
                                 onBack = { screen = Screen.Dashboard },
                                 // Replaying the intro never clears the saved "done" flag.

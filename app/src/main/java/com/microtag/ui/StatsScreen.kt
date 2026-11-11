@@ -124,6 +124,9 @@ fun todayHourCounts(): IntArray {
 
 private val DayLabels = listOf("MO", "TU", "WE", "TH", "FR", "SA", "SU")
 
+/** The seven weekday indexes, the day after today first and today last, so "now" is always the rightmost chip. */
+private fun rollingOrder(today: Int): List<Int> = List(7) { (today + 1 + it) % 7 }
+
 @Composable
 fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
     val context = LocalContext.current
@@ -132,6 +135,7 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
     val data = remember { loadStats() }
     val today = remember { dayIndexOf(System.currentTimeMillis()) }
     val todayEpoch = remember { epochDayOf(System.currentTimeMillis()) }
+    val order = remember(today) { rollingOrder(today) }
     val nowHour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
     var selected by remember { mutableStateOf(setOf(today)) }
     var apps by remember { mutableStateOf(emptySet<String>()) }
@@ -185,7 +189,7 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             Modifier.fillMaxWidth()
         )
 
-        DayChips(selected, today) { day ->
+        DayChips(selected, today, order) { day ->
             selected = if (day in selected) (if (selected.size > 1) selected - day else selected) else selected + day
         }
 
@@ -211,17 +215,16 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth().height(260.dp)
         )
 
-        // Six equal tiles in one interlocking block, like the rows in Settings and Inspect.
-        val tiles = listOf(
+        // Four tiles follow the days picked above; two do not, so they sit apart under their own label.
+        SectionLabel("THE DAYS YOU PICKED")
+        val picked = listOf(
             Triple("SELECTED", total.toString(), when (selected.size) {
                 1 -> DayLabels[selected.first()]
                 7 -> "EVERY DAY"
                 else -> "${selected.size} DAYS"
             }),
             Triple("PEAK HOUR", peakHour?.let { "%02d:00".format(it) } ?: "--", peakHour?.let { "${values[it]} AT PEAK" }),
-            Triple("ALL TIME", prefs.interceptCount.toString(), "ALL APPS"),
-            Triple("PROMOTED", rate?.let { "$it%" } ?: "--", "OF EVALUATED"),
-            Triple("STREAK", if (streak > 0) "$streak d" else "--", "IN A ROW"),
+            Triple("PROMOTED", rate?.let { "$it%" } ?: "--", "OF NOTIFICATIONS CHECKED"),
             Triple("BEST DAY", best?.let { "${it.value}" } ?: "--", best?.let {
                 SimpleDateFormat("d MMM", Locale.getDefault()).format(Date(it.key * 86_400_000L)).uppercase()
             })
@@ -229,11 +232,21 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             for (r in 0 until 2) {
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    for (c in 0 until 3) {
-                        val (caption, value, sub) = tiles[r * 3 + c]
-                        StatTile(caption, value, sub, cellShape(r, c, 2, 3), Modifier.weight(1f))
+                    for (c in 0 until 2) {
+                        val (caption, value, sub) = picked[r * 2 + c]
+                        StatTile(caption, value, sub, cellShape(r, c, 2, 2), Modifier.weight(1f))
                     }
                 }
+            }
+        }
+        SectionLabel("ALL DAYS, ALL APPS")
+        val overall = listOf(
+            Triple("STREAK", if (streak > 0) "$streak d" else "--", "IN A ROW"),
+            Triple("ALL TIME", prefs.interceptCount.toString(), "INTERCEPTIONS")
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            overall.forEachIndexed { c, (caption, value, sub) ->
+                StatTile(caption, value, sub, cellShape(0, c, 1, 2), Modifier.weight(1f))
             }
         }
 
@@ -251,7 +264,7 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             "Tap a row to look at just that day.",
             style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = TagColors.Outline)
         )
-        Heatmap(heat, selected, Modifier.fillMaxWidth()) { day ->
+        Heatmap(heat, selected, order, Modifier.fillMaxWidth()) { day ->
             view.tick(Tick.Detent)
             selected = setOf(day)
         }
@@ -261,6 +274,7 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
 
         ByType(scoped)
         Sources(sourcesOf(context, scoped))
+        Spacer(Modifier.height(110.dp))
     }
 }
 
@@ -277,10 +291,11 @@ private fun sourcesOf(context: android.content.Context, sessions: List<Session>)
 }
 
 @Composable
-private fun DayChips(selected: Set<Int>, today: Int, onToggle: (Int) -> Unit) {
+private fun DayChips(selected: Set<Int>, today: Int, order: List<Int>, onToggle: (Int) -> Unit) {
     val view = LocalView.current
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        DayLabels.forEachIndexed { i, label ->
+        order.forEach { i ->
+            val label = DayLabels[i]
             val on = i in selected
             val scale by animateFloatAsState(
                 if (on) 1f else 0.94f,
@@ -497,7 +512,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun Heatmap(grid: Array<IntArray>, selected: Set<Int>, modifier: Modifier, onDay: (Int) -> Unit) {
+private fun Heatmap(grid: Array<IntArray>, selected: Set<Int>, order: List<Int>, modifier: Modifier, onDay: (Int) -> Unit) {
     val measurer = rememberTextMeasurer()
     val maxV = max(1, grid.maxOf { row -> row.max() })
     BoxWithConstraints(modifier) {
@@ -512,7 +527,7 @@ private fun Heatmap(grid: Array<IntArray>, selected: Set<Int>, modifier: Modifie
                 .pointerInput(cell) {
                     detectTapGestures { o ->
                         val row = (o.y / (cell + gap).toPx()).toInt()
-                        if (row in 0..6) onDay(row)
+                        if (row in 0..6) onDay(order[row])
                     }
                 }
         ) {
@@ -522,16 +537,17 @@ private fun Heatmap(grid: Array<IntArray>, selected: Set<Int>, modifier: Modifie
             val accent = TagColors.patch(1)
             val label = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 10.sp, color = TagColors.Outline)
             for (r in 0 until 7) {
+                val day = order[r]
                 val y = r * (c + g)
-                val t = measurer.measure(DayLabels[r], label)
+                val t = measurer.measure(DayLabels[day], label)
                 drawText(t, topLeft = Offset(0f, y + (c - t.size.height) / 2f))
                 for (h in 0 until 24) {
-                    val v = grid[r][h]
+                    val v = grid[day][h]
                     val intensity = if (v == 0) 0f else (v / maxV.toFloat()).coerceIn(0f, 1f)
                     val base = 0.09f + 0.91f * Math.pow(intensity.toDouble(), 0.7).toFloat()
-                    val alpha = if (r in selected) base else base * 0.4f
+                    val alpha = if (day in selected) base else base * 0.4f
                     drawRoundRect(
-                        color = if (v == 0) TagColors.White.copy(alpha = if (r in selected) 0.10f else 0.05f) else accent.copy(alpha = alpha),
+                        color = if (v == 0) TagColors.White.copy(alpha = if (day in selected) 0.10f else 0.05f) else accent.copy(alpha = alpha),
                         topLeft = Offset(lw + h * (c + g), y),
                         size = androidx.compose.ui.geometry.Size(c, c),
                         cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
