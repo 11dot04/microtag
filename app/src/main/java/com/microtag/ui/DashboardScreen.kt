@@ -292,14 +292,10 @@ fun DashboardScreen(
             }
         }
 
-        // Status bar icons follow whatever is behind them: the accent poster at the top, the palette's
-        // base once you scroll (or while paused, when the poster is a quiet tone of the base).
-        val lightBackdrop by remember(paused) {
-            derivedStateOf {
-                if (paused || scroll.value >= posterPx * 0.3f) TagColors.IsLight
-                else TagColors.Lime.luminance() > 0.5f
-            }
-        }
+        // Status bar icons follow whatever is behind them. The poster is drawn on the palette's base, so
+        // that is the palette's own light or dark at the top and after scrolling alike. (It used to ask for
+        // dark icons whenever the Lime accent was bright, which made them vanish on the black poster.)
+        val lightBackdrop = TagColors.IsLight
         LaunchedEffect(lightBackdrop) { onBackdropChange(lightBackdrop) }
 
       // No header band. As the poster docks, the content itself fades out under the status bar and the
@@ -348,9 +344,9 @@ fun DashboardScreen(
             animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
             label = "weatherOpen"
         )
-        // Streaks drops a row first, then stretches sideways once it is clear of Strava.
-        // Opening the weather tile makes it 2 wide and 3 tall. Strava keeps the right column's top two rows, so
-        // Streaks drops one row, then slides under Strava, leaving no gap. Left column: weather (3). Right: Strava (2) + Streaks (1).
+        // Closed: Weather and Streaks are two 2x1 tiles stacked in the left column, beside Strava (2x2).
+        // Open: Weather becomes 2x2, level with Strava. Streaks drops one row first, then stretches
+        // to 4x1 across the whole row under both of them.
         val streakDrop = ease((p / 0.35f).coerceIn(0f, 1f))
         val streakSlide = ease(((p - 0.35f) / 0.30f).coerceIn(0f, 1f))
         val weatherGrow = ease(((p - 0.30f) / 0.70f).coerceIn(0f, 1f))
@@ -373,7 +369,7 @@ fun DashboardScreen(
             // ---- weather (top) / streaks (under it) / strava
             TileTone(2) {
                 WeatherTile(
-                    Modifier.cell(0f, 2f, 2f, 1f + 2f * weatherGrow),
+                    Modifier.cell(0f, 2f, 2f, 1f + weatherGrow),
                     // Pill when closed, settles to the standard tile radius as it opens.
                     RoundedCornerShape((100f + (26f - 100f) * weatherGrow).dp),
                     weather, weatherOpen, weatherIdx, intervalLabels,
@@ -394,7 +390,7 @@ fun DashboardScreen(
             }
             TileTone(0) {
                 PillTile(
-                    Modifier.cell(2f * streakSlide, 3f + streakDrop, 2f, 1f), null, "Streaks", null, streaks,
+                    Modifier.cell(0f, 3f + streakDrop, 2f + 2f * streakSlide, 1f), null, "Streaks", null, streaks,
                     chevron = true, onChevron = { sheet = DashSheet.Streaks }
                 )
             }
@@ -540,7 +536,6 @@ internal fun PermissionBanner(perms: Permissions) {
 private fun BigTile(modifier: Modifier, icon: Int, title: String, sub: String, t: PrefToggle) {
     TagTile(modifier, TagShapes.Big, t.state, t::toggle) { fg ->
         TagIcon(icon, fg, Modifier.align(Alignment.TopStart).padding(20.dp), 32.dp)
-        MicroStatus(t.on, fg.copy(alpha = 0.7f), Modifier.align(Alignment.BottomStart).padding(start = 22.dp, bottom = 26.dp))
         BigLabel(title, sub, fg, Modifier.align(Alignment.BottomEnd).padding(20.dp))
     }
 }
@@ -676,46 +671,50 @@ private fun WeatherTile(
                 val tones = !t.on && TagColors.HasTones
                 val cool = if (tones) TagColors.Tertiary else fg.copy(alpha = 0.55f)
                 val warm = if (tones) TagColors.Secondary else fg.copy(alpha = 0.85f)
-                Column(Modifier.fillMaxSize().padding(start = 14.dp, top = 6.dp, end = 14.dp)) {
+                // The open tile is 2x2: about 150 to 180 dp square, so every line is sized to fit that and
+                // nothing is allowed to wrap. Header, the two location buttons, temperature, one line for the
+                // place and the refresh interval, and whatever is left over goes to the wheel.
+                Column(Modifier.fillMaxSize().padding(start = 14.dp, top = 4.dp, end = 14.dp)) {
                     Row(Modifier.height(30.dp), verticalAlignment = Alignment.CenterVertically) {
                         TagLabel("Weather", null, fg, Modifier.weight(1f), 15.sp)
                         ChevronButton(true, fg) { onOpenChange(false) }
                     }
                     LocationPair(auto, fg, face, onAuto, onPickCity)
-                    Spacer(Modifier.height(8.dp))
-                    // Current temperature and where it is for.
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                        val ctx = LocalContext.current
-                        val iconRes = remember(iconName) { iconName?.let { ctx.resources.getIdentifier(it, "drawable", ctx.packageName) } ?: 0 }
-                        if (iconRes != 0) {
-                            TagIcon(iconRes, fg, Modifier.padding(end = 8.dp, bottom = 3.dp), 26.dp)
-                        }
+                    Spacer(Modifier.height(6.dp))
+                    val ctx = LocalContext.current
+                    val iconRes = remember(iconName) { iconName?.let { ctx.resources.getIdentifier(it, "drawable", ctx.packageName) } ?: 0 }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        if (iconRes != 0) TagIcon(iconRes, fg, Modifier.padding(end = 6.dp), 22.dp)
                         Text(
-                            temp,
+                            temp, maxLines = 1, softWrap = false,
                             style = TextStyle(
-                                fontFamily = TagFonts.display, fontWeight = FontWeight.Light, fontSize = 26.sp,
+                                fontFamily = TagFonts.display, fontWeight = FontWeight.Light, fontSize = 24.sp,
                                 color = fg, fontSynthesis = TagFonts.NoSynthesis
                             )
                         )
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                         Text(
                             if (auto) "Auto" else city.ifBlank { "Set city" },
-                            modifier = Modifier.weight(1f).padding(start = 10.dp, bottom = 4.dp),
-                            maxLines = 1,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = fg.copy(alpha = 0.85f))
+                            modifier = Modifier.weight(1f).padding(end = 6.dp),
+                            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = fg.copy(alpha = 0.85f))
+                        )
+                        Text(
+                            "EVERY ",
+                            style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 9.sp, letterSpacing = 0.8.sp, color = fg.copy(alpha = 0.7f))
+                        )
+                        Text(
+                            labels.getOrElse(index) { "" }, maxLines = 1, softWrap = false,
+                            style = TextStyle(
+                                fontFamily = TagFonts.display, fontWeight = FontWeight.Light, fontSize = 16.sp,
+                                color = fg, fontSynthesis = TagFonts.NoSynthesis
+                            )
                         )
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "FREQUENCY",
-                        style = TextStyle(
-                            fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 10.sp,
-                            letterSpacing = 1.2.sp, color = fg.copy(alpha = 0.85f)
-                        )
-                    )
                     // The wheel is far bigger than this box: its centre is below the bottom edge, so only the top of the arc shows.
                     Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
-                        TagDial(labels, index, onIndex, ink = fg, cool = cool, warm = warm, modifier = Modifier.fillMaxSize())
+                        TagDial(labels, index, onIndex, ink = fg, cool = cool, warm = warm, modifier = Modifier.fillMaxSize(), showValue = false)
                     }
                 }
             }
@@ -734,7 +733,7 @@ private fun LocationPair(auto: Boolean, fg: Color, face: Color, onAuto: () -> Un
     val autoSrc = remember { MutableInteractionSource() }
     val searchShape = PressCornerShape(20.dp, 6.dp, 6.dp, 20.dp, pressMorph(searchSrc))
     val autoShape = PressCornerShape(6.dp, 20.dp, 20.dp, 6.dp, pressMorph(autoSrc))
-    Row(Modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(Modifier.fillMaxWidth().height(34.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             Modifier
                 .weight(1f)
@@ -742,23 +741,19 @@ private fun LocationPair(auto: Boolean, fg: Color, face: Color, onAuto: () -> Un
                 .clip(searchShape)
                 .border(1.5.dp, if (auto) fg.copy(alpha = 0.5f) else fg, searchShape)
                 .clickable(interactionSource = searchSrc, indication = null) { view.tick(Tick.Press); onSearch() }
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.Center
         ) {
             androidx.compose.foundation.Canvas(Modifier.size(16.dp)) {
                 val st = 1.8.dp.toPx()
                 drawCircle(fg, radius = size.minDimension * 0.30f, center = Offset(size.width * 0.42f, size.height * 0.42f), style = androidx.compose.ui.graphics.drawscope.Stroke(st))
                 drawLine(fg, Offset(size.width * 0.64f, size.height * 0.64f), Offset(size.width * 0.9f, size.height * 0.9f), st, androidx.compose.ui.graphics.StrokeCap.Round)
             }
-            Text(
-                "Search", maxLines = 1,
-                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = fg.copy(alpha = 0.6f))
-            )
         }
         Box(
             Modifier
-                .width(46.dp)
+                .width(42.dp)
                 .fillMaxHeight()
                 .clip(autoShape)
                 .background(if (auto) fg else Color.Transparent)
@@ -792,7 +787,6 @@ private fun StravaTile(
         val face = if (t.on) TagColors.tone(LocalTileTone.current) else TagColors.Black
         if (!open) {
             TagIcon(R.drawable.ic_strava, fg, Modifier.align(Alignment.TopStart).padding(20.dp), 32.dp)
-            MicroStatus(t.on, fg.copy(alpha = 0.7f), Modifier.align(Alignment.BottomStart).padding(start = 22.dp, bottom = 26.dp))
             BigLabel("Strava", "WORKOUTS", fg, Modifier.align(Alignment.BottomEnd).padding(20.dp))
         } else {
             // Heading and chevron share one row, and the chips split whatever height is left,
@@ -833,7 +827,7 @@ private fun StravaTile(
     }
 }
 
-/** Song Up Next and Ambient Music Mod: two tiles that meet with no gap and read as one shape. */
+/** Song Up Next and Now Playing: two tiles that meet with no gap and read as one shape. */
 @Composable
 private fun MusicPair(modifier: Modifier, song: PrefToggle, ambient: PrefToggle) {
     Column(modifier) {
@@ -847,7 +841,7 @@ private fun MusicPair(modifier: Modifier, song: PrefToggle, ambient: PrefToggle)
             Row(Modifier.fillMaxSize().padding(start = 24.dp, end = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                 TagIcon(R.drawable.ic_ambient_music, fg, size = 28.dp)
                 Spacer(Modifier.width(12.dp))
-                TagLabel("Ambient", "Music Mod", fg, Modifier.weight(1f), size = 16.sp)
+                TagLabel("Now", "Playing", fg, Modifier.weight(1f), size = 16.sp)
             }
         }
     }
