@@ -441,6 +441,14 @@ private fun PosterArt(
 // THE OVERLAY (fixed to the screen: bands, numeral, dock, gear)
 // ----------------------------------------------------------
 
+/** The counter spins up once per launch of the app (and after a long absence), not on every visit to this screen. */
+private object SpinMemory {
+    var played = false
+}
+
+/** Coming back after less than this is just moving between screens or apps, not opening TAG again. */
+private const val AWAY_MS = 30_000L
+
 @Composable
 fun MonolithOverlay(
     count: Int,
@@ -458,22 +466,26 @@ fun MonolithOverlay(
     val typeface = remember { heroTypeface(context) }
 
     // The numeral spins up from zero and lands with a detent (haptic tick plus a spring kick).
-    // That runs on every launch and every return from the background, not just the first
-    // composition. After that it rolls digit by digit.
+    // That runs once per launch, and again after the app has been away for a while, but not each time
+    // the dashboard is shown again after another screen. After that it rolls digit by digit.
     val spin = remember { Animatable(0f) }
     val kick = remember { Animatable(1f) }
     // The two printed plates slide in from out of register each time the numeral spins up (1 = at rest).
     val reg = remember { Animatable(1f) }
-    var spun by remember { mutableStateOf(!TagMotion.enabled) }
+    var spun by remember { mutableStateOf(!TagMotion.enabled || SpinMemory.played) }
     var replays by remember { mutableIntStateOf(0) }
     DisposableEffect(view) {
         var stopped = false
+        var stoppedAt = 0L
         val owner = view.findViewTreeLifecycleOwner()
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> stopped = true
-                // Attaching to a started lifecycle replays ON_START once; only a real return counts.
-                Lifecycle.Event.ON_START -> if (stopped) { stopped = false; replays++ }
+                Lifecycle.Event.ON_STOP -> { stopped = true; stoppedAt = android.os.SystemClock.elapsedRealtime() }
+                // Attaching to a started lifecycle replays ON_START once; only a real return after a while counts.
+                Lifecycle.Event.ON_START -> if (stopped) {
+                    stopped = false
+                    if (android.os.SystemClock.elapsedRealtime() - stoppedAt > AWAY_MS) replays++
+                }
                 else -> Unit
             }
         }
@@ -482,11 +494,13 @@ fun MonolithOverlay(
     }
     LaunchedEffect(replays) {
         // Reduced motion, or the poster is scrolled away (the docked counter shouldn't spin): just show the value.
-        if (!TagMotion.enabled || scroll.value > collapseDistance * 0.5f) {
+        // Also when it has already spun up in this launch and this is only the screen being shown again.
+        if (!TagMotion.enabled || scroll.value > collapseDistance * 0.5f || (replays == 0 && SpinMemory.played)) {
             spun = true
             reg.snapTo(1f)
             return@LaunchedEffect
         }
+        SpinMemory.played = true
         spun = false
         launch {
             reg.snapTo(0f)
