@@ -39,15 +39,25 @@ private fun tidy(s: String): String = s.replace(Regex("""\s{2,}"""), " ").trim()
 
 private val danglers = setOf("in", "of", "the", "a", "an", "and", "for", "to", "on", "at", "by", "from", "with")
 
+private val breakers = setOf("in", "of", "from", "since", "during", "at", "on", "for", "to", "with", "by", "under", "over", "between", "near")
+private val participles = setOf("produced", "made", "known", "born", "founded", "created", "built", "used", "found", "located", "situated", "based", "named", "called", "published", "written", "released", "developed", "established")
+
 /**
  * "Swiss mathematician and physicist" -> "Swiss mathematician"; "novel by Hunter S. Thompson" -> "novel";
- * "Hill station in India" stays whole. At most four words, never ending on a joining word.
+ * "Mauryan emperor from 269 BCE" -> "Mauryan emperor"; "Enzyme produced by liver" -> "Enzyme".
+ * Cuts only at phrase boundaries: backs off before a preposition (and the number or date after it),
+ * drops trailing participles and joining words, keeps at most five words.
  */
 internal fun shortKicker(desc: String): String {
-    val first = desc.split(Regex("""\s*(?:,|;|\s[–—-]\s|\s+and\s+|\s+who\s+|\s+that\s+|\s+by\s+)""")).first().trim()
-    val ws = first.split(' ').filter { it.isNotEmpty() }.take(4).toMutableList()
-    while (ws.size > 1 && ws.last().lowercase() in danglers) ws.removeAt(ws.size - 1)
-    return ws.joinToString(" ")
+    val first = desc.split(Regex("""\s*(?:,|;|\s[–—-]\s|\s+and\s+|\s+who\s+|\s+that\s+|\s+which\s+|\s+by\s+)""")).first().trim()
+    val all = first.split(' ').filter { it.isNotEmpty() }
+    val cut = all.indexOfFirst { it.lowercase() in breakers }.let { if (it <= 0) all.size else it }
+    val ws = all.take(cut).take(5).toMutableList()
+    while (ws.size > 1 && (ws.last().lowercase() in danglers || ws.last().lowercase() in participles || ws.last().any { it.isDigit() })) ws.removeAt(ws.size - 1)
+    if (ws.size == all.size) return ws.joinToString(" ")
+    // "Hill station in India": a short place phrase after the cut stays when the head is tiny and the tail has no number.
+    val rest = all.drop(cut)
+    return if (ws.size <= 2 && rest.size in 2..3 && rest.none { w -> w.any { it.isDigit() } }) (ws + rest).joinToString(" ") else ws.joinToString(" ")
 }
 
 /** The staggered pair: ("1707", "–1783") for years, ("48.86° N", "2.35° E") for places, or null. */

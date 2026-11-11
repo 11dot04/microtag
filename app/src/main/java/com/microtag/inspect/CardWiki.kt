@@ -274,7 +274,7 @@ private fun Poster(c: CardCtx) {
                     blurb,
                     style = TextStyle(
                         fontFamily = Montserrat, fontWeight = FontWeight.Normal, fontSize = (12f * u).sp, lineHeight = lineH.sp,
-                        color = Color.White.copy(alpha = 0.92f), textIndent = TextIndent(firstLine = (30f * u).sp),
+                        color = Paper.Ink.copy(alpha = 0.92f), textIndent = TextIndent(firstLine = (30f * u).sp),
                         lineBreak = LineBreak.Paragraph, hyphens = Hyphens.Auto
                     ),
                     maxLines = maxLines, overflow = TextOverflow.Ellipsis,
@@ -304,7 +304,7 @@ private fun Poster(c: CardCtx) {
             // The staggered pair: years, or coordinates. Absent data leaves the slot empty.
             if (stagger != null) {
                 val sp = (w.value * 0.095f) * (if (years.isBlank()) 0.78f else 1f)
-                val big = sans(sp, FontWeight.Bold, Color.White, -0.5f).tight(0.95f)
+                val big = sans(sp, FontWeight.Bold, Paper.Ink, -0.5f).tight(0.95f)
                 Text(stagger.first, style = big, softWrap = false, maxLines = 1, modifier = Modifier.offset(x = fx(0.50f), y = fy(0.806f)))
                 if (stagger.second.isNotEmpty()) {
                     Box(Modifier.offset(y = fy(0.868f)).fillMaxWidth().padding(end = fx(0.15f)), contentAlignment = Alignment.CenterEnd) {
@@ -337,13 +337,13 @@ private fun Disambiguation(c: CardCtx) {
         Spacer(Modifier.height(14.dp))
         FitText(
             AnnotatedString(p.title.uppercase()),
-            sans(34f, FontWeight.Normal, Color.White, 0.4f).tight(1f),
+            sans(34f, FontWeight.Normal, Paper.Ink, 0.4f).tight(1f),
             Modifier.fillMaxWidth(), minSize = 18.sp
         )
-        Text("— DISAMBIGUATION", style = sans(13f, FontWeight.Normal, Color.White.copy(alpha = 0.7f), 1f))
+        Text("— DISAMBIGUATION", style = sans(13f, FontWeight.Normal, Paper.Ink.copy(alpha = 0.7f), 1f))
         if (p.fullContent.isNotBlank()) {
             Spacer(Modifier.height(12.dp))
-            Text(p.fullContent, style = sans(13f, FontWeight.Normal, Color.White.copy(alpha = 0.85f)).copy(lineHeight = 19.sp))
+            Text(p.fullContent, style = sans(13f, FontWeight.Normal, Paper.Ink.copy(alpha = 0.85f)).copy(lineHeight = 19.sp))
         }
         Spacer(Modifier.height(12.dp))
         p.parts.forEachIndexed { i, line ->
