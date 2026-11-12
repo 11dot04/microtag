@@ -89,22 +89,63 @@ object SvgIcons {
 
     fun exists(context: Context, name: String): Boolean = glyph(context, name) != null
 
+    /** Where the ink actually is, in the icon's own units. */
+    private fun contentBounds(g: Glyph): RectF {
+        val out = RectF(); var first = true
+        val r = RectF()
+        (g.fills + g.strokes.map { it.first }).forEach { p ->
+            p.computeBounds(r, true)
+            if (first) { out.set(r); first = false } else out.union(r)
+        }
+        return if (first) RectF(0f, 0f, g.w, g.h) else out
+    }
+
+    /**
+     * A bitmap of the named icon cropped to where its ink is, so a small mark in a big viewBox fills the square.
+     * Pass [together] to crop to the combined ink of several icons: pieces of one mark (the two halves of the TAG mark)
+     * then keep their size and position relative to each other and fit back together.
+     */
+    fun cropped(context: Context, name: String, together: List<String> = listOf(name), size: Int = 128, tint: Int = Color.WHITE): Bitmap? {
+        val key = "crop:$name:${together.joinToString("+")}@$size@$tint"
+        cache.get(key)?.let { return it }
+        val g = glyph(context, name) ?: return null
+        val window = RectF(); var first = true
+        for (n in together) {
+            val b = glyph(context, n)?.let { contentBounds(it) } ?: continue
+            if (first) { window.set(b); first = false } else window.union(b)
+        }
+        if (first) return null
+        val bmp = draw(g, size, tint, window, 0.04f)
+        cache.put(key, bmp)
+        return bmp
+    }
+
+    fun croppedIcon(context: Context, name: String, together: List<String> = listOf(name), size: Int = 128, tint: Int = Color.WHITE): Icon? =
+        cropped(context, name, together, size, tint)?.let { Icon.createWithBitmap(it) }
+
     /** A white, padded, square bitmap of the named icon, or null if there is no such asset. */
     fun bitmap(context: Context, name: String, size: Int = 96, tint: Int = Color.WHITE): Bitmap? {
         val key = "$name@$size@$tint"
         cache.get(key)?.let { return it }
         val g = glyph(context, name) ?: return null
+        val bmp = draw(g, size, tint, RectF(0f, 0f, g.w, g.h), 0.14f)
+        cache.put(key, bmp)
+        return bmp
+    }
+
+    /** Draws the part of the icon inside [window] into a square, padded by [padFraction], centred. */
+    private fun draw(g: Glyph, size: Int, tint: Int, window: RectF, padFraction: Float): Bitmap {
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
-        val pad = size * 0.14f
-        val s = (size - 2 * pad) / maxOf(g.w, g.h)
-        c.translate(pad + ((size - 2 * pad) - g.w * s) / 2f, pad + ((size - 2 * pad) - g.h * s) / 2f)
+        val pad = size * padFraction
+        val s = (size - 2 * pad) / maxOf(window.width(), window.height())
+        c.translate(pad + ((size - 2 * pad) - window.width() * s) / 2f, pad + ((size - 2 * pad) - window.height() * s) / 2f)
         c.scale(s, s)
+        c.translate(-window.left, -window.top)
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tint; style = Paint.Style.FILL }
         val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tint; style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
         for (p in g.fills) c.drawPath(p, fill)
         for ((p, w) in g.strokes) { stroke.strokeWidth = w; c.drawPath(p, stroke) }
-        cache.put(key, bmp)
         return bmp
     }
 
