@@ -7,6 +7,9 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -33,6 +36,12 @@ import com.microtag.rules.RuleEngine
 import com.microtag.shizuku.ShizukuBridge
 
 private enum class Screen { Onboarding, Dashboard, Inspect, Priority, Pin, Moments, Rules, Meds, Ai, Settings, Stats, Logs }
+
+/** Screens opened from a dashboard tile that grow out of it. Matches the keys on the tiles. */
+private fun containerKey(s: Screen): String? = when (s) {
+    Screen.Pin, Screen.Moments, Screen.Rules, Screen.Meds, Screen.Ai -> "screen-${s.name}"
+    else -> null
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -77,6 +86,8 @@ class MainActivity : ComponentActivity() {
                         enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
                     }
 
+                    SharedTransitionLayout {
+                    CompositionLocalProvider(LocalSharedScope provides this@SharedTransitionLayout) {
                     AnimatedContent(
                         targetState = screen,
                         transitionSpec = {
@@ -94,7 +105,13 @@ class MainActivity : ComponentActivity() {
                                 Screen.Moments -> TransformOrigin(0.50f, 0.995f)   // the Moments tile at the very foot
                                 else -> TransformOrigin.Center
                             }
-                            if (targetState == Screen.Dashboard) {
+                            // A tile and its screen share bounds: the geometry is done there, so only fade here.
+                            val container = setOf(Screen.Pin, Screen.Moments, Screen.Rules, Screen.Meds, Screen.Ai)
+                            if ((initialState == Screen.Dashboard && targetState in container) ||
+                                (targetState == Screen.Dashboard && initialState in container)
+                            ) {
+                                fadeIn(TagMotion.effects()) togetherWith fadeOut(TagMotion.fastEffects())
+                            } else if (targetState == Screen.Dashboard) {
                                 (fadeIn(TagMotion.effects()) + scaleIn(
                                     initialScale = 0.94f,
                                     animationSpec = TagMotion.spatial()
@@ -113,6 +130,8 @@ class MainActivity : ComponentActivity() {
                         },
                         label = "ScreenSwitch"
                     ) { s ->
+                        CompositionLocalProvider(LocalContentScope provides this@AnimatedContent) {
+                        Box(Modifier.fillMaxSize().containerBounds(containerKey(s), TagShapes.Big)) {
                         when (s) {
                             Screen.Onboarding -> OnboardingScreen(onFinish = {
                                 prefs.hasCompletedOnboarding = true
@@ -157,6 +176,10 @@ class MainActivity : ComponentActivity() {
                                 onReplayIntro = { screen = Screen.Onboarding }
                             )
                         }
+                        }
+                        }
+                    }
+                    }
                     }
                 }
             }

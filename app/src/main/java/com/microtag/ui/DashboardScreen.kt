@@ -448,11 +448,11 @@ fun DashboardScreen(
             // ---- Your own: Rules is the major feature, so it is the big tile. Pin and Meds stack beside it
             // in different shapes, AI runs the full width under them, Moments (once found) closes the column.
             val own = b3 + 2f
-            TileTone(0) { NavBigTile(Modifier.cell(0f, own, 2f, 2f), "Rules", "BUILD YOUR OWN", onOpenRules) }
-            TileTone(2) { PinTile(Modifier.cell(2f, own, 2f, 1f), onOpenPin) }
-            TileTone(1) { NavTile(Modifier.cell(2f, own + 1f, 2f, 1f), "Meds", "Reminders", onOpenMeds) }
-            TileTone(2) { NavTile(Modifier.cell(0f, own + 2f, 4f, 1f), "AI", "Helps write rules, shortens chips", onOpenAi, TagShapes.Rect) }
-            if (hasMoments) TileTone(1) { MomentsTile(Modifier.cell(0f, own + 3f, 4f, 1f), onOpenMoments) }
+            TileTone(0) { NavBigTile(Modifier.cell(0f, own, 2f, 2f).containerBounds("screen-Rules", TagShapes.Big), "Rules", "BUILD YOUR OWN", onOpenRules) }
+            TileTone(2) { PinTile(Modifier.cell(2f, own, 2f, 1f).containerBounds("screen-Pin", TagShapes.Rect), onOpenPin) }
+            TileTone(1) { NavTile(Modifier.cell(2f, own + 1f, 2f, 1f).containerBounds("screen-Meds", TagShapes.Pill), "Meds", "Reminders", onOpenMeds) }
+            TileTone(2) { NavTile(Modifier.cell(0f, own + 2f, 4f, 1f).containerBounds("screen-Ai", TagShapes.Rect), "AI", "Helps write rules, shortens chips", onOpenAi, TagShapes.Rect) }
+            if (hasMoments) TileTone(1) { MomentsTile(Modifier.cell(0f, own + 3f, 4f, 1f).containerBounds("screen-Moments", TagShapes.Pill), onOpenMoments) }
         }
         Spacer(Modifier.height(40.dp))
         }
