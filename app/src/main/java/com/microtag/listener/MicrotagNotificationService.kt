@@ -421,14 +421,16 @@ class MicrotagNotificationService : NotificationListenerService() {
             TileGate.ruleAllowed(applicationContext, prefs, settings, rule)
         }
         if (match != null) {
+            // Say which rule fired, so the log answers "why did this match".
+            val who = userMatch?.let { "your rule \"${it.rule.name}\"" } ?: "a built-in rule"
             val signature = "${match.pillText}|$title|$text|${match.iconName}"
             if (lastShown[sbn.key] == signature) {
-                logDecision(sbn, "RULE", Decision.UNCHANGED, "rule match, same as last shown",
+                logDecision(sbn, "RULE", Decision.UNCHANGED, "$who matched, same as last shown",
                     match.pillText, match.iconName)
                 return
             }
             if (throttled(sbn, match.tile)) {
-                logDecision(sbn, "RULE", Decision.UNCHANGED, "held back by refresh interval",
+                logDecision(sbn, "RULE", Decision.UNCHANGED, "$who matched, held back by refresh interval",
                     match.pillText, match.iconName)
                 return
             }
@@ -437,7 +439,7 @@ class MicrotagNotificationService : NotificationListenerService() {
             val isNew = countsAsNew(sbn.key, match.tile, match.timeoutSeconds, pillChanged)
             Log.d(TAG, "RULE   $pkg pill='${match.pillText}' icon=${match.iconName}")
             logDecision(sbn, "RULE", if (isNew) Decision.PROMOTED else Decision.UNCHANGED,
-                if (isNew) "custom rule matched" else "update to a live capsule",
+                if (isNew) "$who matched" else "$who matched, update to a live capsule",
                 match.pillText, match.iconName)
             lastShown[sbn.key] = signature
             lastShownAt[sbn.key] = System.currentTimeMillis()
