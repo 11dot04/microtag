@@ -101,7 +101,12 @@ class TagSettings(context: Context) {
         get() = sp.getBoolean("multicolour", false)
         set(v) = sp.edit { putBoolean("multicolour", v) }
 
-    /** Id of the chosen TagPalette ("lime", "atelier", "rouge", "vermilion", "sage"). */
+    /** Id of the chosen TypefacePack ("sans", "flex", "bodoni", ...). Empty until chosen: older installs inherit their old palette's face. */
+    var typeface: String
+        get() = sp.getString("typeface", "") ?: ""
+        set(v) = sp.edit { putString("typeface", v) }
+
+    /** Id of the chosen accent palette ("lime", "oldmoney", "nothing", "red", "material"). */
     var palette: String
         get() = sp.getString("palette", "lime") ?: "lime"
         set(v) = sp.edit { putString("palette", v) }
@@ -167,7 +172,12 @@ class TagSettings(context: Context) {
 fun TagColors.applySettings(context: Context, settings: TagSettings) {
     // Material You used to be a switch laid over any palette. It is a palette of its own now.
     if (settings.materialYou) { settings.palette = "material"; settings.materialYou = false }
+    // Accent, typeface and base used to be one choice. A retired palette hands its typeface over, then folds into
+    // the closest accent that remains, so nobody's headings or colours change under them.
+    if (settings.typeface.isEmpty()) settings.typeface = TypefacePacks.legacyFor(settings.palette)
+    TagPalettes.migrate(settings.palette).let { if (it != settings.palette) settings.palette = it }
     usePalette(context, settings.palette)
+    useTypeface(context, settings.typeface)
     useMulticolour(settings.multicolour)
     useAppearance(settings.appearance)
     useMicro(settings.micro)

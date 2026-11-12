@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -138,6 +139,23 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
     val order = remember(today) { rollingOrder(today) }
     val nowHour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
     var selected by remember { mutableStateOf(setOf(today)) }
+    var posterStyle by remember { mutableStateOf(StatsCard.Style.Index) }
+
+    // A screenshot of this screen is a hint that the person wants to share it: offer the poster instead (Android 14+).
+    var offerShare by remember { mutableStateOf(false) }
+    val activity = remember(context) {
+        var c = context
+        while (c is android.content.ContextWrapper && c !is android.app.Activity) c = c.baseContext
+        c as? android.app.Activity
+    }
+    if (android.os.Build.VERSION.SDK_INT >= 34) {
+        DisposableEffect(activity) {
+            val cb = android.app.Activity.ScreenCaptureCallback { offerShare = true }
+            runCatching { activity?.registerScreenCaptureCallback(androidx.core.content.ContextCompat.getMainExecutor(context), cb) }
+            onDispose { runCatching { activity?.unregisterScreenCaptureCallback(cb) } }
+        }
+    }
+    LaunchedEffect(offerShare) { if (offerShare) { kotlinx.coroutines.delay(7000); offerShare = false } }
     var apps by remember { mutableStateOf(emptySet<String>()) }
 
     val byApp = remember(apps) { data.sessions.filter { apps.isEmpty() || it.pkg in apps } }
@@ -169,12 +187,13 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
     val meta by rememberAppMeta(allPkgs)
     val topApps = remember { data.sessions.groupingBy { it.pkg }.eachCount().toList().sortedByDescending { it.second }.take(8) }
 
+    Box(Modifier.fillMaxSize()) {
     SubScreen(
         onBack = onBack,
         action = {
             FloatingButton(filled = false, onClick = {
                 val days = selected.sorted().joinToString(" ") { DayLabels[it] }
-                scope.launch { StatsCard.share(context, days, total, values, peakHour, sourcesOf(context, scoped)) }
+                scope.launch { StatsCard.share(context, days, total, values, peakHour, sourcesOf(context, scoped), posterStyle) }
             }) { tint -> TagIcon(R.drawable.ic_share, tint, size = 26.dp) }
         }
     ) {
@@ -274,7 +293,40 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
 
         ByType(scoped)
         Sources(sourcesOf(context, scoped))
+        // The look of the shared poster. The share button in the corner uses the one picked here.
+        SectionLabel("SHARE AS")
+        FormWrap {
+            StatsCard.Style.entries.forEach { st -> FormChoice(st.label, posterStyle == st, { posterStyle = st }) }
+        }
         Spacer(Modifier.height(110.dp))
+    }
+    androidx.compose.animation.AnimatedVisibility(
+        visible = offerShare,
+        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp, start = 20.dp, end = 20.dp),
+        enter = androidx.compose.animation.slideInVertically(TagMotion.spatial()) { it } + androidx.compose.animation.fadeIn(TagMotion.effects()),
+        exit = androidx.compose.animation.slideOutVertically(TagMotion.fastEffects()) { it } + androidx.compose.animation.fadeOut(TagMotion.fastEffects())
+    ) {
+        Row(
+            Modifier.clip(CircleShape).background(TagColors.Lime).padding(start = 22.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Screenshot taken. Share it as a poster?",
+                Modifier.weight(1f, fill = false),
+                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = TagColors.OnLime)
+            )
+            Spacer(Modifier.width(12.dp))
+            Box(
+                Modifier.clip(CircleShape).background(TagColors.OnLime).clickable {
+                    offerShare = false
+                    val days = selected.sorted().joinToString(" ") { DayLabels[it] }
+                    scope.launch { StatsCard.share(context, days, total, values, peakHour, sourcesOf(context, scoped), posterStyle) }
+                }.padding(horizontal = 16.dp, vertical = 9.dp)
+            ) {
+                Text("SHARE", style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.sp, color = TagColors.Lime))
+            }
+        }
+    }
     }
 }
 

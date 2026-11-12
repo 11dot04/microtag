@@ -44,7 +44,10 @@ import androidx.compose.ui.unit.sp
 fun FormTitle(text: String) {
     FitText(
         AnnotatedString(text),
-        TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 56.sp, lineHeight = 60.sp, letterSpacing = (-1.5).sp, color = TagColors.White),
+        TextStyle(
+            fontFamily = TagFonts.display, fontWeight = FontWeight.Black, fontSize = 56.sp, lineHeight = 60.sp,
+            letterSpacing = (-1.5).sp, color = TagColors.White, fontSynthesis = TagFonts.NoSynthesis
+        ),
         Modifier.fillMaxWidth()
     )
 }

@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -99,7 +100,8 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
     val settings = remember { TagSettings(context) }
     val perms = rememberPermissions()
 
-    var palette by remember { mutableStateOf(settings.palette) }
+    var palette by remember { mutableStateOf(TagPalettes.migrate(settings.palette)) }
+    var typeface by remember { mutableStateOf(settings.typeface.ifEmpty { TypefacePacks.legacyFor(settings.palette) }) }
     var micro by remember { mutableStateOf(settings.micro) }
     var amoled by remember { mutableStateOf(settings.amoled) }
     var multicolour by remember { mutableStateOf(settings.multicolour) }
@@ -181,6 +183,11 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
             palette = p.id
             settings.palette = p.id
             TagColors.usePalette(context, p.id)
+        }
+        TypefacePicker(selected = typeface) { pack ->
+            typeface = pack.id
+            settings.typeface = pack.id
+            TagColors.useTypeface(context, pack.id)
         }
         Block(
             "Look and feel",
@@ -298,6 +305,43 @@ private fun SettingRow(item: Item, corners: List<Dp>) {
     }
 }
 
+/** The typeface packs as a row of cards, each showing "Aa" in its own display face. Independent of the palette. */
+@Composable
+private fun TypefacePicker(selected: String, onPick: (TypefacePack) -> Unit) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    TagSectionLabel("Typeface", Modifier.padding(start = 4.dp, top = 8.dp))
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        TypefacePacks.All.forEach { pack ->
+            val on = pack.id == selected
+            val family = remember(pack.id) { TagFonts.displayPreview(context, pack) }
+            val shape = RoundedCornerShape(22.dp)
+            Column(
+                Modifier
+                    .width(112.dp).height(96.dp)
+                    .clip(shape)
+                    .background(TagColors.Surface)
+                    .border(if (on) 3.dp else 0.dp, if (on) TagColors.Lime else Color.Transparent, shape)
+                    .clickable { view.tick(Tick.On); onPick(pack) }
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Aa", maxLines = 1, softWrap = false,
+                    style = TextStyle(fontFamily = family, fontWeight = FontWeight.Black, fontSize = 34.sp, color = TagColors.White, fontSynthesis = TagFonts.NoSynthesis)
+                )
+                Text(
+                    pack.name, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TagColors.Outline)
+                )
+            }
+        }
+    }
+}
+
 /**
  * The palettes in a Material 3 multi-browse carousel: one big card, a medium one and a sliver
  * that squeezes in from the edge as you scroll. Each card is a strip of the palette's colours
@@ -319,7 +363,7 @@ private fun PalettePicker(selected: String, onPick: (TagPalette) -> Unit) {
     ) { i ->
         val p = TagColors.preview(TagPalettes.All[i])
         val on = p.id == selected
-        val display = remember(p.id) { p.display?.let { TagFonts.family(context, it) } ?: Montserrat }
+        val display = TagFonts.display
         val corner = RoundedCornerShape(28.dp)
         Box(
             Modifier

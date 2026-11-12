@@ -300,7 +300,6 @@ fun DashboardScreen(
 
       // No header band. As the poster docks, the content itself fades out under the status bar and the
       // numeral, so there is no solid strip and no edge where the header ends and the tiles begin.
-      val fadePx = with(density) { 72.dp.toPx() }
       Column(
           Modifier
               .fillMaxSize()
@@ -309,13 +308,13 @@ fun DashboardScreen(
                   drawContent()
                   val p = (scroll.value / collapse).coerceIn(0f, 1f)
                   if (p > 0f) {
-                      val end = dockBarPx + fadePx
-                      val hidden = Color.Black.copy(alpha = 1f - p)
+                      // A hard clip at the docked numeral: a gradient here let the black behind show through the
+                      // tiles' own colour and turned the lime ones olive. Content above the line fades out with
+                      // the dock progress and is cut cleanly at the line.
                       drawRect(
-                          Brush.verticalGradient(
-                              colorStops = arrayOf(0f to hidden, (dockBarPx * 0.8f / end) to hidden, 1f to Color.Black),
-                              startY = 0f, endY = end
-                          ),
+                          Color.Black.copy(alpha = 1f - p),
+                          topLeft = Offset.Zero,
+                          size = androidx.compose.ui.geometry.Size(size.width, dockBarPx),
                           blendMode = BlendMode.DstIn
                       )
                   }
@@ -448,11 +447,16 @@ fun DashboardScreen(
             // ---- Your own: Rules is the major feature, so it is the big tile. Pin and Meds stack beside it
             // in different shapes, AI runs the full width under them, Moments (once found) closes the column.
             val own = b3 + 2f
-            TileTone(0) { NavBigTile(Modifier.cell(0f, own, 2f, 2f).containerBounds("screen-Rules", TagShapes.Big), "Rules", "BUILD YOUR OWN", onOpenRules) }
-            TileTone(2) { PinTile(Modifier.cell(2f, own, 2f, 1f).containerBounds("screen-Pin", TagShapes.Rect), onOpenPin) }
+            TileTone(0) { NavBigTile(Modifier.cell(0f, own, 2f, 2f).containerBounds("screen-Rules", TagShapes.Big), "Rules", "Build your own", onOpenRules) }
+            TileTone(2) { NavTile(Modifier.cell(2f, own, 2f, 1f).containerBounds("screen-Ai", TagShapes.Rect), "AI", "Writes your rules", onOpenAi, TagShapes.Rect) }
             TileTone(1) { NavTile(Modifier.cell(2f, own + 1f, 2f, 1f).containerBounds("screen-Meds", TagShapes.Pill), "Meds", "Reminders", onOpenMeds) }
-            TileTone(2) { NavTile(Modifier.cell(0f, own + 2f, 4f, 1f).containerBounds("screen-Ai", TagShapes.Rect), "AI", "Helps write rules, shortens chips", onOpenAi, TagShapes.Rect) }
-            if (hasMoments) TileTone(1) { MomentsTile(Modifier.cell(0f, own + 3f, 4f, 1f).containerBounds("screen-Moments", TagShapes.Pill), onOpenMoments) }
+            // Pin runs the full width. Once Moments has something to show, Pin narrows to 3 wide and Moments
+            // takes the last square, so the row morphs instead of jumping.
+            val momentsP by animateFloatAsState(if (hasMoments) 1f else 0f, TagMotion.spatial(), label = "momentsIn")
+            TileTone(2) { PinTile(Modifier.cell(0f, own + 2f, 4f - momentsP, 1f).containerBounds("screen-Pin", TagShapes.Rect), onOpenPin) }
+            if (momentsP > 0.01f) TileTone(1) {
+                MomentsTile(Modifier.cell(4f - momentsP, own + 2f, momentsP, 1f).containerBounds("screen-Moments", TagShapes.Pill), onOpenMoments)
+            }
         }
         Spacer(Modifier.height(40.dp))
         }
@@ -568,12 +572,9 @@ private fun MicroTile(
 /** Opens the Moments screen. Only drawn once something has been found. */
 @Composable
 private fun MomentsTile(modifier: Modifier, onClick: () -> Unit) {
+    // A single square: just the mark. The name is on the screen it opens.
     TagTile(modifier, TagShapes.Pill, TileState.Static, onClick) { fg ->
-        Row(Modifier.fillMaxSize().padding(start = 16.dp, end = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            TagIcon(R.drawable.ic_capsule_bolt, fg, size = 28.dp)
-            Spacer(Modifier.width(10.dp))
-            TagLabel("Moments", "Found along the way", fg, Modifier.weight(1f))
-        }
+        TagIcon(R.drawable.ic_capsule_bolt, fg, Modifier.align(Alignment.Center), 30.dp)
     }
 }
 
@@ -606,17 +607,18 @@ private fun PinTile(modifier: Modifier, onClick: () -> Unit) {
 @Composable
 private fun NavBigTile(modifier: Modifier, title: String, caption: String, onClick: () -> Unit) {
     TagTile(modifier, TagShapes.Big, TileState.Static, onClick) { fg ->
-        Text(
-            caption,
-            Modifier.align(Alignment.TopStart).padding(start = 20.dp, top = 22.dp),
-            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 11.sp, letterSpacing = 1.2.sp, color = fg)
-        )
         TagIcon(R.drawable.ic_chevron_right, fg, Modifier.align(Alignment.TopEnd).padding(18.dp), 26.dp)
-        FitText(
-            AnnotatedString(title),
-            TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 34.sp, letterSpacing = (-1).sp, color = fg),
-            Modifier.align(Alignment.BottomStart).padding(start = 20.dp, end = 16.dp, bottom = 18.dp)
-        )
+        // Name and its one line together at the bottom left, the line directly under the name.
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 22.dp, end = 16.dp, bottom = 20.dp)) {
+            Text(
+                title,
+                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 28.sp, letterSpacing = (-0.5).sp, color = fg)
+            )
+            Text(
+                caption,
+                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 18.sp, color = fg)
+            )
+        }
     }
 }
 

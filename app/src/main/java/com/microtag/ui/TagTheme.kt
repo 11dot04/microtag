@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
@@ -176,14 +177,7 @@ data class TagPalette(
     val secondary: Color? = null,
     val tertiary: Color? = null,
     /** Extra colours for moments that want more than three (the onboarding pile, previews). */
-    val extras: List<Color> = emptyList(),
-    /** Optional font roles, as res/font base names (see TagFonts). Null keeps Montserrat. */
-    val display: String? = null,
-    val mono: String? = null,
-    /** Optional body/label face (Montserrat everywhere else). The Material palette uses Google Sans Flex. */
-    val body: String? = null,
-    /** Axis settings when the faces above are one variable font file (see [FlexTuning]). */
-    val flex: FlexTuning? = null
+    val extras: List<Color> = emptyList()
 ) {
     val isLight: Boolean get() = base.luminance() > 0.5f
 
@@ -202,124 +196,95 @@ object TagPalettes {
         paper = Color(0xFFF6F6F6), paperInk = Color(0xFF000000)
     )
 
-    /** Cream paper, deep teal, a serif display face. Light. */
-    val Atelier = TagPalette(
-        id = "atelier", name = "Atelier",
-        base = Color(0xFFF2EDE2), ink = Color(0xFF14201F),
-        accent = Color(0xFF0E4A4B), onAccent = Color(0xFFF2EDE2),
-        surface = Color(0xFFE8E1D2), pausedPoster = Color(0xFFDCD4C2),
-        outline = Color(0xFF7C8D89), dim = Color(0xFF7A8683),
-        paper = Color(0xFFF2EDE2), paperInk = Color(0xFF0E4A4B),
-        secondary = Color(0xFFB8862B), tertiary = Color(0xFFB5543C),
-        display = "bodoni_moda", mono = "dm_mono"
+    /** Racing green, cream, brass, with burgundy and tweed blue behind. Dark; Light turns it into cream and green. */
+    val OldMoney = TagPalette(
+        id = "oldmoney", name = "Old money",
+        base = Color(0xFF0E1A14), ink = Color(0xFFEDE6D3),
+        accent = Color(0xFFC9A24B), onAccent = Color(0xFF0E1A14),
+        surface = Color(0xFF16251D), pausedPoster = Color(0xFF1B2D23),
+        outline = Color(0xFFA7A58F), dim = Color(0xFF6E7466),
+        signal = Color(0xFFD9825B),
+        paper = Color(0xFFEDE6D3), paperInk = Color(0xFF0E1A14),
+        secondary = Color(0xFF8C2F39), tertiary = Color(0xFF3E5C7A),
+        extras = listOf(Color(0xFF8C2F39), Color(0xFF3E5C7A), Color(0xFF2F4B3C), Color(0xFFEDE6D3))
     )
 
-    /** Near-black with a bright rouge and champagne. Dark. */
-    val Rouge = TagPalette(
-        id = "rouge", name = "Rouge",
-        base = Color(0xFF15100F), ink = Color(0xFFEADFC6),
-        accent = Color(0xFFD2455C), onAccent = Color(0xFF15100F),
-        surface = Color(0xFF211A19), pausedPoster = Color(0xFF241C1B),
-        outline = Color(0xFFB7AA90), dim = Color(0xFF7A6F60),
-        paper = Color(0xFFEADFC6), paperInk = Color(0xFF15100F),
-        secondary = Color(0xFFE3B15C), tertiary = Color(0xFFB5607F),
-        display = "gfs_didot", mono = "dm_mono"
+    /** Strictly monochrome, in the spirit of Nothing's dot-matrix look. The one colour is the red kept for warnings. Dark; Light inverts it. */
+    val Nothing = TagPalette(
+        id = "nothing", name = "Nothing",
+        base = Color(0xFF000000), ink = Color(0xFFFFFFFF),
+        accent = Color(0xFFF2F2F2), onAccent = Color(0xFF000000),
+        surface = Color(0xFF111111), pausedPoster = Color(0xFF161616),
+        outline = Color(0xFF9A9A9A), dim = Color(0xFF666666),
+        signal = Color(0xFFD71921),
+        paper = Color(0xFFF2F2F2), paperInk = Color(0xFF000000),
+        secondary = Color(0xFF8A8A8A), tertiary = Color(0xFF4A4A4A)
     )
 
-    /** Bone paper, black ink, one loud vermilion. Light. */
-    val Vermilion = TagPalette(
-        id = "vermilion", name = "Vermilion",
-        base = Color(0xFFECE8E1), ink = Color(0xFF121212),
-        accent = Color(0xFFE3492B), onAccent = Color(0xFF121212),
-        accentText = Color(0xFFB8310F),
-        surface = Color(0xFFE2DDD4), pausedPoster = Color(0xFFD8D2C7),
-        outline = Color(0xFF8B867D), dim = Color(0xFF858078),
-        paper = Color(0xFFECE8E1), paperInk = Color(0xFF121212),
-        secondary = Color(0xFF1F5A6B), tertiary = Color(0xFFE6B22E)
-    )
-
-    /** Espresso with soft sage. Dark. */
-    val Sage = TagPalette(
-        id = "sage", name = "Sage",
-        base = Color(0xFF2A211C), ink = Color(0xFFF1EBDD),
-        accent = Color(0xFFA9B6A1), onAccent = Color(0xFF2A211C),
-        surface = Color(0xFF342A24), pausedPoster = Color(0xFF392E27),
-        outline = Color(0xFFB9B2A2), dim = Color(0xFF85796D),
-        paper = Color(0xFFF1EBDD), paperInk = Color(0xFF2A211C),
-        secondary = Color(0xFFD49A7C), tertiary = Color(0xFFC9C48A)
-    )
-
-    /** Warm black, orange-red, cyan and yellow: a bold split-complementary set. Dark. */
-    val Signal = TagPalette(
-        id = "signal", name = "Signal",
-        base = Color(0xFF1A1717), ink = Color(0xFFF6E6D8),
-        accent = Color(0xFFF04A00), onAccent = Color(0xFF1A1717),
-        surface = Color(0xFF262222), pausedPoster = Color(0xFF2A2525),
-        outline = Color(0xFFBDB1A2), dim = Color(0xFF7C7166),
+    /** One loud red on warm black. Amber carries warnings so red can stay the accent. */
+    val Red = TagPalette(
+        id = "red", name = "Red",
+        base = Color(0xFF120A0A), ink = Color(0xFFF6EDEB),
+        accent = Color(0xFFFF3B30), onAccent = Color(0xFF120A0A),
+        surface = Color(0xFF1C1212), pausedPoster = Color(0xFF211515),
+        outline = Color(0xFFBFA9A5), dim = Color(0xFF7D6A67),
         signal = Color(0xFFF2B227),
-        paper = Color(0xFFF6E6D8), paperInk = Color(0xFF1A1717),
-        secondary = Color(0xFF08A4C4), tertiary = Color(0xFFF2B227),
-        extras = listOf(Color(0xFF08A4C4), Color(0xFFF2B227), Color(0xFFF6E6D8))
-    )
-
-    /** Forest, rose, mustard and powder blue. Dark. */
-    val Maison = TagPalette(
-        id = "maison", name = "Maison",
-        base = Color(0xFF14201F), ink = Color(0xFFF5E9E4),
-        accent = Color(0xFFE8828A), onAccent = Color(0xFF14201F),
-        surface = Color(0xFF1D2E2C), pausedPoster = Color(0xFF223634),
-        outline = Color(0xFF8FA5A1), dim = Color(0xFF6B7F7B),
-        signal = Color(0xFFF2C14E),
-        paper = Color(0xFFFDD2DA), paperInk = Color(0xFF14201F),
-        secondary = Color(0xFFDDA83E), tertiary = Color(0xFFCEDDE8),
-        extras = listOf(Color(0xFF2D4A47), Color(0xFFDDA83E), Color(0xFF8B3A3F), Color(0xFFCEDDE8)),
-        display = "playfair_display", mono = "dm_mono"
-    )
-
-    /** Analogous: every colour sits in the green-to-yellow arc. A warm coral is the only outsider, for warnings. Dark. */
-    val Verdant = TagPalette(
-        id = "verdant", name = "Verdant",
-        base = Color(0xFF0D1A14), ink = Color(0xFFE4F2E0),
-        accent = Color(0xFFA8E05F), onAccent = Color(0xFF0D1A14),
-        surface = Color(0xFF14261D), pausedPoster = Color(0xFF173024),
-        outline = Color(0xFF7FA38B), dim = Color(0xFF5E7C68),
-        signal = Color(0xFFFF7A59),
-        paper = Color(0xFFE4F2E0), paperInk = Color(0xFF0D1A14),
-        secondary = Color(0xFF4FD1A5), tertiary = Color(0xFFE5F28A),
-        extras = listOf(Color(0xFF4FD1A5), Color(0xFFE5F28A), Color(0xFF2E7D5B))
-    )
-
-    /** Analogous: violet through orchid to blue, on a lilac-tinted white. Light. */
-    val Dusk = TagPalette(
-        id = "dusk", name = "Dusk",
-        base = Color(0xFFF4F0FA), ink = Color(0xFF231A3A),
-        accent = Color(0xFF5B3FD0), onAccent = Color(0xFFF4F0FA),
-        surface = Color(0xFFEAE4F5), pausedPoster = Color(0xFFDDD5EE),
-        outline = Color(0xFF8A7FA8), dim = Color(0xFF8A82A0),
-        signal = Color(0xFFD9480F),
-        paper = Color(0xFFF4F0FA), paperInk = Color(0xFF231A3A),
-        secondary = Color(0xFFC44FB8), tertiary = Color(0xFF3F6BD1),
-        extras = listOf(Color(0xFFF0A6E0), Color(0xFFA9C1FF), Color(0xFFD9CCFF)),
-        display = "instrument_serif"
+        paper = Color(0xFFF6EDEB), paperInk = Color(0xFF120A0A),
+        secondary = Color(0xFFB3261E), tertiary = Color(0xFFFFB4A8)
     )
 
     /**
      * Material 3 in its own right: on Android 12+ the colours come from the system's dynamic scheme (wallpaper
-     * tones), light or dark with the phone; elsewhere the baseline purple. Set in Google Sans Flex.
+     * tones), light or dark with the phone; elsewhere the baseline purple. Pairs well with the Google Sans Flex typeface.
      * The values here are the baseline dark scheme; TagColors swaps in the real ones (see materialPalettes).
      */
     val Material = TagPalette(
-        id = "material", name = "Material",
+        id = "material", name = "Material You",
         base = Color(0xFF1C1B1F), ink = Color(0xFFE6E1E5),
         accent = Color(0xFFD0BCFF), onAccent = Color(0xFF381E72),
         surface = Color(0xFF2B2930), pausedPoster = Color(0xFF322F37),
         outline = Color(0xFF938F99), dim = Color(0xFF7D7983),
         signal = Color(0xFFF2B8B5),
         paper = Color(0xFFE6E1E5), paperInk = Color(0xFF1C1B1F),
-        secondary = Color(0xFFCCC2DC), tertiary = Color(0xFFEFB8C8),
+        secondary = Color(0xFFCCC2DC), tertiary = Color(0xFFEFB8C8)
+    )
+
+    val All = listOf(Lime, OldMoney, Nothing, Red, Material)
+
+    /** Palettes from before accent, typeface and base were split; each folds into the closest one that remains. */
+    private val legacy = mapOf(
+        "atelier" to "oldmoney", "rouge" to "oldmoney", "maison" to "oldmoney", "sage" to "oldmoney",
+        "signal" to "red", "vermilion" to "red", "verdant" to "lime", "dusk" to "material"
+    )
+
+    fun migrate(id: String?): String = legacy[id] ?: id ?: "lime"
+    fun byId(id: String?): TagPalette = migrate(id).let { m -> All.firstOrNull { it.id == m } ?: Lime }
+}
+
+// ==========================================================
+// TYPEFACE PACKS
+// Display, body and mono faces chosen as one set, independent of the accent colours and of the base.
+// Names are res/font bases (see TagFonts); a missing file falls back to Montserrat, so a pack never breaks.
+// ==========================================================
+
+data class TypefacePack(
+    val id: String,
+    val name: String,
+    val display: String? = null,
+    val body: String? = null,
+    val mono: String? = null,
+    /** Axis settings when the faces above are one variable font file (see [FlexTuning]). */
+    val flex: FlexTuning? = null
+)
+
+object TypefacePacks {
+    /** Montserrat everywhere: the original. */
+    val Sans = TypefacePack("sans", "Montserrat")
+
+    /** Google Sans Flex, drawn with soft terminals; wider and rounder for headings, narrower for the small caps. */
+    val Flex = TypefacePack(
+        "flex", "Google Sans Flex",
         display = "google_sans_flex", body = "google_sans_flex", mono = "google_sans_flex",
-        // Google Sans Flex has five axes here (weight comes from each text style): soft terminals everywhere, a wider
-        // and fully round face for headings, a narrower one for the small caps labels.
         flex = FlexTuning(
             body = FlexAxes(width = 100f, roundness = 60f, opsz = 16f),
             display = FlexAxes(width = 110f, roundness = 100f, opsz = 72f),
@@ -327,8 +292,26 @@ object TagPalettes {
         )
     )
 
-    val All = listOf(Lime, Material, Atelier, Signal, Maison, Rouge, Verdant, Vermilion, Dusk, Sage)
-    fun byId(id: String?): TagPalette = All.firstOrNull { it.id == id } ?: Lime
+    val Bodoni = TypefacePack("bodoni", "Bodoni Moda", display = "bodoni_moda")
+    val Didot = TypefacePack("didot", "GFS Didot", display = "gfs_didot")
+    val Playfair = TypefacePack("playfair", "Playfair", display = "playfair_display")
+    val Instrument = TypefacePack("instrument", "Instrument Serif", display = "instrument_serif")
+
+    /** The blocky pixel face of the main screen's numeral, for headings. Pairs with the Nothing accent. */
+    val Dot = TypefacePack("dot", "Dot", display = "style")
+
+    val All = listOf(Sans, Flex, Bodoni, Didot, Playfair, Instrument, Dot)
+    fun byId(id: String?): TypefacePack = All.firstOrNull { it.id == id } ?: Sans
+
+    /** The face a retired palette used to carry, so nobody's headings change under them. */
+    fun legacyFor(oldPaletteId: String?): String = when (oldPaletteId) {
+        "atelier" -> "bodoni"
+        "rouge" -> "didot"
+        "maison" -> "playfair"
+        "dusk" -> "instrument"
+        "material" -> "flex"
+        else -> "sans"
+    }
 }
 
 /** How a palette's own light or dark nature is treated. */
@@ -456,6 +439,7 @@ object TagColors {
     private var _materialLight by mutableStateOf(baselineLight(TagPalettes.Material))
     private var _materialDark by mutableStateOf(TagPalettes.Material)
     private var _multicolourOn by mutableStateOf(false)
+    private var _pack by mutableStateOf(TypefacePacks.Sans)
 
     private fun resolve(p: TagPalette, a: Appearance, sysDark: Boolean): TagPalette {
         val base = if (p.id == "material") {
@@ -544,11 +528,12 @@ object TagColors {
     val Extras: List<Color> get() = palette.supporting
     val Name: String get() = palette.name
     /** Axis settings of the active palette's variable font, if it has one. */
-    val Flex: FlexTuning? get() = palette.flex
-    /** res/font base names of this palette's display, body and mono faces, or null for Montserrat. */
-    val BodyBase: String? get() = palette.body
-    val DisplayBase: String? get() = palette.display
-    val MonoBase: String? get() = palette.mono
+    val Flex: FlexTuning? get() = _pack.flex
+    /** res/font base names of the chosen typeface pack's display, body and mono faces, or null for Montserrat. */
+    val BodyBase: String? get() = _pack.body
+    val DisplayBase: String? get() = _pack.display
+    val MonoBase: String? get() = _pack.mono
+    val TypefaceId: String get() = _pack.id
     val Paper: Color get() = palette.paper
     val PaperInk: Color get() = palette.paperInk
     val IsLight: Boolean get() = palette.isLight
@@ -561,7 +546,12 @@ object TagColors {
             _materialDark = dark
         }
         _basePalette = TagPalettes.byId(id)
-        TagFonts.apply(context, _basePalette)
+    }
+
+    /** The typeface pack: display, body and mono faces, independent of the accent. */
+    fun useTypeface(context: Context, id: String) {
+        _pack = TypefacePacks.byId(id)
+        TagFonts.apply(context, _pack)
     }
 
     /** Original, Light, Dark or System (see [Appearance]). */
@@ -641,7 +631,7 @@ object TagFonts {
     /** Single-weight faces must not be faux-bolded. Use this on any style that uses [display]. */
     val NoSynthesis = FontSynthesis.None
 
-    fun apply(context: Context, p: TagPalette) {
+    fun apply(context: Context, p: TypefacePack) {
         val flex = p.flex
         // One variable file drawn with role-specific axes when the palette has a tuning; plain static files otherwise.
         fun face(base: String?, axes: FlexAxes?): ComposeFontFamily? = base?.let { b ->
@@ -653,6 +643,13 @@ object TagFonts {
         _monoFamily = customMono ?: _bodyFamily
         // Timestamps and log lines want a real monospace unless the palette brings a mono face of its own.
         _dataFamily = if (flex != null) FontFamily.Monospace else (customMono ?: FontFamily.Monospace)
+    }
+
+    /** The display face of a pack, for previews (the typeface picker). */
+    fun displayPreview(context: Context, p: TypefacePack): ComposeFontFamily {
+        val base = p.display ?: return MontserratBase
+        val axes = p.flex?.display
+        return (if (axes != null) variableFamily(context, base, axes) else null) ?: family(context, base) ?: MontserratBase
     }
 
     /** One variable font file as a family of weights, with the axes set for a role. */
@@ -900,38 +897,75 @@ fun TagGrid(
 }
 
 /**
- * A border that wraps a block of tiles and sits in the gutter, so the tiles stay on the grid.
- * The line is drawn behind its children so the label's black plate cuts the line cleanly.
+ * Print marks that wrap a block of tiles and sit in the gutter, so the tiles stay on the grid: crop marks, a dotted
+ * bleed line and registration targets. The marks are drawn behind the children so the label's plate cuts the line cleanly.
  */
 @Composable
 fun TagFrame(label: String, color: Color, modifier: Modifier = Modifier, labelBias: Float = 0f) {
+    // Print marks instead of an outline: crop marks at the four corners, a dotted bleed line along the top that the
+    // label interrupts, short ticks at the middle of the other three sides, and registration targets either side of the label.
     Box(
         modifier.drawBehind {
-            val w = 2.dp.toPx()
-            drawRoundRect(
-                color = color,
-                topLeft = Offset(w / 2, w / 2),
-                size = Size(size.width - w, size.height - w),
-                cornerRadius = CornerRadius(28.dp.toPx()),  // tile radius 22 + 6 outset = concentric
-                style = Stroke(w)
+            val w = 1.5.dp.toPx()
+            val arm = 18.dp.toPx()
+            val inset = 1.dp.toPx()
+            val c = color
+            fun crop(x: Float, y: Float, dx: Float, dy: Float) {
+                drawLine(c, Offset(x, y), Offset(x + dx * arm, y), w)
+                drawLine(c, Offset(x, y), Offset(x, y + dy * arm), w)
+            }
+            crop(inset, inset, 1f, 1f)
+            crop(size.width - inset, inset, -1f, 1f)
+            crop(inset, size.height - inset, 1f, -1f)
+            crop(size.width - inset, size.height - inset, -1f, -1f)
+            // The bleed line, dotted, between the top crop marks.
+            drawLine(
+                c.copy(alpha = 0.7f), Offset(inset + arm + 6.dp.toPx(), inset), Offset(size.width - inset - arm - 6.dp.toPx(), inset), w,
+                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 5.dp.toPx()), 0f)
             )
+            // Mid-side ticks.
+            val t = 6.dp.toPx()
+            drawLine(c, Offset(inset, size.height / 2 - t), Offset(inset, size.height / 2 + t), w)
+            drawLine(c, Offset(size.width - inset, size.height / 2 - t), Offset(size.width - inset, size.height / 2 + t), w)
+            drawLine(c, Offset(size.width / 2 - t, size.height - inset), Offset(size.width / 2 + t, size.height - inset), w)
         }
     ) {
-        Text(
-            text = label,
+        Row(
             modifier = Modifier
                 .align(BiasAlignment(labelBias, -1f))
                 .offset(y = (-9).dp)
                 .background(TagColors.Black)
-                .padding(horizontal = 10.dp),
-            style = TextStyle(
-                fontFamily = TagFonts.mono,
-                fontWeight = FontWeight.Medium,
-                fontSize = 13.sp,
-                lineHeight = 16.sp,
-                color = color
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RegistrationMark(color)
+            Text(
+                text = label.uppercase(),
+                modifier = Modifier.padding(horizontal = 8.dp),
+                style = TextStyle(
+                    fontFamily = TagFonts.mono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    letterSpacing = 1.4.sp,
+                    // The frame's own colour is in the marks; the word is in the ink so it reads on any tone.
+                    color = TagColors.White
+                )
             )
-        )
+            RegistrationMark(color)
+        }
+    }
+}
+
+/** A print registration target: a ring with a cross through it. */
+@Composable
+fun RegistrationMark(color: Color, size: Dp = 12.dp) {
+    androidx.compose.foundation.Canvas(Modifier.size(size)) {
+        val w = 1.5.dp.toPx()
+        val r = this.size.minDimension / 2f
+        drawCircle(color, radius = r * 0.62f, style = Stroke(w))
+        drawLine(color, Offset(0f, r), Offset(this.size.width, r), w)
+        drawLine(color, Offset(r, 0f), Offset(r, this.size.height), w)
     }
 }
 
