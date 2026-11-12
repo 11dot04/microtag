@@ -18,7 +18,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.RoundedPolygon
-import androidx.graphics.shapes.normalized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -49,7 +48,11 @@ class MorphedShape(private val morph: Morph, private val progress: Float) : Shap
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 class ShapeEgg(private val enabled: Boolean, private val scope: CoroutineScope) {
-    private val shapes: List<RoundedPolygon> = listOf(MaterialShapes.Circle, MaterialShapes.Cookie9Sided, MaterialShapes.Gem).map { it.normalized() }
+    private val shapes: List<RoundedPolygon> = listOf(
+        MaterialShapes.Circle,
+        MaterialShapes.Cookie9Sided,
+        MaterialShapes.Gem
+    )
     private val morphs = HashMap<Pair<Int, Int>, Morph>()
     private var from by mutableIntStateOf(0)
     private var to by mutableIntStateOf(0)
