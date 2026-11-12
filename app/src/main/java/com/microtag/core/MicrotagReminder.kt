@@ -377,11 +377,14 @@ object MicrotagReminder {
             // The icons sit on the notification background, so they are drawn dark in light mode and light in dark mode.
             val night = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
             val tint = if (night) android.graphics.Color.WHITE else android.graphics.Color.BLACK
-            com.microtag.rules.SvgIcons.icon(context, "tag_progress", 96, tint)?.let { ic ->
+            // The two files are named the other way round from what they hold: tag_end.svg is the half that rides the bar
+            // and tag_progress.svg the half that waits at the end. Cropped together so each keeps its size and place in the mark.
+            val halves = listOf("tag_end", "tag_progress")
+            com.microtag.rules.SvgIcons.croppedIcon(context, "tag_end", halves, 128, tint)?.let { ic ->
                 runCatching { styleCls.getMethod("setProgressTrackerIcon", android.graphics.drawable.Icon::class.java).invoke(style, ic) }
                     .onFailure { Log.w(TAG, "tracker icon not set: ${it.message}") }
             }
-            com.microtag.rules.SvgIcons.icon(context, "tag_end", 96, tint)?.let { ic ->
+            com.microtag.rules.SvgIcons.croppedIcon(context, "tag_progress", halves, 128, tint)?.let { ic ->
                 runCatching { styleCls.getMethod("setProgressEndIcon", android.graphics.drawable.Icon::class.java).invoke(style, ic) }
                     .onFailure { Log.w(TAG, "end icon not set: ${it.message}") }
             }
