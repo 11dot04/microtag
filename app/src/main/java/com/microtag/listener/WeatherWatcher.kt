@@ -12,8 +12,9 @@ import com.microtag.weather.WeatherEngine
 import com.microtag.weather.WeatherFormat
 
 /**
- * Posts the weather chip from the API on the dashboard's interval. While it has a recent answer it owns the weather
- * tile, so the system weather app's own notification is not turned into a second chip.
+ * Posts the weather chip from the API on the dashboard's interval. The chip stays up for a while, then goes away and
+ * comes back when the interval next lapses; it is not a permanent notification. Used unless the person chose to use the
+ * system weather notification instead (TagSettings.weatherFromSystem), so there is only ever one source.
  */
 object WeatherWatcher {
     private const val ID = 7_300_005
@@ -26,7 +27,7 @@ object WeatherWatcher {
     private val tick = object : Runnable {
         override fun run() {
             val ctx = app ?: return
-            if (!MicrotagPrefs(ctx).isAppEnabled(TagKeys.WEATHER)) return
+            if (!MicrotagPrefs(ctx).isAppEnabled(TagKeys.WEATHER) || TagSettings(ctx).weatherFromSystem) return
             show(ctx, force = false)
             handler?.postDelayed(this, intervalMs)
         }
@@ -37,7 +38,7 @@ object WeatherWatcher {
     fun refresh(context: Context) {
         val ctx = context.applicationContext
         app = ctx
-        val on = MicrotagPrefs(ctx).isAppEnabled(TagKeys.WEATHER)
+        val on = MicrotagPrefs(ctx).isAppEnabled(TagKeys.WEATHER) && !TagSettings(ctx).weatherFromSystem
         intervalMs = (TagSettings(ctx).weatherIntervalMin.coerceAtLeast(15)) * 60_000L
         handler?.removeCallbacks(tick)
         if (!on) {
@@ -57,9 +58,8 @@ object WeatherWatcher {
         lastOkAt = 0L
     }
 
-    /** True while the API has given an answer recently: the system weather notification is then left alone. */
-    fun owns(context: Context, now: Long = System.currentTimeMillis()): Boolean =
-        MicrotagPrefs(context.applicationContext).isAppEnabled(TagKeys.WEATHER) && lastOkAt != 0L && now - lastOkAt < intervalMs * 3
+    /** True when the weather chip comes from Open-Meteo, so the weather app's own notification is not turned into a second one. */
+    fun usesApi(context: Context): Boolean = !TagSettings(context.applicationContext).weatherFromSystem
 
     private fun show(ctx: Context, force: Boolean) {
         if (TagSettings(ctx).quietReason() != null) return
@@ -76,7 +76,8 @@ object WeatherWatcher {
             title = WeatherFormat.title(w, place),
             content = WeatherFormat.content(w, f),
             notificationId = ID,
-            timeoutSeconds = 0,
+            // Up for ten minutes (or half the interval if that is shorter), then gone until the next one.
+            timeoutSeconds = (minOf(10 * 60_000L, intervalMs / 2) / 1000L).toInt(),
             iconName = com.microtag.weather.WeatherCodes.icon(w.code, w.isDay, w.windKmh),
             showAppName = false
         )

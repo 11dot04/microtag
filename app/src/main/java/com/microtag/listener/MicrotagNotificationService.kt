@@ -269,6 +269,11 @@ class MicrotagNotificationService : NotificationListenerService() {
             }
             // The place or units were changed on the dashboard (Auto, a picked city, °C/°F).
             key == "place" -> WeatherWatcher.refresh(applicationContext)
+            key == "weather_from_system" -> {
+                WeatherWatcher.refresh(applicationContext)   // starts or stops the API chip
+                clearCapsulesOfTile(TagKeys.WEATHER)
+                pollActiveNotifications()
+            }
             key == "weather_interval_min" -> {
                 WeatherWatcher.refresh(applicationContext)
                 cancelAllDeferred()
@@ -370,9 +375,10 @@ class MicrotagNotificationService : NotificationListenerService() {
             return
         }
 
-        // The weather chip comes from the API while it is working; the system weather app's notification is not a second chip.
-        if (routedTile == TagKeys.WEATHER && WeatherWatcher.owns(applicationContext)) {
-            logDecision(sbn, "PARSER", Decision.SKIPPED, "weather chip comes from the weather service")
+        // One weather chip, from one source. By default it comes from Open-Meteo and the weather app's own notification
+        // is left alone; with "System weather notification" on it is the other way round.
+        if (routedTile == TagKeys.WEATHER && WeatherWatcher.usesApi(applicationContext)) {
+            logDecision(sbn, "PARSER", Decision.SKIPPED, "weather chip comes from Open-Meteo (system weather is off in Settings)")
             return
         }
 
