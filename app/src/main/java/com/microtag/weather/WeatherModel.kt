@@ -65,7 +65,9 @@ object WeatherCodes {
         code == 45 || code == 48 -> "ic_haze"
         windKmh >= 75 -> "ic_severe"
         windKmh >= 40 && code <= 3 -> "ic_breezy"
+        (code == 0 || code == 1) && !isDay -> "ic_clear_night"
         code == 0 || code == 1 -> "ic_sunny"
+        code == 3 -> "ic_cloudy"
         else -> "ic_cloud"
     }
 
