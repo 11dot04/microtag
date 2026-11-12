@@ -270,8 +270,11 @@ object MicrotagReminder {
                 ?: sourcePackage?.let { launchPendingIntent(context, it) }
 
         val finalIcon = customIcon ?: run {
-            val resId = resolveDrawable(context, iconName)
-            Icon.createWithResource(context, resId)
+            // A named drawable wins; otherwise a dropped-in assets/icons/<name>.svg; otherwise the bolt.
+            val named = iconName?.takeIf { it.isNotBlank() }?.let { context.resources.getIdentifier(it, "drawable", context.packageName) } ?: 0
+            if (named != 0) Icon.createWithResource(context, named)
+            else iconName?.takeIf { it.isNotBlank() }?.let { com.microtag.rules.SvgIcons.icon(context, it) }
+                ?: Icon.createWithResource(context, resolveDrawable(context, null))
         }
 
         // 3. Construct Android 16 Native Builder
