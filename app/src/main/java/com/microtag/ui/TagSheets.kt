@@ -116,7 +116,7 @@ private fun TagSheet(
             window?.setDimAmount(0f)
             window?.isNavigationBarContrastEnforced = false
         }
-        val scrim by animateFloatAsState(if (shown) 0.6f else 0f, tween(220), label = "scrim")
+        val scrim by animateFloatAsState(if (shown) 0.6f else 0f, TagMotion.fastEffects(), label = "scrim")
         val noRipple = remember { MutableInteractionSource() }
         val maxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.88f
         val threshold = with(density) { 110.dp.toPx() }
@@ -131,8 +131,8 @@ private fun TagSheet(
             AnimatedVisibility(
                 visible = shown,
                 modifier = Modifier.align(Alignment.BottomCenter),
-                enter = slideInVertically(spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)) { it },
-                exit = slideOutVertically(tween(220)) { it }
+                enter = slideInVertically(TagMotion.spatial()) { it },
+                exit = slideOutVertically(TagMotion.fastEffects()) { it }
             ) {
                 Column(
                     Modifier

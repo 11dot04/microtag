@@ -7,6 +7,9 @@ import android.view.View
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MotionScheme
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -576,6 +579,22 @@ object TagColors {
 object TagMotion {
     var enabled by mutableStateOf(true)
     var haptics by mutableStateOf(true)
+
+    /**
+     * Material 3 Expressive's motion physics, and only that: the springs, none of its components or look.
+     * Two kinds. Spatial specs move or reshape things (position, size, scale, shape) and may overshoot a little;
+     * effects specs fade or recolour things and never overshoot. Each comes in fast, default and slow.
+     * The scheme is a plain interface, so it works without MaterialTheme.
+     */
+    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+    val scheme: MotionScheme = MotionScheme.expressive()
+
+    fun <T> fastSpatial(): FiniteAnimationSpec<T> = if (enabled) scheme.fastSpatialSpec() else snap()
+    fun <T> spatial(): FiniteAnimationSpec<T> = if (enabled) scheme.defaultSpatialSpec() else snap()
+    fun <T> slowSpatial(): FiniteAnimationSpec<T> = if (enabled) scheme.slowSpatialSpec() else snap()
+    fun <T> fastEffects(): FiniteAnimationSpec<T> = if (enabled) scheme.fastEffectsSpec() else snap()
+    fun <T> effects(): FiniteAnimationSpec<T> = if (enabled) scheme.defaultEffectsSpec() else snap()
+    fun <T> slowEffects(): FiniteAnimationSpec<T> = if (enabled) scheme.slowEffectsSpec() else snap()
 }
 
 // ==========================================================
@@ -1021,7 +1040,7 @@ fun TagTile(
     val pressed by source.collectIsPressedAsState()
     val press by animateFloatAsState(
         targetValue = if (pressed && animate) 0.94f else 1f,
-        animationSpec = spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMedium),
+        animationSpec = TagMotion.fastSpatial(),
         label = "press"
     )
 

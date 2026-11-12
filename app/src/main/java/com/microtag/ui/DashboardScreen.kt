@@ -184,7 +184,7 @@ fun DashboardScreen(
     var paused by remember { mutableStateOf(settings.paused) }
     // Pausing dims the tile section with a scrim that runs edge to edge, so the group frames in the gutter dim too.
     val dimAlpha by animateFloatAsState(
-        if (paused) 0.62f else 0f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), label = "pausedDim"
+        if (paused) 0.62f else 0f, TagMotion.effects(), label = "pausedDim"
     )
     var weatherOpen by remember { mutableStateOf(false) }
     var stravaOpen by remember { mutableStateOf(false) }
@@ -341,7 +341,7 @@ fun DashboardScreen(
         // so the whole column moves as one piece instead of snapping.
         val p by animateFloatAsState(
             targetValue = if (weatherOpen) 1f else 0f,
-            animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
+            animationSpec = TagMotion.spatial(),
             label = "weatherOpen"
         )
         // Closed: Weather and Streaks are two 2x1 tiles stacked in the left column, beside Strava (2x2).

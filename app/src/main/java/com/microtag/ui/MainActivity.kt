@@ -87,28 +87,28 @@ class MainActivity : ComponentActivity() {
                                 Screen.Logs -> TransformOrigin(0.30f, 0.20f)       // the controls
                                 Screen.Inspect -> TransformOrigin(0.80f, 0.72f)    // the Inspect tiles
                                 Screen.Priority -> TransformOrigin(0.30f, 0.30f)   // the button on Inspect
-                                Screen.Pin -> TransformOrigin(0.50f, 0.92f)        // the Pin tile, at the foot
-                                Screen.Moments -> TransformOrigin(0.50f, 0.97f)    // the Moments tile, below it
-                                Screen.Rules -> TransformOrigin(0.25f, 0.98f)      // the Rules tile, further down
-                                Screen.Meds -> TransformOrigin(0.75f, 0.98f)       // the Meds tile beside it
-                                Screen.Ai -> TransformOrigin(0.50f, 0.99f)         // the AI tile at the very foot
+                                Screen.Rules -> TransformOrigin(0.25f, 0.90f)      // the big Rules tile, bottom left
+                                Screen.Pin -> TransformOrigin(0.75f, 0.88f)        // the Pin tile, above Meds on the right
+                                Screen.Meds -> TransformOrigin(0.75f, 0.94f)       // the Meds tile under it
+                                Screen.Ai -> TransformOrigin(0.50f, 0.98f)         // the AI tile, full width
+                                Screen.Moments -> TransformOrigin(0.50f, 0.995f)   // the Moments tile at the very foot
                                 else -> TransformOrigin.Center
                             }
                             if (targetState == Screen.Dashboard) {
-                                (fadeIn(tween(260)) + scaleIn(
+                                (fadeIn(TagMotion.effects()) + scaleIn(
                                     initialScale = 0.94f,
-                                    animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)
-                                )) togetherWith (fadeOut(tween(160)) + scaleOut(
+                                    animationSpec = TagMotion.spatial()
+                                )) togetherWith (fadeOut(TagMotion.fastEffects()) + scaleOut(
                                     targetScale = 0.25f,
                                     transformOrigin = origin(initialState),
-                                    animationSpec = tween(320, easing = TagEase.Reveal)
+                                    animationSpec = TagMotion.fastSpatial()
                                 ))
                             } else {
-                                (fadeIn(tween(220)) + scaleIn(
+                                (fadeIn(TagMotion.effects()) + scaleIn(
                                     initialScale = 0.25f,
                                     transformOrigin = origin(targetState),
-                                    animationSpec = tween(380, easing = TagEase.Reveal)
-                                )) togetherWith fadeOut(tween(160))
+                                    animationSpec = TagMotion.spatial()
+                                )) togetherWith fadeOut(TagMotion.fastEffects())
                             }
                         },
                         label = "ScreenSwitch"
