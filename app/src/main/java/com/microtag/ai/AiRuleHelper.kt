@@ -21,8 +21,15 @@ class AiRuleHelper(private val completer: () -> Completer?) {
         val negative: List<Sample> = emptyList(),
         /** In the person's words: "the amount", "minutes left", "the sender's name". */
         val wanted: String,
-        val limit: Int = PillText.LIMIT
+        val limit: Int = PillText.LIMIT,
+        /** The chat so far, oldest first. Empty on the first ask. */
+        val history: List<Turn> = emptyList(),
+        /** The rule as it stands now, so a follow-up changes it instead of starting over. */
+        val current: Pair<String, String>? = null
     )
+
+    /** One message in the chat with the helper. */
+    class Turn(val fromPerson: Boolean, val text: String)
 
     sealed class Answer {
         class Ok(val regex: String, val pill: String, val explain: String) : Answer()
@@ -35,10 +42,19 @@ class AiRuleHelper(private val completer: () -> Completer?) {
             "The regex is matched against the title and the text joined by one space. It is case-insensitive. " +
             "Use capture groups for the parts to show. The pill is a template that uses \$1, \$2 for the groups, for example \"\$1d\" or \"Page \$1/\$2\". " +
             "Keep the regex simple and specific. Never use lookbehind of unbounded length or nested quantifiers. " +
-            "The pill must be short: the limit is given in the request."
+            "The pill must be short: the limit is given in the request. " +
+            "When the person replies with feedback, change the current rule to fit it instead of starting again. " +
+            "Prefer anchoring on the words around the value (labels, units, punctuation) over loose patterns such as .* or a bare \\S+. " +
+            "Put a short plain-language reply to the person in \"explain\" (one or two sentences): what the rule now looks for."
 
         fun prompt(r: Request, feedback: String?): String = buildString {
-            append("App: ${r.appLabel} (${r.pkg})\nShow in the chip: ${r.wanted}\nPill limit: ${r.limit} characters.\n\n")
+            append("App: ${r.appLabel} (${r.pkg})\nPill limit: ${r.limit} characters.\n")
+            r.current?.let { (rx, pill) -> append("The rule so far: regex=$rx pill=$pill\n") }
+            if (r.history.isNotEmpty()) {
+                append("\nThe conversation so far:\n")
+                r.history.takeLast(8).forEach { append(if (it.fromPerson) "Person: " else "You: ").append(it.text.take(300)).append('\n') }
+            }
+            append("\nWhat the person wants now: ${r.wanted}\n\n")
             append("Notifications that MUST match:\n")
             r.positive.forEachIndexed { i, s -> append("${i + 1}. title: ${com.microtag.rules.Redactor.forModel(s.title)} | text: ${com.microtag.rules.Redactor.forModel(s.text)}\n") }
             if (r.negative.isNotEmpty()) {
