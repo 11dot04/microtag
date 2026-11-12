@@ -445,17 +445,14 @@ fun DashboardScreen(
             TileTone(2) { MusicPair(Modifier.cell(0f, b3, 2f, 2f), songNext, ambient) }
             TileTone(1) { BigTile(Modifier.cell(2f, b3, 2f, 2f), R.drawable.ic_vpn, "ProtonVPN", "SESSIONS", proton) }
 
-            // ---- Pin: opens its own screen. Not a toggle; pinning is something you do, not a source.
-            TileTone(0) { PinTile(Modifier.cell(0f, b3 + 2f, 4f, 1f), onOpenPin) }
-
-            // ---- Moments: not there at all until the first one has been found.
-            if (hasMoments) TileTone(1) { MomentsTile(Modifier.cell(0f, b3 + 3f, 4f, 1f), onOpenMoments) }
-
-            // ---- Your own: rules, medicine reminders, and the AI helper. Each opens its own screen.
-            val own = b3 + 3f + (if (hasMoments) 1f else 0f)
-            TileTone(2) { NavTile(Modifier.cell(0f, own, 2f, 1f), "Rules", "Your own", onOpenRules) }
-            TileTone(0) { NavTile(Modifier.cell(2f, own, 2f, 1f), "Meds", "Reminders", onOpenMeds) }
-            TileTone(1) { NavTile(Modifier.cell(0f, own + 1f, 4f, 1f), "AI", "Helps write rules, shortens chips", onOpenAi) }
+            // ---- Your own: Rules is the major feature, so it is the big tile. Pin and Meds stack beside it
+            // in different shapes, AI runs the full width under them, Moments (once found) closes the column.
+            val own = b3 + 2f
+            TileTone(0) { NavBigTile(Modifier.cell(0f, own, 2f, 2f), "Rules", "BUILD YOUR OWN", onOpenRules) }
+            TileTone(2) { PinTile(Modifier.cell(2f, own, 2f, 1f), onOpenPin) }
+            TileTone(1) { NavTile(Modifier.cell(2f, own + 1f, 2f, 1f), "Meds", "Reminders", onOpenMeds) }
+            TileTone(2) { NavTile(Modifier.cell(0f, own + 2f, 4f, 1f), "AI", "Helps write rules, shortens chips", onOpenAi, TagShapes.Rect) }
+            if (hasMoments) TileTone(1) { MomentsTile(Modifier.cell(0f, own + 3f, 4f, 1f), onOpenMoments) }
         }
         Spacer(Modifier.height(40.dp))
         }
@@ -582,8 +579,11 @@ private fun MomentsTile(modifier: Modifier, onClick: () -> Unit) {
 
 /** A plain tile that opens a screen: label, small line under it, no icon and no on/off. */
 @Composable
-private fun NavTile(modifier: Modifier, bold: String, light: String, onClick: () -> Unit) {
-    TagTile(modifier, TagShapes.Pill, TileState.Static, onClick) { fg ->
+private fun NavTile(
+    modifier: Modifier, bold: String, light: String, onClick: () -> Unit,
+    shape: androidx.compose.ui.graphics.Shape = TagShapes.Pill
+) {
+    TagTile(modifier, shape, TileState.Static, onClick) { fg ->
         Row(Modifier.fillMaxSize().padding(start = 26.dp, end = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             TagLabel(bold, light, fg, Modifier.weight(1f), 16.sp)
             TagIcon(R.drawable.ic_chevron_right, fg, size = 22.dp)
@@ -591,15 +591,32 @@ private fun NavTile(modifier: Modifier, bold: String, light: String, onClick: ()
     }
 }
 
-/** Opens the Pin screen. */
+/** Opens the Pin screen. A squarer tile than the pills around it: label left, pin right. */
 @Composable
 private fun PinTile(modifier: Modifier, onClick: () -> Unit) {
-    TagTile(modifier, TagShapes.Pill, TileState.Static, onClick) { fg ->
-        Row(Modifier.fillMaxSize().padding(start = 16.dp, end = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+    TagTile(modifier, TagShapes.Rect, TileState.Static, onClick) { fg ->
+        Row(Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            TagLabel("Pin", "Keep a code up", fg, Modifier.weight(1f), 16.sp)
             TagIcon(R.drawable.ic_pin, fg, size = 28.dp)
-            Spacer(Modifier.width(10.dp))
-            TagLabel("Pin", "Keep a code up", fg, Modifier.weight(1f))
         }
+    }
+}
+
+/** A big tile that opens a screen: small caption top-left, arrow top-right, the name set large at the bottom. */
+@Composable
+private fun NavBigTile(modifier: Modifier, title: String, caption: String, onClick: () -> Unit) {
+    TagTile(modifier, TagShapes.Big, TileState.Static, onClick) { fg ->
+        Text(
+            caption,
+            Modifier.align(Alignment.TopStart).padding(start = 20.dp, top = 22.dp),
+            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 11.sp, letterSpacing = 1.2.sp, color = fg)
+        )
+        TagIcon(R.drawable.ic_chevron_right, fg, Modifier.align(Alignment.TopEnd).padding(18.dp), 26.dp)
+        FitText(
+            AnnotatedString(title),
+            TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 34.sp, letterSpacing = (-1).sp, color = fg),
+            Modifier.align(Alignment.BottomStart).padding(start = 20.dp, end = 16.dp, bottom = 18.dp)
+        )
     }
 }
 
