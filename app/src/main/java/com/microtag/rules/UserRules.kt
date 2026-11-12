@@ -6,8 +6,10 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorFilter
+import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
+import android.graphics.Typeface
 import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.Icon
@@ -40,14 +42,17 @@ object UserRules {
 }
 
 /**
- * An installed app's icon as a one-colour glyph for the status bar. The themed (monochrome) layer is used when the app
- * ships one (Android 13+); otherwise the shape of the foreground layer. A glyph that fills its whole square is rejected
- * (it would be a white block) and the caller falls back to a built-in icon. Cached as a PNG per app.
+ * An installed app's icon as a one-colour glyph for the status bar. Never blank for an installed app:
+ *  1. the themed (monochrome) layer when the app ships one (Android 13+);
+ *  2. otherwise a glyph derived from the whole rendered icon by contrast against its dominant (background) colour,
+ *     so full-colour art and pre-masked full-bleed icons keep their shape instead of becoming a white blob;
+ *  3. otherwise a monogram: the first letter of the app's name.
+ * Cached as a PNG per app.
  */
 object AppIcons {
     private const val SIZE = 96
 
-    private fun cacheFile(context: Context, pkg: String) = File(File(context.filesDir, "rule_icons").apply { mkdirs() }, "$pkg.png")
+    private fun cacheFile(context: Context, pkg: String) = File(File(context.filesDir, "rule_icons_v2").apply { mkdirs() }, "$pkg.png")
 
     fun icon(context: Context, pkg: String): Icon? {
         val f = cacheFile(context, pkg)
@@ -60,33 +65,109 @@ object AppIcons {
     /** Call when an app is updated or removed. */
     fun forget(context: Context, pkg: String) { runCatching { cacheFile(context, pkg).delete() } }
 
+    /** The white glyph the chip will draw. Null only if the app is not installed. */
     fun render(context: Context, pkg: String): Bitmap? = try {
         val d = context.packageManager.getApplicationIcon(pkg)
-        val layer: Drawable? = if (d is AdaptiveIconDrawable) {
-            (if (Build.VERSION.SDK_INT >= 33) d.monochrome else null) ?: d.foreground
-        } else d
-        layer?.let { glyph(it) }
+        val mono = if (Build.VERSION.SDK_INT >= 33 && d is AdaptiveIconDrawable) d.monochrome else null
+        (mono?.let { monochromeGlyph(it) }
+            ?: derivedGlyph(d)
+            ?: monogram(label(context, pkg)))
     } catch (_: Exception) {
         null
     }
 
-    private fun glyph(layer: Drawable): Bitmap? {
+    /** The app's real, coloured icon, for recognition in the picker. */
+    fun colour(context: Context, pkg: String): Bitmap? = try {
+        drawToBitmap(context.packageManager.getApplicationIcon(pkg))
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun label(context: Context, pkg: String): String = runCatching {
+        context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(pkg, 0)).toString()
+    }.getOrDefault(pkg.substringAfterLast('.'))
+
+    private fun drawToBitmap(layer: Drawable): Bitmap {
         val bmp = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
-        val c = Canvas(bmp)
-        // Adaptive layers are drawn on a 108 grid with a 72 safe zone: scale so the safe zone fills the square.
+        val d = layer.mutate()
+        d.setBounds(0, 0, SIZE, SIZE)
+        d.draw(Canvas(bmp))
+        return bmp
+    }
+
+    private fun whiten(src: Bitmap): Bitmap {
+        val white = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
+        val p = Paint().apply { colorFilter = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN) }
+        Canvas(white).drawBitmap(src, 0f, 0f, p)
+        return white
+    }
+
+    private fun coverage(b: Bitmap): Float {
+        val px = IntArray(SIZE * SIZE)
+        b.getPixels(px, 0, SIZE, 0, 0, SIZE, SIZE)
+        var n = 0
+        for (v in px) if ((v ushr 24) > 128) n++
+        return n / px.size.toFloat()
+    }
+
+    /** A monochrome layer is already a shape: whiten it, and keep it unless it is truly empty. */
+    private fun monochromeGlyph(layer: Drawable): Bitmap? {
+        val bmp = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
         val pad = (SIZE * 0.25f).toInt()
         val d = layer.mutate()
         d.setBounds(-pad, -pad, SIZE + pad, SIZE + pad)
-        d.draw(c)
-        // Keep the shape (alpha) and make it white: the system tints a small icon anyway.
-        val white = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
-        val p = android.graphics.Paint().apply { colorFilter = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN) }
-        Canvas(white).drawBitmap(bmp, 0f, 0f, p)
-        // Reject a block: nearly every pixel opaque means there is no glyph, only a background.
-        var opaque = 0
+        d.draw(Canvas(bmp))
+        val white = whiten(bmp)
+        return if (coverage(white) < 0.01f) null else white
+    }
+
+    /**
+     * No themed layer: render the whole icon, find its dominant opaque colour (the background), and make each pixel's
+     * alpha the colour distance from it. What stands out from the background becomes the glyph.
+     */
+    private fun derivedGlyph(icon: Drawable): Bitmap? {
+        val bmp = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
+        icon.mutate().apply { setBounds(0, 0, SIZE, SIZE) }.draw(Canvas(bmp))
         val px = IntArray(SIZE * SIZE)
-        white.getPixels(px, 0, SIZE, 0, 0, SIZE, SIZE)
-        for (v in px) if ((v ushr 24) > 200) opaque++
-        return if (opaque > px.size * 0.92f || opaque < px.size * 0.01f) null else white
+        bmp.getPixels(px, 0, SIZE, 0, 0, SIZE, SIZE)
+        // Dominant colour, quantised to 4 bits per channel.
+        val hist = HashMap<Int, Int>()
+        for (v in px) {
+            if ((v ushr 24) < 200) continue
+            val k = ((Color.red(v) shr 4) shl 8) or ((Color.green(v) shr 4) shl 4) or (Color.blue(v) shr 4)
+            hist[k] = (hist[k] ?: 0) + 1
+        }
+        val top = hist.maxByOrNull { it.value } ?: return null
+        val br = ((top.key shr 8) and 15) * 17; val bg = ((top.key shr 4) and 15) * 17; val bb = (top.key and 15) * 17
+        val out = IntArray(px.size)
+        var opaque = 0
+        for (i in px.indices) {
+            val v = px[i]
+            val a0 = (v ushr 24) / 255f
+            val dr = Color.red(v) - br; val dg = Color.green(v) - bg; val db = Color.blue(v) - bb
+            val dist = Math.sqrt((dr * dr + dg * dg + db * db).toDouble()).toFloat()
+            val a = (((dist - 40f) / 90f).coerceIn(0f, 1f)) * a0
+            if (a > 0.5f) opaque++
+            out[i] = (Math.round(a * 255f) shl 24) or 0x00FFFFFF
+        }
+        val share = opaque / px.size.toFloat()
+        // Nothing stands out (a flat icon), or nearly everything does (a busy photo): not a usable glyph.
+        if (share < 0.02f || share > 0.80f) return null
+        val result = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
+        result.setPixels(out, 0, SIZE, 0, 0, SIZE, SIZE)
+        return result
+    }
+
+    /** The first letter of the app's name, bold, white, centred. */
+    private fun monogram(label: String): Bitmap {
+        val bmp = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
+        val letter = label.trim().firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "?"
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE; textAlign = Paint.Align.CENTER; textSize = SIZE * 0.66f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val y = SIZE / 2f - (p.descent() + p.ascent()) / 2f
+        Canvas(bmp).drawText(letter, SIZE / 2f, y, p)
+        return bmp
     }
 }
