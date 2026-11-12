@@ -171,7 +171,7 @@ private fun RuleAppPicker(onBack: () -> Unit, onPick: (PickApp) -> Unit) {
 private fun RuleAppRow(pkg: String, label: String, sub: String?, onClick: () -> Unit) {
     FormPlate(onClick = onClick) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            RuleAppGlyph(pkg, 32)
+            RuleAppGlyph(pkg, 32, colour = true)
             FormGapW(12)
             Column {
                 Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TagColors.White))
@@ -183,14 +183,21 @@ private fun RuleAppRow(pkg: String, label: String, sub: String?, onClick: () -> 
 
 /** The app's icon as the chip will draw it: a one-colour glyph, in the ink colour. */
 @Composable
-private fun RuleAppGlyph(pkg: String, size: Int) {
+private fun RuleAppGlyph(pkg: String, size: Int, colour: Boolean = false) {
     val context = LocalContext.current
     // Rendered off the main thread so a few hundred rows do not stall the list.
     val bmp by produceState<android.graphics.Bitmap?>(null, pkg) {
-        value = withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { AppIcons.render(context, pkg) }.getOrNull() }
+        value = withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { if (colour) AppIcons.colour(context, pkg) else AppIcons.render(context, pkg) }.getOrNull() }
     }
-    Box(Modifier.size(size.dp).clip(CircleShape).background(TagColors.Black), contentAlignment = Alignment.Center) {
-        bmp?.let { b -> Image(b.asImageBitmap(), null, Modifier.size((size * 0.75f).dp), colorFilter = ColorFilter.tint(TagColors.White)) }
+    if (colour) {
+        // The picker shows the app as it really looks, for recognition.
+        Box(Modifier.size(size.dp).clip(CircleShape).background(TagColors.Black), contentAlignment = Alignment.Center) {
+            bmp?.let { b -> Image(b.asImageBitmap(), null, Modifier.size(size.dp)) }
+        }
+    } else {
+        Box(Modifier.size(size.dp).clip(CircleShape).background(TagColors.Black), contentAlignment = Alignment.Center) {
+            bmp?.let { b -> Image(b.asImageBitmap(), null, Modifier.size((size * 0.75f).dp), colorFilter = ColorFilter.tint(TagColors.White)) }
+        }
     }
 }
 
