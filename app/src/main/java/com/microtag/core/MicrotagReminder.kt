@@ -301,7 +301,7 @@ object MicrotagReminder {
             if (label.isNotBlank() && !title.contains(label, ignoreCase = true)) builder.setSubText(label)
         }
 
-        progress?.let { applyProgress(builder, it) }
+        progress?.let { applyProgress(context, builder, it) }
 
         // Attach native actions (Pause, Next, Disconnect, etc.); destructive ones in red.
         actions.forEach { builder.addAction(tintIfDestructive(it)) }
@@ -364,7 +364,7 @@ object MicrotagReminder {
     }
 
     /** The Android 16 progress style, by reflection so it still builds on older SDKs; falls back to the classic bar. */
-    private fun applyProgress(builder: Notification.Builder, percent: Int) {
+    private fun applyProgress(context: Context, builder: Notification.Builder, percent: Int) {
         val p = percent.coerceIn(0, 100)
         try {
             val styleCls = Class.forName("android.app.Notification\$ProgressStyle")
@@ -373,6 +373,18 @@ object MicrotagReminder {
             val seg = segCls.getConstructor(Int::class.javaPrimitiveType).newInstance(100)
             styleCls.getMethod("setProgressSegments", java.util.List::class.java).invoke(style, listOf(seg))
             styleCls.getMethod("setProgress", Int::class.javaPrimitiveType).invoke(style, p)
+            // The TAG mark in two parts: one rides the bar, the other waits at the end, and they meet at 100%.
+            // The icons sit on the notification background, so they are drawn dark in light mode and light in dark mode.
+            val night = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+            val tint = if (night) android.graphics.Color.WHITE else android.graphics.Color.BLACK
+            com.microtag.rules.SvgIcons.icon(context, "tag_progress", 96, tint)?.let { ic ->
+                runCatching { styleCls.getMethod("setProgressTrackerIcon", android.graphics.drawable.Icon::class.java).invoke(style, ic) }
+                    .onFailure { Log.w(TAG, "tracker icon not set: ${it.message}") }
+            }
+            com.microtag.rules.SvgIcons.icon(context, "tag_end", 96, tint)?.let { ic ->
+                runCatching { styleCls.getMethod("setProgressEndIcon", android.graphics.drawable.Icon::class.java).invoke(style, ic) }
+                    .onFailure { Log.w(TAG, "end icon not set: ${it.message}") }
+            }
             builder.setStyle(style as Notification.Style)
         } catch (e: Exception) {
             Log.w(TAG, "ProgressStyle unavailable, using the classic bar: ${e.message}")
