@@ -29,6 +29,14 @@ class TagSettings(context: Context) {
         get() = sp.getBoolean("master_paused", false)
         set(v) = sp.edit { putBoolean("master_paused", v) }
 
+    /**
+     * Where the weather chip comes from. False (default): Open-Meteo, and the weather app's own notification is left alone.
+     * True: that notification is turned into the chip instead and Open-Meteo is not used. Never both, so there is one chip.
+     */
+    var weatherFromSystem: Boolean
+        get() = sp.getBoolean("weather_from_system", false)
+        set(v) = sp.edit { putBoolean("weather_from_system", v) }
+
     /** Weather refresh interval in minutes. */
     var weatherIntervalMin: Int
         get() = sp.getInt("weather_interval_min", 60)

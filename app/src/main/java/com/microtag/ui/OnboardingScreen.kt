@@ -126,8 +126,8 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             transitionSpec = {
                 val forward = targetState > initialState
-                (slideInHorizontally(tween(380)) { if (forward) it / 3 else -it / 3 } + fadeIn(tween(300))) togetherWith
-                    (slideOutHorizontally(tween(380)) { if (forward) -it / 3 else it / 3 } + fadeOut(tween(200)))
+                (slideInHorizontally(TagMotion.spatial()) { if (forward) it / 3 else -it / 3 } + fadeIn(TagMotion.effects())) togetherWith
+                    (slideOutHorizontally(TagMotion.fastEffects()) { if (forward) -it / 3 else it / 3 } + fadeOut(TagMotion.fastEffects()))
             },
             label = "onboardingPage"
         ) { p ->

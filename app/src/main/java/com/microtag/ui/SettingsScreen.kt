@@ -101,6 +101,7 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
     val perms = rememberPermissions()
 
     var palette by remember { mutableStateOf(TagPalettes.migrate(settings.palette)) }
+    var weatherSystem by remember { mutableStateOf(settings.weatherFromSystem) }
     var typeface by remember { mutableStateOf(settings.typeface.ifEmpty { TypefacePacks.legacyFor(settings.palette) }) }
     var micro by remember { mutableStateOf(settings.micro) }
     var amoled by remember { mutableStateOf(settings.amoled) }
@@ -229,6 +230,17 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
                 })
             )
         )
+        Block(
+            "Weather",
+            listOf(
+                Item(
+                    "System weather notification",
+                    "Turn the weather app's own notification into the chip instead of fetching from Open-Meteo. One source at a time.",
+                    weatherSystem,
+                    { weatherSystem = it; settings.weatherFromSystem = it }
+                )
+            )
+        )
         Block("Intro", listOf(Item("Replay intro", "Walk through the welcome screens again.", onClick = onReplayIntro)))
         Block("About", listOf(Item("TAG", "Version $version")))
     }
@@ -246,7 +258,7 @@ private fun BlockBody(label: String, items: List<Item>) {
     TagSectionLabel(label, Modifier.padding(start = 4.dp, top = 8.dp))
     Column(
         Modifier.then(
-            if (TagMotion.enabled) Modifier.animateContentSize(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow))
+            if (TagMotion.enabled) Modifier.animateContentSize(TagMotion.spatial())
             else Modifier
         ),
         verticalArrangement = Arrangement.spacedBy(3.dp)

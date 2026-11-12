@@ -33,7 +33,10 @@ internal fun Modifier.containerBounds(key: String?, shape: Shape): Modifier {
             animatedVisibilityScope = visibility,
             enter = fadeIn(TagMotion.effects()),
             exit = fadeOut(TagMotion.fastEffects()),
-            boundsTransform = BoundsTransform { _, _ -> TagMotion.spatial<Rect>() },
+            // Opening: a quick start that settles slowly. Closing: a smooth glide back with no bounce.
+            boundsTransform = BoundsTransform { initial, target ->
+                if (target.width * target.height > initial.width * initial.height) TagMotion.slowSpatial<Rect>() else TagMotion.smooth<Rect>()
+            },
             clipInOverlayDuringTransition = OverlayClip(shape)
         )
     }

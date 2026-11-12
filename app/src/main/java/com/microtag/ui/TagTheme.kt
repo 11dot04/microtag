@@ -177,7 +177,12 @@ data class TagPalette(
     val secondary: Color? = null,
     val tertiary: Color? = null,
     /** Extra colours for moments that want more than three (the onboarding pile, previews). */
-    val extras: List<Color> = emptyList()
+    val extras: List<Color> = emptyList(),
+    /**
+     * A restrained accent that is not the tile colour: an orange strip on a grey palette. Null means the palette
+     * has none and anything that would use it is simply left out.
+     */
+    val highlight: Color? = null
 ) {
     val isLight: Boolean get() = base.luminance() > 0.5f
 
@@ -209,28 +214,21 @@ object TagPalettes {
         extras = listOf(Color(0xFF8C2F39), Color(0xFF3E5C7A), Color(0xFF2F4B3C), Color(0xFFEDE6D3))
     )
 
-    /** Strictly monochrome, in the spirit of Nothing's dot-matrix look. The one colour is the red kept for warnings. Dark; Light inverts it. */
-    val Nothing = TagPalette(
-        id = "nothing", name = "Nothing",
-        base = Color(0xFF000000), ink = Color(0xFFFFFFFF),
-        accent = Color(0xFFF2F2F2), onAccent = Color(0xFF000000),
-        surface = Color(0xFF111111), pausedPoster = Color(0xFF161616),
-        outline = Color(0xFF9A9A9A), dim = Color(0xFF666666),
-        signal = Color(0xFFD71921),
-        paper = Color(0xFFF2F2F2), paperInk = Color(0xFF000000),
-        secondary = Color(0xFF8A8A8A), tertiary = Color(0xFF4A4A4A)
-    )
-
-    /** One loud red on warm black. Amber carries warnings so red can stay the accent. */
-    val Red = TagPalette(
-        id = "red", name = "Red",
-        base = Color(0xFF120A0A), ink = Color(0xFFF6EDEB),
-        accent = Color(0xFFFF3B30), onAccent = Color(0xFF120A0A),
-        surface = Color(0xFF1C1212), pausedPoster = Color(0xFF211515),
-        outline = Color(0xFFBFA9A5), dim = Color(0xFF7D6A67),
-        signal = Color(0xFFF2B227),
-        paper = Color(0xFFF6EDEB), paperInk = Color(0xFF120A0A),
-        secondary = Color(0xFFB3261E), tertiary = Color(0xFFFFB4A8)
+    /**
+     * Black, grey and white, with orange held back: active tiles are filled grey, inactive ones are outlined, and the
+     * orange appears only as the strip under the main screen's numeral and a few small marks. Dark; Light inverts it.
+     * Warnings use a red that cannot be mistaken for the orange.
+     */
+    val Graphite = TagPalette(
+        id = "graphite", name = "Graphite",
+        base = Color(0xFF0C0C0C), ink = Color(0xFFEDEDED),
+        accent = Color(0xFFA6A6A6), onAccent = Color(0xFF0C0C0C),
+        surface = Color(0xFF161616), pausedPoster = Color(0xFF1A1A1A),
+        outline = Color(0xFF8A8A8A), dim = Color(0xFF5E5E5E),
+        signal = Color(0xFFE5484D),
+        paper = Color(0xFFEDEDED), paperInk = Color(0xFF0C0C0C),
+        secondary = Color(0xFF7A7A7A), tertiary = Color(0xFF5C5C5C),
+        highlight = Color(0xFFFF6A00)
     )
 
     /**
@@ -249,12 +247,12 @@ object TagPalettes {
         secondary = Color(0xFFCCC2DC), tertiary = Color(0xFFEFB8C8)
     )
 
-    val All = listOf(Lime, OldMoney, Nothing, Red, Material)
+    val All = listOf(Lime, OldMoney, Graphite, Material)
 
     /** Palettes from before accent, typeface and base were split; each folds into the closest one that remains. */
     private val legacy = mapOf(
         "atelier" to "oldmoney", "rouge" to "oldmoney", "maison" to "oldmoney", "sage" to "oldmoney",
-        "signal" to "red", "vermilion" to "red", "verdant" to "lime", "dusk" to "material"
+        "signal" to "graphite", "vermilion" to "graphite", "red" to "graphite", "nothing" to "graphite", "verdant" to "lime", "dusk" to "material"
     )
 
     fun migrate(id: String?): String = legacy[id] ?: id ?: "lime"
@@ -297,7 +295,7 @@ object TypefacePacks {
     val Playfair = TypefacePack("playfair", "Playfair", display = "playfair_display")
     val Instrument = TypefacePack("instrument", "Instrument Serif", display = "instrument_serif")
 
-    /** The blocky pixel face of the main screen's numeral, for headings. Pairs with the Nothing accent. */
+    /** The blocky pixel face of the main screen's numeral, for headings. Pairs well with Graphite. */
     val Dot = TypefacePack("dot", "Dot", display = "style")
 
     val All = listOf(Sans, Flex, Bodoni, Didot, Playfair, Instrument, Dot)
@@ -371,6 +369,7 @@ fun TagPalette.inverted(): TagPalette {
         secondary = secondary?.let { fitContrast(it, newBase, 3f) },
         tertiary = tertiary?.let { fitContrast(it, newBase, 3f) },
         extras = extras.map { fitContrast(it, newBase, 2f) },
+        highlight = highlight?.let { fitContrast(it, newBase, 3f) },
         paper = light,
         paperInk = dark
     )
@@ -519,6 +518,9 @@ object TagColors {
     val PausedPoster: Color get() = palette.pausedPoster
     val Outline: Color get() = palette.outline
     val Steel: Color get() = palette.outline
+    /** The restrained accent of a palette that has one (Graphite's orange), or null. */
+    val Highlight: Color? get() = palette.highlight
+
     /** A rare warning colour: the permission banner and the armed bin, nothing else. */
     val Signal: Color get() = palette.signal
     val Dim: Color get() = palette.dim
@@ -585,6 +587,9 @@ object TagMotion {
     fun <T> fastEffects(): FiniteAnimationSpec<T> = if (enabled) scheme.fastEffectsSpec() else snap()
     fun <T> effects(): FiniteAnimationSpec<T> = if (enabled) scheme.defaultEffectsSpec() else snap()
     fun <T> slowEffects(): FiniteAnimationSpec<T> = if (enabled) scheme.slowEffectsSpec() else snap()
+
+    /** A spring with no bounce, for movements that should simply glide to a stop (a screen closing back into its tile). */
+    fun <T> smooth(): FiniteAnimationSpec<T> = if (enabled) spring(dampingRatio = 1f, stiffness = 320f) else snap()
 }
 
 // ==========================================================
@@ -1212,7 +1217,7 @@ fun ChevronButton(open: Boolean, tint: Color, modifier: Modifier = Modifier, onC
     val view = LocalView.current
     val rot by animateFloatAsState(
         if (open) 90f else 0f,
-        spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
+        TagMotion.spatial(),
         label = "chevron"
     )
     Box(
@@ -1239,7 +1244,7 @@ fun TagSwitch(
     val view = LocalView.current
     val x by animateDpAsState(
         if (checked) 22.dp else 0.dp,
-        spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium),
+        TagMotion.fastSpatial(),
         label = "thumb"
     )
     val track by animateColorAsState(if (checked) trackOn else trackOff, label = "track")

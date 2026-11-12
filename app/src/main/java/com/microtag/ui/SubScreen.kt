@@ -194,7 +194,7 @@ fun FloatingButton(
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(
         if (pressed && TagMotion.enabled) 0.9f else 1f,
-        spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMedium), label = "fab"
+        TagMotion.fastSpatial(), label = "fab"
     )
     val tint = if (filled) onAccent else accent
     Box(

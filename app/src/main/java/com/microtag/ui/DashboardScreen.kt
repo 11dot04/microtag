@@ -300,21 +300,31 @@ fun DashboardScreen(
 
       // No header band. As the poster docks, the content itself fades out under the status bar and the
       // numeral, so there is no solid strip and no edge where the header ends and the tiles begin.
+      // Progressive blur under the docked numeral (Android 13+): the tiles get blurrier toward the top edge and keep
+      // their colour. Older Androids get a short gradient fade.
+      val blurShader = remember { ProgressiveBlur.newShader() }
+      val blurMax = with(density) { 16.dp.toPx() }
+      val blurBand = dockBarPx + with(density) { 56.dp.toPx() }
+      val shortFadePx = with(density) { 24.dp.toPx() }
       Column(
           Modifier
               .fillMaxSize()
-              .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+              .graphicsLayer {
+                  compositingStrategy = CompositingStrategy.Offscreen
+                  val p = (scroll.value / collapse).coerceIn(0f, 1f)
+                  if (blurShader != null) ProgressiveBlur.apply(this, blurShader, dockBarPx * 0.7f, blurBand, blurMax, p)
+              }
               .drawWithContent {
                   drawContent()
                   val p = (scroll.value / collapse).coerceIn(0f, 1f)
-                  if (p > 0f) {
-                      // A hard clip at the docked numeral: a gradient here let the black behind show through the
-                      // tiles' own colour and turned the lime ones olive. Content above the line fades out with
-                      // the dock progress and is cut cleanly at the line.
+                  if (p > 0f && blurShader == null) {
+                      val end = dockBarPx + shortFadePx
+                      val hidden = Color.Black.copy(alpha = 1f - p)
                       drawRect(
-                          Color.Black.copy(alpha = 1f - p),
-                          topLeft = Offset.Zero,
-                          size = androidx.compose.ui.geometry.Size(size.width, dockBarPx),
+                          Brush.verticalGradient(
+                              colorStops = arrayOf(0f to hidden, (dockBarPx / end) to hidden, 1f to Color.Black),
+                              startY = 0f, endY = end
+                          ),
                           blendMode = BlendMode.DstIn
                       )
                   }
@@ -332,6 +342,8 @@ fun DashboardScreen(
             onLogs = onOpenLogs,
             active = posterVisible
         )
+        // Graphite's orange strip: a divider that is also a ticker. Other palettes have no highlight and skip it.
+        InfoStrip(count, hourly, paused)
         Box {
         Column(Modifier.padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(20.dp))
@@ -423,9 +435,12 @@ fun DashboardScreen(
 
             // ---- earbuds + sound mode
             TileTone(1) {
+                // Easter egg: on the Material You palette this tile morphs circle, cookie, gem each time it is pressed.
+                val egg = rememberShapeEgg(TagColors.Id == "material")
                 TagTile(
-                    Modifier.cell(0f, b2, 2f, 2f), TagShapes.Circle, bluetooth.state,
+                    Modifier.cell(0f, b2, 2f, 2f), egg.shape, bluetooth.state,
                     onClick = {
+                        egg.press()
                         if (!bluetooth.on && !BluetoothWatcher.hasPermission(context)) {
                             bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
                         } else bluetooth.toggle()
@@ -673,7 +688,7 @@ private fun WeatherTile(
         AnimatedContent(
             targetState = open,
             modifier = Modifier.fillMaxSize(),
-            transitionSpec = { fadeIn(tween(200, delayMillis = 80)) togetherWith fadeOut(tween(80)) },
+            transitionSpec = { fadeIn(TagMotion.effects()) togetherWith fadeOut(TagMotion.fastEffects()) },
             label = "weatherContent"
         ) { isOpen ->
             if (!isOpen) {

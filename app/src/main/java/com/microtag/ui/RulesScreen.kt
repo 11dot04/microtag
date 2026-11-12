@@ -5,6 +5,14 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import com.microtag.R
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.rotate
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -225,6 +233,10 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
     var chosen by remember { mutableIntStateOf(0) }
     val sample = samples.getOrNull(chosen.coerceAtMost((samples.size - 1).coerceAtLeast(0)))
     val picks = remember { mutableStateListOf<String>() }
+    // Typing a sample of your own selects it.
+    LaunchedEffect(manualTitle.isNotBlank() || manualText.isNotBlank()) {
+        if (manualTitle.isNotBlank() || manualText.isNotBlank()) { chosen = seen.size; picks.clear() }
+    }
 
     var name by remember { mutableStateOf(existing?.name ?: "") }
     var regex by remember { mutableStateOf(existing?.regex ?: "") }
@@ -234,10 +246,21 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
     var iconMode by remember { mutableStateOf(existing?.iconMode ?: UserRule.IconMode.APP) }
     var timeout by remember { mutableIntStateOf(existing?.timeoutSeconds ?: 15) }
     var ignoreCase by remember { mutableStateOf(existing?.ignoreCase ?: true) }
-    var wanted by remember { mutableStateOf("") }
     var note by remember { mutableStateOf<String?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
     var asking by remember { mutableStateOf(false) }
+
+    val aiReady = remember { Ai.ready(context) && Ai.config(context).ruleHelp }
+    val aiPills = remember { Ai.ready(context) }
+
+    // The chat with the helper, and the notifications the person said must not match.
+    val chat = remember { mutableStateListOf<AiRuleHelper.Turn>() }
+    val negatives = remember { mutableStateListOf<AiRuleHelper.Sample>() }
+    var message by remember { mutableStateOf("") }
+    var moreSamples by remember { mutableStateOf(false) }
+    var typeOwn by remember { mutableStateOf(false) }
+    var tapOpen by remember { mutableStateOf(!aiReady) }
+    var tweakOpen by remember { mutableStateOf(existing != null) }
 
     fun draft() = UserRule(
         id = existing?.id ?: java.util.UUID.randomUUID().toString().take(8), pkg = pkg, appLabel = label, name = name.trim(),
@@ -245,8 +268,37 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
         iconName = existing?.iconName ?: "ic_capsule_bolt", pillMode = pillMode, enabled = existing?.enabled ?: true,
         createdAt = existing?.createdAt ?: System.currentTimeMillis(), contributed = existing?.contributed ?: false
     )
-    val aiReady = remember { Ai.ready(context) && Ai.config(context).ruleHelp }
-    val aiPills = remember { Ai.ready(context) }
+
+    /** One turn of the chat: the message goes with the chat so far, the current rule and the samples. */
+    fun ask(text: String) {
+        if (asking || text.isBlank()) return
+        val before = chat.toList()
+        chat.add(AiRuleHelper.Turn(true, text.trim()))
+        message = ""; asking = true; problem = null
+        val positive = (listOfNotNull(sample) + samples.filter { it !== sample }).filter { s -> negatives.none { it.target == s.target } }.take(5)
+        val req = AiRuleHelper.Request(
+            label, pkg, positive = positive, negative = negatives.toList(), wanted = text.trim(),
+            history = before, current = if (regex.isNotBlank()) regex to pill else null
+        )
+        scope.launch {
+            val a = withContext(Dispatchers.IO) { runCatching { Ai.suggestRule(req) }.getOrNull() }
+            asking = false
+            when (a) {
+                is AiRuleHelper.Answer.Ok -> {
+                    regex = a.regex; pill = a.pill; field = UserRule.Field.BOTH; note = null
+                    chat.add(AiRuleHelper.Turn(false, a.explain.ifBlank { "Updated the pattern." }))
+                }
+                is AiRuleHelper.Answer.Failed -> chat.add(AiRuleHelper.Turn(false, "I couldn’t make that work. ${a.message}"))
+                null -> chat.add(AiRuleHelper.Turn(false, "I couldn’t reach the AI."))
+            }
+        }
+    }
+
+    val rule = draft()
+    val err = remember(regex, pill, field, ignoreCase) { if (regex.isBlank()) null else book.validate(rule) }
+    val ruleOk = regex.isNotBlank() && err == null
+    val previewMode = if (pillMode == UserRule.PillMode.AI) UserRule.PillMode.FIT else pillMode
+    val previewText = if (ruleOk) sample?.let { book.preview(rule.copy(pillMode = previewMode), it.title, it.text) } else null
 
     SubScreen(onDone, spacing = 10.dp) {
         FormGap(12)
@@ -256,119 +308,88 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
             Column { ScreenTitleSmall(label); Text(pkg, style = FormMono) }
         }
 
-        // ---- 1. a real notification to work from
-        FormLabel("1 · A notification from this app")
-        if (seen.isEmpty()) FormCaption("None seen in the last half hour. Let the app send one, then come back, or type one below.")
-        samples.forEachIndexed { i, s ->
-            FormPlate(onClick = { chosen = i; picks.clear() }) {
+        // ---- 01 the notification to work from
+        StepHeader("01", "Sample", if (seen.isEmpty()) "none seen" else "${seen.size} seen")
+        if (sample == null) {
+            FormCaption("None seen in the last half hour. Let the app send one, then come back, or type one below.")
+        } else {
+            FormPlate {
                 Column {
+                    BracketTag("using this one")
+                    FormGap(6)
                     Text(
-                        s.title.ifBlank { "(no title)" }, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (i == chosen) TagColors.AccentText else TagColors.White)
+                        sample.title.ifBlank { "(no title)" }, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = TagColors.White)
                     )
-                    Text(s.text, maxLines = 3, overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp, lineHeight = 18.sp, color = TagColors.Outline))
+                    Text(sample.text, maxLines = 5, overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 19.sp, color = TagColors.Outline))
                 }
             }
         }
-        FormField(manualTitle, { manualTitle = it }, "Or type a title")
-        FormField(manualText, { manualText = it }, "…and its text", singleLine = false, minHeight = 72)
-
-        // ---- 2. tap what you want
-        if (sample != null) {
-            FormLabel("2 · Tap what you want on the chip")
-            val words = remember(sample) { "${sample.title} ${sample.text}".trim().split(Regex("""\s+""")).map { it.trim(',', '.', ';', ':', '!', '?', '(', ')', '"', '\'') }.filter { it.isNotEmpty() }.distinct().take(60) }
-            FormWrap {
-                words.forEach { w ->
-                    FormChoice(w, w in picks, { if (w in picks) picks.remove(w) else if (picks.size < 3) picks.add(w) })
+        FormWrap {
+            if (samples.size > 1) FormChoice(if (moreSamples) "Hide others" else "Others (${samples.size - 1})", moreSamples, { moreSamples = !moreSamples })
+            FormChoice(if (typeOwn) "Hide" else "Type your own", typeOwn, { typeOwn = !typeOwn })
+        }
+        Reveal(moreSamples && samples.size > 1) {
+            samples.forEachIndexed { i, s ->
+                if (i != chosen) FormPlate(onClick = { chosen = i; picks.clear(); moreSamples = false }) {
+                    Column {
+                        Text(s.title.ifBlank { "(no title)" }, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TagColors.White))
+                        Text(s.text, maxLines = 2, overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp, lineHeight = 18.sp, color = TagColors.Outline))
+                    }
                 }
             }
-            Row {
-                FormButton("Build rule", {
-                    val s = RuleSuggester.suggest(sample.target, picks.toList())
-                    if (s == null) { problem = "That didn’t work from those words. Try different ones, or type the rule yourself."; note = null }
-                    else { regex = s.regex; pill = s.pill; note = s.explain; problem = null; field = UserRule.Field.BOTH }
-                }, enabled = picks.isNotEmpty())
-            }
+        }
+        Reveal(typeOwn) {
+            FormField(manualTitle, { manualTitle = it }, "A title")
+            FormField(manualText, { manualText = it }, "…and its text", singleLine = false, minHeight = 72)
+        }
+
+        // ---- 02 say what you want
+        if (sample != null) {
+            StepHeader("02", "Describe it", if (aiReady) "ask, then refine" else "tap the words")
             if (aiReady) {
-                FormLabel("Or describe it")
-                FormField(wanted, { wanted = it }, "e.g. the minutes left, the sender")
-                FormButton(if (asking) "Asking…" else "Ask AI", {
-                    asking = true; problem = null
-                    val req = AiRuleHelper.Request(label, pkg, positive = samples.take(5), wanted = wanted.ifBlank { "the important part" })
-                    scope.launch {
-                        val a = withContext(Dispatchers.IO) { runCatching { Ai.suggestRule(req) }.getOrNull() }
-                        asking = false
-                        when (a) {
-                            is AiRuleHelper.Answer.Ok -> { regex = a.regex; pill = a.pill; note = a.explain; field = UserRule.Field.BOTH }
-                            is AiRuleHelper.Answer.Failed -> problem = a.message
-                            null -> problem = "The AI could not be reached"
+                // A chat, so follow-ups work: the helper sees the conversation, the rule so far and the samples each time.
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (chat.isEmpty()) {
+                        ChatBubble(false, "What should the chip show? For example “the minutes left”, “the amount” or “who it is from”.")
+                        FormWrap {
+                            listOf(
+                                "The most important number" to "Show the most important number",
+                                "Who it’s from" to "Show who it is from",
+                                "Time left" to "Show the time left"
+                            ).forEach { (shown, sent) -> FormChoice(shown, false, { ask(sent) }) }
                         }
                     }
-                }, filled = false, enabled = !asking)
-            }
-        }
-
-        note?.let { FormPlate { FormCaption(it, color = TagColors.White) } }
-
-        // ---- 3. the rule itself
-        FormLabel("3 · The rule")
-        FormField(name, { name = it }, "Name (optional)")
-        FormField(regex, { regex = it; note = null }, "Pattern", mono = true, singleLine = false, minHeight = 64)
-        FormField(pill, { pill = it }, "Chip text, e.g. \$1 or \$1 left", mono = true)
-        FormCaption("\$1, \$2 … are the bracketed parts of the pattern.")
-
-        FormLabel("Look in")
-        FormWrap {
-            FormChoice("Title", field == UserRule.Field.TITLE, { field = UserRule.Field.TITLE })
-            FormChoice("Text", field == UserRule.Field.TEXT, { field = UserRule.Field.TEXT })
-            FormChoice("Both", field == UserRule.Field.BOTH, { field = UserRule.Field.BOTH })
-        }
-        FormLabel("Chip length")
-        FormWrap {
-            FormChoice("Fit", pillMode == UserRule.PillMode.FIT, { pillMode = UserRule.PillMode.FIT })
-            FormChoice("Exact", pillMode == UserRule.PillMode.EXACT, { pillMode = UserRule.PillMode.EXACT })
-            if (aiPills || pillMode == UserRule.PillMode.AI) FormChoice("Shorten with AI", pillMode == UserRule.PillMode.AI, { pillMode = UserRule.PillMode.AI })
-        }
-        FormCaption(when (pillMode) {
-            UserRule.PillMode.FIT -> "Cut to whole words so it fits the chip."
-            UserRule.PillMode.EXACT -> "Show as written, up to ${com.microtag.rules.UserRuleBook.EXACT_CAP} characters."
-            UserRule.PillMode.AI -> "Cut now, then replaced by a shorter version from the AI a moment later."
-        })
-        FormLabel("Icon")
-        FormWrap {
-            FormChoice("App’s icon", iconMode == UserRule.IconMode.APP, { iconMode = UserRule.IconMode.APP })
-            FormChoice("TAG’s bolt", iconMode == UserRule.IconMode.BUILTIN, { iconMode = UserRule.IconMode.BUILTIN })
-            FormChoice("None", iconMode == UserRule.IconMode.NONE, { iconMode = UserRule.IconMode.NONE })
-        }
-        FormLabel("Stays up")
-        FormWrap { listOf(10, 15, 30, 60, 0).forEach { s -> FormChoice(if (s == 0) "Until gone" else "$s s", timeout == s, { timeout = s }) } }
-        FormSwitch("Ignore capital letters", null, ignoreCase) { ignoreCase = it }
-
-        // ---- live test
-        val rule = draft()
-        val err = remember(regex, pill, field, ignoreCase) { if (regex.isBlank()) null else book.validate(rule) }
-        FormLabel("Test")
-        if (regex.isBlank()) FormCaption("Build or write a pattern to see what it does to each notification above.")
-        err?.let { FormNotice(it) }
-        if (regex.isNotBlank() && err == null) {
-            if (samples.isEmpty()) FormCaption("Nothing to test against yet.")
-            samples.forEach { s ->
-                val out = book.preview(rule.copy(pillMode = if (pillMode == UserRule.PillMode.AI) UserRule.PillMode.FIT else pillMode), s.title, s.text)
-                FormPlate {
+                    chat.forEach { ChatBubble(it.fromPerson, it.text) }
+                    if (asking) ChatBubble(false, "Thinking…", dim = true)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            out ?: "no match", modifier = Modifier.width(110.dp), maxLines = 1,
-                            style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (out != null) TagColors.AccentText else TagColors.Dim)
-                        )
-                        Text(s.target, maxLines = 1, overflow = TextOverflow.Ellipsis, style = FormMono)
+                        Box(Modifier.weight(1f)) {
+                            FormField(message, { message = it }, if (chat.isEmpty()) "Describe it" else "Reply, e.g. “only the number, not the unit”")
+                        }
+                        FormGapW(8)
+                        FormButton("Send", { ask(message) }, enabled = message.isNotBlank() && !asking)
                     }
                 }
+                FormGap(2)
+                Collapsible("Or tap the words yourself", tapOpen, { tapOpen = !tapOpen }) { TapWords(sample, picks, onBuild = { s ->
+                    if (s == null) { problem = "That didn’t work from those words. Try different ones, or type the rule yourself." }
+                    else { regex = s.regex; pill = s.pill; note = s.explain; problem = null; field = UserRule.Field.BOTH }
+                }) }
+            } else {
+                TapWords(sample, picks, onBuild = { s ->
+                    if (s == null) { problem = "That didn’t work from those words. Try different ones, or type the rule yourself."; note = null }
+                    else { regex = s.regex; pill = s.pill; note = s.explain; problem = null; field = UserRule.Field.BOTH }
+                })
+                FormCaption("Turn on the AI helper in the AI settings to describe it in your own words instead.", color = TagColors.Dim)
             }
         }
-        problem?.let { FormNotice(it) }
 
-        // ---- save / share
-        FormGap(6)
+        // ---- 03 what you get
+        StepHeader("03", "Result", if (ruleOk) (if (previewText != null) "matches" else "no match") else "not built yet")
+        ChipPreview(pkg, iconMode, previewText)
+        note?.let { FormCaption(it, color = TagColors.White) }
+        problem?.let { FormNotice(it) }
+        err?.let { FormNotice(it) }
         Row {
             FormButton("Save", {
                 val e = book.upsert(draft())
@@ -376,7 +397,80 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
             }, enabled = regex.isNotBlank())
             if (existing != null) { FormGapW(); FormButton("Delete", { book.delete(existing.id); onDone() }, filled = false, danger = true) }
         }
-        FormLabel("Share")
+
+        // The test: every sample through the rule, and a way to say "not this one" so the helper can fix it.
+        if (ruleOk && samples.isNotEmpty()) {
+            FormLabel("Test")
+            samples.forEach { s ->
+                val out = book.preview(rule.copy(pillMode = previewMode), s.title, s.text)
+                val isNeg = negatives.any { it.target == s.target }
+                FormPlate {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val good = if (isNeg) out == null else out != null
+                            Text(
+                                out ?: "no match", modifier = Modifier.width(110.dp), maxLines = 1,
+                                style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (!good) TagColors.Signal else if (out != null) TagColors.AccentText else TagColors.Dim)
+                            )
+                            Text(s.target, maxLines = 1, overflow = TextOverflow.Ellipsis, style = FormMono, modifier = Modifier.weight(1f))
+                        }
+                        if (isNeg || (aiReady && out != null)) {
+                            FormGap(6)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isNeg) BracketTag("should not match", color = TagColors.Signal)
+                                Spacer(Modifier.weight(1f))
+                                Text(
+                                    if (isNeg) "UNDO" else "NOT THIS ONE",
+                                    Modifier.clickable {
+                                        if (isNeg) negatives.removeAll { it.target == s.target }
+                                        else { negatives.add(s); ask("That notification must not match: ${s.target.take(120)}") }
+                                    }.padding(vertical = 4.dp),
+                                    style = TextStyle(fontFamily = TagFonts.data, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.2.sp, color = TagColors.AccentText)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- fine-tune
+        FormGap(4)
+        Collapsible("Fine-tune the rule", tweakOpen, { tweakOpen = !tweakOpen }) {
+            FormField(name, { name = it }, "Name (optional)")
+            FormField(regex, { regex = it; note = null }, "Pattern", mono = true, singleLine = false, minHeight = 64)
+            FormField(pill, { pill = it }, "Chip text, e.g. \$1 or \$1 left", mono = true)
+            FormCaption("\$1, \$2 … are the bracketed parts of the pattern.")
+            FormLabel("Look in")
+            FormWrap {
+                FormChoice("Title", field == UserRule.Field.TITLE, { field = UserRule.Field.TITLE })
+                FormChoice("Text", field == UserRule.Field.TEXT, { field = UserRule.Field.TEXT })
+                FormChoice("Both", field == UserRule.Field.BOTH, { field = UserRule.Field.BOTH })
+            }
+            FormLabel("Chip length")
+            FormWrap {
+                FormChoice("Fit", pillMode == UserRule.PillMode.FIT, { pillMode = UserRule.PillMode.FIT })
+                FormChoice("Exact", pillMode == UserRule.PillMode.EXACT, { pillMode = UserRule.PillMode.EXACT })
+                if (aiPills || pillMode == UserRule.PillMode.AI) FormChoice("Shorten with AI", pillMode == UserRule.PillMode.AI, { pillMode = UserRule.PillMode.AI })
+            }
+            FormCaption(when (pillMode) {
+                UserRule.PillMode.FIT -> "Cut to whole words so it fits the chip."
+                UserRule.PillMode.EXACT -> "Show as written, up to ${com.microtag.rules.UserRuleBook.EXACT_CAP} characters."
+                UserRule.PillMode.AI -> "Cut now, then replaced by a shorter version from the AI a moment later."
+            })
+            FormLabel("Icon")
+            FormWrap {
+                FormChoice("App’s icon", iconMode == UserRule.IconMode.APP, { iconMode = UserRule.IconMode.APP })
+                FormChoice("TAG’s bolt", iconMode == UserRule.IconMode.BUILTIN, { iconMode = UserRule.IconMode.BUILTIN })
+                FormChoice("None", iconMode == UserRule.IconMode.NONE, { iconMode = UserRule.IconMode.NONE })
+            }
+            FormLabel("Stays up")
+            FormWrap { listOf(10, 15, 30, 60, 0).forEach { s -> FormChoice(if (s == 0) "Until gone" else "$s s", timeout == s, { timeout = s }) } }
+            FormSwitch("Ignore capital letters", null, ignoreCase) { ignoreCase = it }
+        }
+
+        // ---- share
+        StepHeader("04", "Share", "optional")
         FormCaption("Think others would want it? This opens a ready-filled issue on the project’s GitHub page. Numbers, emails and names in the sample are masked first, and nothing is sent until you press Submit there.")
         FormButton("Contribute this rule", {
             val r = draft()
@@ -389,6 +483,93 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
             }
         }, filled = false, enabled = regex.isNotBlank())
         FormGap(28)
+    }
+}
+
+/** Tap up to three words from the sample to build a rule without the AI. */
+@Composable
+private fun TapWords(sample: AiRuleHelper.Sample, picks: androidx.compose.runtime.snapshots.SnapshotStateList<String>, onBuild: (RuleSuggester.Suggestion?) -> Unit) {
+    val words = remember(sample) { "${sample.title} ${sample.text}".trim().split(Regex("""\s+""")).map { it.trim(',', '.', ';', ':', '!', '?', '(', ')', '"', '\'') }.filter { it.isNotEmpty() }.distinct().take(60) }
+    FormCaption("Tap what you want on the chip.", color = TagColors.Outline)
+    FormWrap {
+        words.forEach { w ->
+            FormChoice(w, w in picks, { if (w in picks) picks.remove(w) else if (picks.size < 3) picks.add(w) })
+        }
+    }
+    Row {
+        FormButton("Build rule", { onBuild(RuleSuggester.suggest(sample.target, picks.toList())) }, enabled = picks.isNotEmpty())
+    }
+}
+
+/** A chat bubble: the person's in the accent, the helper's on a plate. */
+@Composable
+private fun ChatBubble(fromPerson: Boolean, text: String, dim: Boolean = false) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (fromPerson) Arrangement.End else Arrangement.Start) {
+        Text(
+            text,
+            Modifier
+                .widthIn(max = 300.dp)
+                .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = if (fromPerson) 20.dp else 6.dp, bottomEnd = if (fromPerson) 6.dp else 20.dp))
+                .background(if (fromPerson) TagColors.Lime else TagColors.Surface)
+                .padding(horizontal = 16.dp, vertical = 11.dp),
+            style = TextStyle(
+                fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 15.sp, lineHeight = 21.sp,
+                color = if (fromPerson) TagColors.OnLime else if (dim) TagColors.Outline else TagColors.White
+            )
+        )
+    }
+}
+
+/** The chip as it will look in the status bar: the icon, then the text the rule made from the sample. */
+@Composable
+private fun ChipPreview(pkg: String, iconMode: UserRule.IconMode, text: String?) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(TagColors.Surface).padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            Modifier.clip(CircleShape).background(TagColors.Black).border(2.dp, TagColors.Outline, CircleShape).padding(start = 8.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            when (iconMode) {
+                UserRule.IconMode.APP -> RuleAppGlyph(pkg, 24)
+                UserRule.IconMode.BUILTIN -> TagIcon(R.drawable.ic_capsule_bolt, TagColors.White, size = 22.dp)
+                UserRule.IconMode.NONE -> {}
+            }
+            FormGapW(8)
+            Text(
+                text ?: "–", maxLines = 1,
+                style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = if (text != null) TagColors.White else TagColors.Dim)
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        BracketTag("chip preview")
+    }
+}
+
+/** A section that opens and closes. */
+@Composable
+private fun Collapsible(title: String, open: Boolean, onToggle: () -> Unit, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        FormPlate(onClick = onToggle) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TagColors.White))
+                TagIcon(R.drawable.ic_chevron_right, TagColors.Outline, Modifier.rotate(if (open) 90f else 0f), 20.dp)
+            }
+        }
+        Reveal(open, content)
+    }
+}
+
+/** Content that slides open and closed on the app's springs. */
+@Composable
+private fun Reveal(visible: Boolean, content: @Composable () -> Unit) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible,
+        enter = androidx.compose.animation.expandVertically(TagMotion.spatial()) + androidx.compose.animation.fadeIn(TagMotion.effects()),
+        exit = androidx.compose.animation.shrinkVertically(TagMotion.fastEffects()) + androidx.compose.animation.fadeOut(TagMotion.fastEffects())
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
     }
 }
 

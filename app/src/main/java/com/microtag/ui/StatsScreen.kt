@@ -351,7 +351,7 @@ private fun DayChips(selected: Set<Int>, today: Int, order: List<Int>, onToggle:
             val on = i in selected
             val scale by animateFloatAsState(
                 if (on) 1f else 0.94f,
-                spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium), label = "chip"
+                TagMotion.fastSpatial(), label = "chip"
             )
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
