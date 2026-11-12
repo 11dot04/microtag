@@ -90,8 +90,8 @@ object SvgIcons {
     fun exists(context: Context, name: String): Boolean = glyph(context, name) != null
 
     /** A white, padded, square bitmap of the named icon, or null if there is no such asset. */
-    fun bitmap(context: Context, name: String, size: Int = 96): Bitmap? {
-        val key = "$name@$size"
+    fun bitmap(context: Context, name: String, size: Int = 96, tint: Int = Color.WHITE): Bitmap? {
+        val key = "$name@$size@$tint"
         cache.get(key)?.let { return it }
         val g = glyph(context, name) ?: return null
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -100,13 +100,13 @@ object SvgIcons {
         val s = (size - 2 * pad) / maxOf(g.w, g.h)
         c.translate(pad + ((size - 2 * pad) - g.w * s) / 2f, pad + ((size - 2 * pad) - g.h * s) / 2f)
         c.scale(s, s)
-        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
-        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tint; style = Paint.Style.FILL }
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tint; style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
         for (p in g.fills) c.drawPath(p, fill)
         for ((p, w) in g.strokes) { stroke.strokeWidth = w; c.drawPath(p, stroke) }
         cache.put(key, bmp)
         return bmp
     }
 
-    fun icon(context: Context, name: String, size: Int = 96): Icon? = bitmap(context, name, size)?.let { Icon.createWithBitmap(it) }
+    fun icon(context: Context, name: String, size: Int = 96, tint: Int = Color.WHITE): Icon? = bitmap(context, name, size, tint)?.let { Icon.createWithBitmap(it) }
 }
