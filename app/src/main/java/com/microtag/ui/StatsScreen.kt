@@ -65,7 +65,6 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.text.drawText
 import androidx.compose.runtime.rememberCoroutineScope
 import com.microtag.R
-import com.microtag.ui.Micro
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.shape.CornerSize
