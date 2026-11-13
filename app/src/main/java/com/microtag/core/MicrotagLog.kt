@@ -43,13 +43,15 @@ object MicrotagLog {
         val title: String,
         val text: String,
         val meta: String,
-        var repeats: Int = 1
+        var repeats: Int = 1,
+        /** The user rule that promoted this notification, if one did. */
+        val ruleId: String = ""
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
             put("key", key); put("t", timeMs); put("pkg", pkg); put("path", path)
             put("decision", decision.name); put("reason", reason)
             put("pill", pill ?: JSONObject.NULL); put("icon", icon ?: JSONObject.NULL)
-            put("title", title); put("text", text); put("meta", meta); put("repeats", repeats)
+            put("title", title); put("text", text); put("meta", meta); put("repeats", repeats); put("rule", ruleId)
         }
 
         fun format(): String {
@@ -84,7 +86,8 @@ object MicrotagLog {
                 title = o.optString("title"),
                 text = o.optString("text"),
                 meta = o.optString("meta"),
-                repeats = o.optInt("repeats", 1)
+                repeats = o.optInt("repeats", 1),
+                ruleId = o.optString("rule")
             )
         }
     }
@@ -153,7 +156,8 @@ object MicrotagLog {
         icon: String? = null,
         title: String = "",
         text: String = "",
-        meta: String = ""
+        meta: String = "",
+        ruleId: String = ""
     ) {
         if (!enabled || !initialized) return
         val entry = Entry(
@@ -167,7 +171,8 @@ object MicrotagLog {
             icon = icon,
             title = sanitize(title),
             text = sanitize(text),
-            meta = meta
+            meta = meta,
+            ruleId = ruleId
         )
         synchronized(lock) {
             val previous = entries.firstOrNull { it.key == key }
