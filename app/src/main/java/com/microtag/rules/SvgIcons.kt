@@ -123,6 +123,35 @@ object SvgIcons {
     fun croppedIcon(context: Context, name: String, together: List<String> = listOf(name), size: Int = 128, tint: Int = Color.WHITE): Icon? =
         cropped(context, name, together, size, tint)?.let { Icon.createWithBitmap(it) }
 
+    /**
+     * Several icons that are pieces of one mark, drawn together on one bitmap whose size and shape follow the mark
+     * (not a square): the two halves of the TAG mark joined. [widthPx] is the width; the height follows the aspect.
+     */
+    fun joined(context: Context, names: List<String>, widthPx: Int, tint: Int = Color.WHITE): Bitmap? {
+        val key = "joined:${names.joinToString("+")}@$widthPx@$tint"
+        cache.get(key)?.let { return it }
+        val glyphs = names.mapNotNull { glyph(context, it) }
+        if (glyphs.isEmpty()) return null
+        val window = RectF(); var first = true
+        for (g in glyphs) { val b = contentBounds(g); if (first) { window.set(b); first = false } else window.union(b) }
+        val s = widthPx / window.width()
+        val bmp = Bitmap.createBitmap(widthPx, maxOf(1, (window.height() * s).toInt()), Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        c.scale(s, s)
+        c.translate(-window.left, -window.top)
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tint; style = Paint.Style.FILL }
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tint; style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+        for (g in glyphs) {
+            for (p in g.fills) c.drawPath(p, fill)
+            for ((p, w) in g.strokes) { stroke.strokeWidth = w; c.drawPath(p, stroke) }
+        }
+        cache.put(key, bmp)
+        return bmp
+    }
+
+    /** The TAG mark, both halves joined. */
+    fun tagMark(context: Context, widthPx: Int, tint: Int): Bitmap? = joined(context, listOf("tag_end", "tag_progress"), widthPx, tint)
+
     /** A white, padded, square bitmap of the named icon, or null if there is no such asset. */
     fun bitmap(context: Context, name: String, size: Int = 96, tint: Int = Color.WHITE): Bitmap? {
         val key = "$name@$size@$tint"
