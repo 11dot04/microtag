@@ -164,6 +164,11 @@ class MainActivity : ComponentActivity() {
                             Screen.Stats -> StatsScreen(prefs = prefs, onBack = { screen = Screen.Dashboard })
                             Screen.Logs -> LogsScreen(
                                 onBack = { screen = Screen.Dashboard },
+                                onNotThis = { e ->
+                                    val label = runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(e.pkg, 0)).toString() }.getOrDefault(e.pkg)
+                                    rulePrefill = RulePrefill(e.pkg, label, e.title, e.text, ruleId = e.ruleId)
+                                    screen = Screen.Rules
+                                },
                                 onBuildRule = { e ->
                                     val label = runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(e.pkg, 0)).toString() }.getOrDefault(e.pkg)
                                     rulePrefill = RulePrefill(e.pkg, label, e.title, e.text)

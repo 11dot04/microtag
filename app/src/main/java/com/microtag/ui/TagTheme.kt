@@ -902,30 +902,27 @@ fun TagGrid(
 }
 
 /**
- * Print marks that wrap a block of tiles and sit in the gutter, so the tiles stay on the grid: crop marks, a dotted
- * bleed line and registration targets. The marks are drawn behind the children so the label's plate cuts the line cleanly.
+ * Print marks that wrap a block of tiles and sit in the gutter, so the tiles stay on the grid: a + at each corner and a dotted
+ * bleed line, with the name and a tiny spec on the line. The marks are drawn behind the children so the label's plate cuts the line cleanly.
  */
 @Composable
-fun TagFrame(label: String, color: Color, modifier: Modifier = Modifier, labelBias: Float = 0f) {
-    // Print marks instead of an outline: crop marks at the four corners, a dotted bleed line along the top that the
-    // label interrupts, short ticks at the middle of the other three sides, and registration targets either side of the label.
+fun TagFrame(label: String, color: Color, modifier: Modifier = Modifier, labelBias: Float = 0f, note: String? = null) {
+    // Print marks instead of an outline: a + at the four corners, a dotted bleed line along the top that the
+    // label interrupts, and short ticks at the middle of the other three sides.
     Box(
         modifier.drawBehind {
             val w = 1.5.dp.toPx()
-            val arm = 18.dp.toPx()
             val inset = 1.dp.toPx()
             val c = color
-            fun crop(x: Float, y: Float, dx: Float, dy: Float) {
-                drawLine(c, Offset(x, y), Offset(x + dx * arm, y), w)
-                drawLine(c, Offset(x, y), Offset(x, y + dy * arm), w)
-            }
-            crop(inset, inset, 1f, 1f)
-            crop(size.width - inset, inset, -1f, 1f)
-            crop(inset, size.height - inset, 1f, -1f)
-            crop(size.width - inset, size.height - inset, -1f, -1f)
-            // The bleed line, dotted, between the top crop marks.
+            // A + at each corner, the same mark that sits at the corners of the numeral on the main screen.
+            val plus = 11.dp.toPx()
+            microGlyph(Micro.Cross, Offset(inset, inset), plus, c, w)
+            microGlyph(Micro.Cross, Offset(size.width - inset, inset), plus, c, w)
+            microGlyph(Micro.Cross, Offset(inset, size.height - inset), plus, c, w)
+            microGlyph(Micro.Cross, Offset(size.width - inset, size.height - inset), plus, c, w)
+            // The bleed line, dotted, between the top corner marks.
             drawLine(
-                c.copy(alpha = 0.7f), Offset(inset + arm + 6.dp.toPx(), inset), Offset(size.width - inset - arm - 6.dp.toPx(), inset), w,
+                c.copy(alpha = 0.7f), Offset(inset + plus, inset), Offset(size.width - inset - plus, inset), w,
                 pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 5.dp.toPx()), 0f)
             )
             // Mid-side ticks.
@@ -943,10 +940,9 @@ fun TagFrame(label: String, color: Color, modifier: Modifier = Modifier, labelBi
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            RegistrationMark(color)
             Text(
                 text = label.uppercase(),
-                modifier = Modifier.padding(horizontal = 8.dp),
+                modifier = Modifier.padding(start = 2.dp, end = if (note != null) 8.dp else 2.dp),
                 style = TextStyle(
                     fontFamily = TagFonts.mono,
                     fontWeight = FontWeight.Bold,
@@ -957,22 +953,19 @@ fun TagFrame(label: String, color: Color, modifier: Modifier = Modifier, labelBi
                     color = TagColors.White
                 )
             )
-            RegistrationMark(color)
+            // A tiny spec after the name, in the same mono as the numeral's readout: "INSPECT / 04".
+            if (note != null) Text(
+                text = "/ ${note.uppercase()}",
+                modifier = Modifier.padding(end = 2.dp),
+                style = TextStyle(
+                    fontFamily = TagFonts.data, fontWeight = FontWeight.Medium, fontSize = 11.sp,
+                    letterSpacing = 1.2.sp, color = TagColors.Outline
+                )
+            )
         }
     }
 }
 
-/** A print registration target: a ring with a cross through it. */
-@Composable
-fun RegistrationMark(color: Color, size: Dp = 12.dp) {
-    androidx.compose.foundation.Canvas(Modifier.size(size)) {
-        val w = 1.5.dp.toPx()
-        val r = this.size.minDimension / 2f
-        drawCircle(color, radius = r * 0.62f, style = Stroke(w))
-        drawLine(color, Offset(0f, r), Offset(this.size.width, r), w)
-        drawLine(color, Offset(r, 0f), Offset(r, this.size.height), w)
-    }
-}
 
 // ==========================================================
 // TILE

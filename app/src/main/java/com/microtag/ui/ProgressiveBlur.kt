@@ -25,19 +25,23 @@ half4 main(float2 p) {
     float t = 1.0 - smoothstep(holdPx, bandPx, p.y);
     float r = maxR * t * strength;
     half4 c = content.eval(p);
-    if (r < 0.75) return c;
+    if (r < 0.6) return c;
+    // Each pixel turns its sample pattern by a different amount (interleaved gradient noise), so a coarse pattern
+    // shows as fine grain instead of ghost copies of the tiles.
+    float jitter = fract(52.9829189 * fract(dot(p, float2(0.06711056, 0.00583715)))) * 6.2831853;
     half4 acc = half4(0.0);
     float ws = 0.0;
-    for (int i = 0; i < 24; i++) {
-        float a = float(i) * 2.39996;
-        float d = sqrt((float(i) + 0.5) / 24.0) * r;
-        float w = 1.0 - 0.5 * (d / r);
+    for (int i = 0; i < 36; i++) {
+        float fi = float(i);
+        float a = fi * 2.39996323 + jitter;
+        float d = sqrt((fi + 0.5) / 36.0) * r;
+        // Gaussian-ish weights: the middle counts most, so the result is smooth, not a flat box.
+        float w = exp(-2.0 * (d * d) / (r * r));
         acc += content.eval(p + float2(cos(a), sin(a)) * d) * w;
         ws += w;
     }
     half4 b = acc / ws;
-    // A little dimming toward the very top so the numeral reads over it; the blur does most of the work.
-    return b * (1.0 - 0.35 * t * strength);
+    return b * (1.0 - 0.3 * t * strength);
 }
 """
 

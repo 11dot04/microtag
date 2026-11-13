@@ -57,7 +57,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** A notification to start a rule from, handed over by the Logs screen: the app and the raw title and text. */
-class RulePrefill(val pkg: String, val label: String, val title: String, val text: String)
+class RulePrefill(val pkg: String, val label: String, val title: String, val text: String, val ruleId: String? = null)
 
 private sealed interface RulesPage {
     object Home : RulesPage
@@ -72,7 +72,17 @@ private data class PickApp(val pkg: String, val label: String)
 fun RulesScreen(onBack: () -> Unit, onOpenAi: () -> Unit, prefill: RulePrefill? = null) {
     val context = LocalContext.current
     // Coming from a log entry, the builder opens straight away on that app and notification.
-    var page by remember { mutableStateOf<RulesPage>(if (prefill != null) RulesPage.Build(prefill.pkg, prefill.label, null) else RulesPage.Home) }
+    var page by remember {
+        mutableStateOf<RulesPage>(
+            when {
+                // "Not this one" from the log: that rule opens with the notification as a must-not-match.
+                prefill?.ruleId != null -> UserRules.book(context).all().firstOrNull { it.id == prefill.ruleId }
+                    ?.let { RulesPage.Build(it.pkg, it.appLabel, it) } ?: RulesPage.Build(prefill.pkg, prefill.label, null)
+                prefill != null -> RulesPage.Build(prefill.pkg, prefill.label, null)
+                else -> RulesPage.Home
+            }
+        )
+    }
     var sample by remember { mutableStateOf(prefill) }
     BackHandler {
         when {
@@ -291,6 +301,14 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
                 is AiRuleHelper.Answer.Failed -> chat.add(AiRuleHelper.Turn(false, "I couldn’t make that work. ${a.message}"))
                 null -> chat.add(AiRuleHelper.Turn(false, "I couldn’t reach the AI."))
             }
+        }
+    }
+
+    // Arriving from a log entry that a rule promoted wrongly: it is a must-not-match, and the helper is asked to fix the rule.
+    LaunchedEffect(Unit) {
+        if (prefill?.ruleId != null && sample != null) {
+            negatives.add(sample)
+            if (aiReady) ask("That notification must not match: ${sample.target.take(120)}")
         }
     }
 

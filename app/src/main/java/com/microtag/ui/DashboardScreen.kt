@@ -303,8 +303,8 @@ fun DashboardScreen(
       // Progressive blur under the docked numeral (Android 13+): the tiles get blurrier toward the top edge and keep
       // their colour. Older Androids get a short gradient fade.
       val blurShader = remember { ProgressiveBlur.newShader() }
-      val blurMax = with(density) { 16.dp.toPx() }
-      val blurBand = dockBarPx + with(density) { 56.dp.toPx() }
+      val blurMax = with(density) { 7.dp.toPx() }
+      val blurBand = dockBarPx + with(density) { 28.dp.toPx() }
       val shortFadePx = with(density) { 24.dp.toPx() }
       Column(
           Modifier
@@ -312,7 +312,7 @@ fun DashboardScreen(
               .graphicsLayer {
                   compositingStrategy = CompositingStrategy.Offscreen
                   val p = (scroll.value / collapse).coerceIn(0f, 1f)
-                  if (blurShader != null) ProgressiveBlur.apply(this, blurShader, dockBarPx * 0.7f, blurBand, blurMax, p)
+                  if (blurShader != null) ProgressiveBlur.apply(this, blurShader, dockBarPx * 0.55f, blurBand, blurMax, p)
               }
               .drawWithContent {
                   drawContent()
@@ -370,7 +370,7 @@ fun DashboardScreen(
         // three accents reads as a patchwork; a single-accent palette (Lime) looks exactly as before.
         TagGrid {
             // ---- rows 0-1: Discord + Inspect
-            TagFrame("Inspect", TagColors.tone(2), Modifier.cell(2, 0, 2, 2, outset = 6.dp))
+            TagFrame("Inspect", TagColors.tone(2), Modifier.cell(2, 0, 2, 2, outset = 6.dp), note = "04 tools")
             TileTone(0) { BigTile(Modifier.cell(0, 0, 2, 2), R.drawable.ic_discord, "Discord", "CALLS", discord) }
             InspectTile(Modifier.cell(2, 0), R.drawable.ic_inspect_calc, onOpenInspect)
             InspectTile(Modifier.cell(3, 0), R.drawable.ic_inspect_colour, onOpenInspect)
@@ -413,7 +413,7 @@ fun DashboardScreen(
             }
 
             // ---- Micro Tags: small, single-purpose chips
-            TagFrame("Micro Tags", TagColors.Outline, Modifier.cell(0f, b, 4f, 3f, outset = 6.dp), labelBias = 0.55f)
+            TagFrame("Micro Tags", TagColors.Outline, Modifier.cell(0f, b, 4f, 3f, outset = 6.dp), labelBias = 0.55f, note = "live")
             TileTone(1) { MicroTile(Modifier.cell(0f, b, 2f, 1f), R.drawable.ic_upi_rupee, "UPI", "Credit", upi) }
             TileTone(1, always = true) { IconTile(Modifier.cell(2f, b), R.drawable.ic_download, download) }
             TileTone(1, always = true) { IconTile(Modifier.cell(3f, b), R.drawable.ic_upload, upload) }

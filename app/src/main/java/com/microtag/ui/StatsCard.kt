@@ -71,7 +71,9 @@ object StatsCard {
     private const val H = 1350
 
     /** Fonts, colours and a paint factory shared by every poster. Everything comes from the active palette. */
-    private class Kit(context: Context) {
+    private class Kit(val context: Context) {
+        /** The TAG mark, joined, at the given width and colour. Null if the assets are missing. */
+        fun mark(widthPx: Int, color: Int) = com.microtag.rules.SvgIcons.tagMark(context, widthPx, color)
         val accent = TagColors.Lime.toArgb()
         val base = TagColors.Black.toArgb()   // the palette's base (cream on a light palette)
         val ink = TagColors.White.toArgb()
@@ -133,9 +135,9 @@ object StatsCard {
     }
 
     /** Shrinks the size until the text fits the width. */
-    private fun fit(p: Paint, text: String, maxWidth: Float, start: Float): Paint {
+    private fun fit(p: Paint, text: String, maxWidth: Float, start: Float, min: Float = 40f): Paint {
         p.textSize = start
-        while (p.measureText(text) > maxWidth && p.textSize > 40f) p.textSize -= 4f
+        while (p.measureText(text) > maxWidth && p.textSize > min) p.textSize -= 2f
         return p
     }
 
@@ -147,10 +149,9 @@ object StatsCard {
         c.drawColor(k.base)
         val right = 984f
         c.drawText("TAG, INTERCEPTIONS", 96f, 120f, k.paint(k.ink, 24f, k.mono, 0.1f))
-        c.drawText("IN NUMBERS  " + f.days, 96f, 154f, k.paint(k.grey, 24f, k.mono, 0.1f))
+        c.drawText("IN NUMBERS [ ${f.days} ]", 96f, 154f, k.paint(k.grey, 24f, k.mono, 0.1f))
         c.drawRect(96f, 184f, 96f + 340f, 196f, k.fill(k.ink))
-        c.drawCircle(right - 28f, 128f, 28f, k.fill(k.accent))
-        c.drawText("T", right - 28f, 139f, k.paint(k.base, 32f, k.bold, 0f, Paint.Align.CENTER))
+        k.mark(124, k.accent)?.let { c.drawBitmap(it, right - 124f, 96f, null) }
 
         data class Block(val label: String, val number: String)
         val blocks = listOf(
@@ -160,13 +161,13 @@ object StatsCard {
             Block("HOURS OF THE DAY\nWITH ANY ACTIVITY", "${f.activeHours}/24")
         )
         blocks.forEachIndexed { i, b ->
-            val top = 262f + i * 240f
+            val top = 250f + i * 250f
             val x0 = if (i % 2 == 0) 96f else 400f
             b.label.split("\n").forEachIndexed { n, t -> c.drawText(t, x0, top + n * 32f, k.paint(k.ink, 24f, k.mono, 0.08f)) }
             if (i % 2 == 0) c.drawLine(x0, top + 70f, right, top + 70f, k.line(k.ink, 2f))
             else c.drawRect(x0, top + 62f, right, top + 74f, k.fill(k.ink))
-            val num = fit(k.paint(k.ink, 170f, k.heavy, -0.03f, if (i % 2 == 0) Paint.Align.RIGHT else Paint.Align.LEFT), b.number, right - x0 - 6f, 170f)
-            c.drawText(b.number, if (i % 2 == 0) right else x0, top + 70f + 160f, num)
+            val num = fit(k.paint(k.ink, 150f, k.heavy, -0.03f, if (i % 2 == 0) Paint.Align.RIGHT else Paint.Align.LEFT), b.number, right - x0 - 6f, 150f)
+            c.drawText(b.number, if (i % 2 == 0) right else x0, top + 70f + 144f, num)
         }
 
         // The day as a micro bar chart, 24 slim bars.
@@ -199,15 +200,18 @@ object StatsCard {
         // Outlined pill, top left; report mark, top right.
         c.drawRoundRect(72f, 92f, 72f + 330f, 92f + 54f, 27f, 27f, k.line(ink, 3f))
         c.drawText("INTERCEPTION DATA", 72f + 165f, 92f + 35f, k.paint(ink, 22f, k.mono, 0.08f, Paint.Align.CENTER))
-        c.drawText("TAG REPORT '" + f.year.takeLast(2), 1008f, 126f, k.paint(ink, 22f, k.mono, 0.08f, Paint.Align.RIGHT))
+        k.mark(104, ink)?.let { c.drawBitmap(it, 1008f - 104f, 94f, null) }
+        c.drawText("TAG REPORT '" + f.year.takeLast(2), 1008f - 104f - 24f, 126f, k.paint(ink, 22f, k.mono, 0.08f, Paint.Align.RIGHT))
         c.drawLine(72f, 196f, 1008f, 196f, k.line(ink, 2f))
 
         // 1: the total.
         val total = f.total.toString()
         c.drawText(total, 52f, 640f, fit(k.paint(ink, 560f, k.heavy, -0.07f), total, 700f, 560f))
         c.drawLine(750f, 386f, 1008f, 386f, k.line(ink, 2f))
-        listOf("notifications turned", "into chips across", f.days.lowercase().take(22)).forEachIndexed { i, t ->
-            c.drawText(t, 750f, 426f + i * 38f, k.paint(ink, 28f, k.medium))
+        listOf("notifications turned", "into chips", "[ ${f.days} ]").forEachIndexed { i, t ->
+            // Each line is fitted to the caption column so nothing runs past the margin.
+            val face = if (i == 2) k.mono else k.medium
+            c.drawText(t, 750f, 426f + i * 38f, fit(k.paint(if (i == 2) mid else ink, 28f, face), t, 258f, 28f, 16f))
         }
         c.drawLine(72f, 700f, 1008f, 700f, k.line(ink, 2f))
 
@@ -215,7 +219,7 @@ object StatsCard {
         c.drawText(f.peakText, 52f, 960f, fit(k.paint(ink, 300f, k.heavy, -0.06f), f.peakText, 690f, 300f))
         c.drawLine(750f, 790f, 1008f, 790f, k.line(ink, 2f))
         listOf("the busiest hour,", "${f.peakCount} chips, ${f.peakShare}%", "of the total").forEachIndexed { i, t ->
-            c.drawText(t, 750f, 830f + i * 38f, k.paint(ink, 28f, k.medium))
+            c.drawText(t, 750f, 830f + i * 38f, fit(k.paint(ink, 28f, k.medium), t, 258f, 28f, 16f))
         }
         c.drawLine(72f, 1020f, 1008f, 1020f, k.line(ink, 2f))
 
@@ -246,8 +250,9 @@ object StatsCard {
 
     private fun signal(c: Canvas, k: Kit, f: Facts) {
         c.drawColor(k.base)
-        registration(c, k, 56f, 56f); registration(c, k, W - 56f, 56f)
-        registration(c, k, 56f, H - 56f); registration(c, k, W - 56f, H - 56f)
+        // One registration mark, off to the side, like the one beside the numeral on the main screen.
+        registration(c, k, W - 46f, 690f)
+        k.mark(120, k.accent)?.let { c.drawBitmap(it, 984f - 120f, 96f, null) }
 
         // The sideways strip, reading upward along the left edge.
         val strip = TextUtils.ellipsize(
