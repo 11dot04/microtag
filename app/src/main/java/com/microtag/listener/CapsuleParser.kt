@@ -211,22 +211,7 @@ object CapsuleParser {
         return if (parsed != null && parsed.tile == null) parsed.copy(tile = tileFor(pkg, extras)) else parsed
     }
 
-    private fun cleanSongTitle(rawTitle: String, artist: String): String {
-        var cleaned = rawTitle.replace(Regex("""\s*[\(\[].*?[\)\]]"""), "").trim()
-        
-        if (cleaned.contains("-") && artist.isNotBlank()) {
-            val parts = cleaned.split("-").map { it.trim() }
-            val artistLower = artist.lowercase()
-            
-            val songPart = parts.firstOrNull { part ->
-                !part.lowercase().contains(artistLower) && !artistLower.contains(part.lowercase())
-            }
-            if (songPart != null) {
-                cleaned = songPart
-            }
-        }
-        return cleaned.ifBlank { rawTitle }.take(14)
-    }
+    private fun cleanSongTitle(rawTitle: String, artist: String): String = SongText.pill(rawTitle, artist, 14)
 
     private val browserMedia = Regex("""(?i)\bsite is playing\b|\bplaying media\b""")
 

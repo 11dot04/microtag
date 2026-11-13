@@ -24,6 +24,9 @@ object WeatherWatcher {
     @Volatile private var lastOkAt = 0L
     @Volatile private var intervalMs = 60 * 60 * 1000L
 
+    /** Takes the chip down after its visible time. setTimeoutAfter alone is not honoured for a promoted, ongoing chip. */
+    private val hide = Runnable { app?.let { MicrotagReminder.cancelCapsule(it, ID) } }
+
     private val tick = object : Runnable {
         override fun run() {
             val ctx = app ?: return
@@ -41,6 +44,7 @@ object WeatherWatcher {
         val on = MicrotagPrefs(ctx).isAppEnabled(TagKeys.WEATHER) && !TagSettings(ctx).weatherFromSystem
         intervalMs = (TagSettings(ctx).weatherIntervalMin.coerceAtLeast(15)) * 60_000L
         handler?.removeCallbacks(tick)
+        handler?.removeCallbacks(hide)
         if (!on) {
             MicrotagReminder.cancelCapsule(ctx, ID)
             lastOkAt = 0L
@@ -70,14 +74,17 @@ object WeatherWatcher {
     }
 
     private fun post(ctx: Context, w: Weather, place: String?, f: Boolean) {
+        // Up for ten minutes, or half the interval if that is shorter; then it is cancelled here and the next tick brings it back.
+        val visibleMs = minOf(10 * 60_000L, intervalMs / 2)
+        handler?.removeCallbacks(hide)
+        handler?.postDelayed(hide, visibleMs)
         MicrotagReminder.showCapsule(
             context = ctx,
             pillText = WeatherFormat.pill(w, f),
             title = WeatherFormat.title(w, place),
             content = WeatherFormat.content(w, f),
             notificationId = ID,
-            // Up for ten minutes (or half the interval if that is shorter), then gone until the next one.
-            timeoutSeconds = (minOf(10 * 60_000L, intervalMs / 2) / 1000L).toInt(),
+            timeoutSeconds = (visibleMs / 1000L).toInt(),
             iconName = com.microtag.weather.WeatherCodes.icon(w.code, w.isDay, w.windKmh),
             showAppName = false
         )

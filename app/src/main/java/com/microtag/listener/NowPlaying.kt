@@ -91,13 +91,8 @@ object NowPlaying {
     private val tail = Regex("""(?i)\s*[-–—]\s*(?:remaster(?:ed)?(?:\s*\d{4})?|\d{4}\s*remaster(?:ed)?|live|single version|radio edit|from\s+.+|original motion picture.*)$""")
 
     /** "Tum Hi Ho (From "Aashiqui 2")" -> "Tum Hi Ho"; "Song - Remastered 2011" -> "Song"; "(feat. X)" goes. */
-    fun cleanSong(raw: String): String {
-        var s = raw.trim().trim('"', '“', '”')
-        s = brackets.replace(s, "").trim()
-        s = tail.replace(s, "").trim()
-        return s.ifBlank { raw.trim() }
-    }
+    fun cleanSong(raw: String): String = SongText.clean(raw)
 
-    /** The pill: the song, cut at a word if it is too long. */
-    fun pill(track: Track, limit: Int = 14): String = PillText.cut(track.song, limit)
+    /** The pill: the song, with version labels and credits gone, cut at a subtitle or a word if it is still too long. No AI: songs change too often. */
+    fun pill(track: Track, limit: Int = 14): String = SongText.pill(track.song, "", limit)
 }

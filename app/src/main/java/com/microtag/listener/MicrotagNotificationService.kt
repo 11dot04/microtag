@@ -429,15 +429,16 @@ class MicrotagNotificationService : NotificationListenerService() {
         if (match != null) {
             // Say which rule fired, so the log answers "why did this match".
             val who = userMatch?.let { "your rule \"${it.rule.name}\"" } ?: "a built-in rule"
+            val ruleId = userMatch?.rule?.id.orEmpty()
             val signature = "${match.pillText}|$title|$text|${match.iconName}"
             if (lastShown[sbn.key] == signature) {
                 logDecision(sbn, "RULE", Decision.UNCHANGED, "$who matched, same as last shown",
-                    match.pillText, match.iconName)
+                    match.pillText, match.iconName, ruleId)
                 return
             }
             if (throttled(sbn, match.tile)) {
                 logDecision(sbn, "RULE", Decision.UNCHANGED, "$who matched, held back by refresh interval",
-                    match.pillText, match.iconName)
+                    match.pillText, match.iconName, ruleId)
                 return
             }
             // Same pill as before (only the text moved on, e.g. a VPN's duration) is an update, not a new interception.
@@ -446,7 +447,7 @@ class MicrotagNotificationService : NotificationListenerService() {
             Log.d(TAG, "RULE   $pkg pill='${match.pillText}' icon=${match.iconName}")
             logDecision(sbn, "RULE", if (isNew) Decision.PROMOTED else Decision.UNCHANGED,
                 if (isNew) "$who matched" else "$who matched, update to a live capsule",
-                match.pillText, match.iconName)
+                match.pillText, match.iconName, ruleId)
             lastShown[sbn.key] = signature
             lastShownAt[sbn.key] = System.currentTimeMillis()
             pillChangedAt[sbn.key] = System.currentTimeMillis()
@@ -776,7 +777,8 @@ class MicrotagNotificationService : NotificationListenerService() {
         decision: Decision,
         reason: String,
         pill: String? = null,
-        icon: String? = null
+        icon: String? = null,
+        ruleId: String = ""
     ) {
         val extras = sbn.notification?.extras
         val title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
@@ -794,7 +796,8 @@ class MicrotagNotificationService : NotificationListenerService() {
             icon = icon,
             title = if (quiet) "" else title,
             text = if (quiet) "" else if (sub.isNotBlank()) "$text | sub: $sub" else text,
-            meta = metaOf(sbn)
+            meta = metaOf(sbn),
+            ruleId = ruleId
         )
     }
 
