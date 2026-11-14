@@ -221,6 +221,7 @@ private fun RuleAppGlyph(pkg: String, size: Int, colour: Boolean = false) {
 
 // ------------------------------------------------------------------ builder
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, prefill: RulePrefill?, onDone: () -> Unit) {
     val context = LocalContext.current
@@ -333,7 +334,7 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
         } else {
             FormPlate {
                 Column {
-                    BracketTag("using this one")
+                    QuietTag("using this one")
                     FormGap(6)
                     Text(
                         sample.title.ifBlank { "(no title)" }, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -379,7 +380,13 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
                         }
                     }
                     chat.forEach { ChatBubble(it.fromPerson, it.text) }
-                    if (asking) ChatBubble(false, "Thinking…", dim = true)
+                    if (asking) {
+                        // Expressive's loading indicator: a shape that morphs while the helper thinks.
+                        Box(
+                            Modifier.clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 6.dp, bottomEnd = 20.dp))
+                                .background(TagColors.Surface).padding(horizontal = 18.dp, vertical = 10.dp)
+                        ) { androidx.compose.material3.LoadingIndicator(Modifier.size(34.dp), color = TagColors.Lime) }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) {
                             FormField(message, { message = it }, if (chat.isEmpty()) "Describe it" else "Reply, e.g. “only the number, not the unit”")
@@ -435,7 +442,7 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
                         if (isNeg || (aiReady && out != null)) {
                             FormGap(6)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (isNeg) BracketTag("should not match", color = TagColors.Signal)
+                                if (isNeg) QuietTag("should not match", color = TagColors.Signal)
                                 Spacer(Modifier.weight(1f))
                                 Text(
                                     if (isNeg) "UNDO" else "NOT THIS ONE",
@@ -460,28 +467,19 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
             FormField(pill, { pill = it }, "Chip text, e.g. \$1 or \$1 left", mono = true)
             FormCaption("\$1, \$2 … are the bracketed parts of the pattern.")
             FormLabel("Look in")
-            FormWrap {
-                FormChoice("Title", field == UserRule.Field.TITLE, { field = UserRule.Field.TITLE })
-                FormChoice("Text", field == UserRule.Field.TEXT, { field = UserRule.Field.TEXT })
-                FormChoice("Both", field == UserRule.Field.BOTH, { field = UserRule.Field.BOTH })
-            }
+            val fields = listOf(UserRule.Field.TITLE, UserRule.Field.TEXT, UserRule.Field.BOTH)
+            TagSegments(listOf("Title", "Text", "Both"), fields.indexOf(field), { field = fields[it] })
             FormLabel("Chip length")
-            FormWrap {
-                FormChoice("Fit", pillMode == UserRule.PillMode.FIT, { pillMode = UserRule.PillMode.FIT })
-                FormChoice("Exact", pillMode == UserRule.PillMode.EXACT, { pillMode = UserRule.PillMode.EXACT })
-                if (aiPills || pillMode == UserRule.PillMode.AI) FormChoice("Shorten with AI", pillMode == UserRule.PillMode.AI, { pillMode = UserRule.PillMode.AI })
-            }
+            val modes = buildList { add(UserRule.PillMode.FIT); add(UserRule.PillMode.EXACT); if (aiPills || pillMode == UserRule.PillMode.AI) add(UserRule.PillMode.AI) }
+            TagSegments(modes.map { when (it) { UserRule.PillMode.FIT -> "Fit"; UserRule.PillMode.EXACT -> "Exact"; UserRule.PillMode.AI -> "AI" } }, modes.indexOf(pillMode).coerceAtLeast(0), { pillMode = modes[it] })
             FormCaption(when (pillMode) {
                 UserRule.PillMode.FIT -> "Cut to whole words so it fits the chip."
                 UserRule.PillMode.EXACT -> "Show as written, up to ${com.microtag.rules.UserRuleBook.EXACT_CAP} characters."
                 UserRule.PillMode.AI -> "Cut now, then replaced by a shorter version from the AI a moment later."
             })
             FormLabel("Icon")
-            FormWrap {
-                FormChoice("App’s icon", iconMode == UserRule.IconMode.APP, { iconMode = UserRule.IconMode.APP })
-                FormChoice("TAG’s bolt", iconMode == UserRule.IconMode.BUILTIN, { iconMode = UserRule.IconMode.BUILTIN })
-                FormChoice("None", iconMode == UserRule.IconMode.NONE, { iconMode = UserRule.IconMode.NONE })
-            }
+            val icons = listOf(UserRule.IconMode.APP, UserRule.IconMode.BUILTIN, UserRule.IconMode.NONE)
+            TagSegments(listOf("App’s icon", "TAG’s bolt", "None"), icons.indexOf(iconMode), { iconMode = icons[it] })
             FormLabel("Stays up")
             FormWrap { listOf(10, 15, 30, 60, 0).forEach { s -> FormChoice(if (s == 0) "Until gone" else "$s s", timeout == s, { timeout = s }) } }
             FormSwitch("Ignore capital letters", null, ignoreCase) { ignoreCase = it }
@@ -500,6 +498,7 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
                     .onFailure { problem = "No browser to open it with" }
             }
         }, filled = false, enabled = regex.isNotBlank())
+        MicroFooter("TAG_RULE", if (regex.isNotBlank()) "${regex.length} CH PATTERN" else null, Micro.Diamond)
         FormGap(28)
     }
 }
@@ -561,7 +560,7 @@ private fun ChipPreview(pkg: String, iconMode: UserRule.IconMode, text: String?)
             )
         }
         Spacer(Modifier.weight(1f))
-        BracketTag("chip preview")
+        QuietTag("chip preview")
     }
 }
 
@@ -594,4 +593,10 @@ private fun Reveal(visible: Boolean, content: @Composable () -> Unit) {
 @Composable
 private fun ScreenTitleSmall(text: String) {
     Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 28.sp, color = TagColors.White))
+}
+
+/** A small caps note: states a fact about what is next to it, nothing decorative. */
+@Composable
+private fun QuietTag(text: String, color: androidx.compose.ui.graphics.Color = TagColors.Dim) {
+    Text(text.uppercase(), style = TextStyle(fontFamily = TagFonts.data, fontWeight = FontWeight.Medium, fontSize = 11.sp, letterSpacing = 1.2.sp, color = color))
 }

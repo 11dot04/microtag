@@ -127,6 +127,7 @@ fun PinScreen(onBack: () -> Unit) {
                 )
             }
         }
+        MicroFooter("TAG_PIN", "30 MIN", Micro.Brackets)
         Spacer(Modifier.height(24.dp))
     }
 }

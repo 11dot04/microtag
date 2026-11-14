@@ -243,6 +243,8 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
         )
         Block("Intro", listOf(Item("Replay intro", "Walk through the welcome screens again.", onClick = onReplayIntro)))
         Block("About", listOf(Item("TAG", "Version $version")))
+        MicroFooter("TAG_SYS_V$version", null, Micro.Slashes)
+        Spacer(Modifier.height(24.dp))
     }
 }
 

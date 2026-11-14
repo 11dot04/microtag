@@ -74,6 +74,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import com.microtag.core.MicrotagLog
+import com.microtag.core.SessionLedger
 import com.microtag.core.MicrotagPrefs
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -98,21 +99,12 @@ private fun epochDayOf(ms: Long): Long = (ms + TimeZone.getDefault().getOffset(m
 
 private fun loadStats(): StatsData {
     val all = MicrotagLog.snapshot()
-    val lastSeen = HashMap<String, Long>()
     val c = Calendar.getInstance()
-    val sessions = ArrayList<Session>()
-    all.filter { it.decision == MicrotagLog.Decision.PROMOTED }
-        .sortedBy { it.timeMs }
-        .forEach { e ->
-            val previous = lastSeen[e.key]
-            lastSeen[e.key] = e.timeMs
-            if (previous == null || e.timeMs - previous > SESSION_GAP_MS) {
-                c.timeInMillis = e.timeMs
-                sessions.add(
-                    Session(e.timeMs, e.pkg, e.path, (c.get(Calendar.DAY_OF_WEEK) + 5) % 7, c.get(Calendar.HOUR_OF_DAY), epochDayOf(e.timeMs))
-                )
-            }
-        }
+    // The permanent ledger holds one row per interception, so this reaches back far beyond the 500 log entries.
+    val sessions = SessionLedger.snapshot().map { r ->
+        c.timeInMillis = r.timeMs
+        Session(r.timeMs, r.pkg, r.path, (c.get(Calendar.DAY_OF_WEEK) + 5) % 7, c.get(Calendar.HOUR_OF_DAY), epochDayOf(r.timeMs))
+    }
     return StatsData(sessions, all)
 }
 
@@ -158,7 +150,10 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
     LaunchedEffect(offerShare) { if (offerShare) { kotlinx.coroutines.delay(7000); offerShare = false } }
     var apps by remember { mutableStateOf(emptySet<String>()) }
 
-    val byApp = remember(apps) { data.sessions.filter { apps.isEmpty() || it.pkg in apps } }
+    // How far back to look. The day chips then pick weekdays inside that range; with a long range a weekday is every one of them.
+    var range by remember { mutableIntStateOf(7) }   // days, 0 = everything
+    val allByApp = remember(apps) { data.sessions.filter { apps.isEmpty() || it.pkg in apps } }
+    val byApp = remember(apps, range) { allByApp.filter { range == 0 || it.epochDay > todayEpoch - range } }
     val scoped = remember(selected, apps) { byApp.filter { it.day in selected } }
     val values = remember(scoped) { IntArray(24).also { v -> scoped.forEach { v[it.hour]++ } } }
     val total = scoped.size
@@ -173,7 +168,7 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
         val promoted = rows.count { it.decision == MicrotagLog.Decision.PROMOTED }
         if (rows.isEmpty()) null else promoted * 100 / rows.size
     }
-    val daysActive = remember(byApp) { byApp.map { it.epochDay }.toSet() }
+    val daysActive = remember(allByApp) { allByApp.map { it.epochDay }.toSet() }   // the streak ignores the range
     val streak = remember(daysActive) {
         var d = if (todayEpoch in daysActive) todayEpoch else todayEpoch - 1
         var n = 0
@@ -211,6 +206,10 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
         DayChips(selected, today, order) { day ->
             selected = if (day in selected) (if (selected.size > 1) selected - day else selected) else selected + day
         }
+
+        // How far back: the ledger keeps every interception, so the range can go well beyond a week.
+        val ranges = listOf(7, 30, 90, 0)
+        TagSegments(listOf("7 days", "30 days", "90 days", "All"), ranges.indexOf(range), { range = ranges[it] })
 
         if (topApps.isNotEmpty()) {
             Row(
@@ -298,6 +297,7 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
         FormWrap {
             StatsCard.Style.entries.forEach { st -> FormChoice(st.label, posterStyle == st, { posterStyle = st }) }
         }
+        MicroFooter("TAG_STATS_V01", "24 H", Micro.DotGrid)
         Spacer(Modifier.height(110.dp))
     }
     androidx.compose.animation.AnimatedVisibility(

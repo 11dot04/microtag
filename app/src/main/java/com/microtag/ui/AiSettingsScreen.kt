@@ -109,6 +109,7 @@ fun AiSettingsScreen(onBack: () -> Unit) {
             }
         }, enabled = !testing)
         result?.let { if (failed) FormNotice(it) else FormPlate { FormCaption(it, color = TagColors.White) } }
+        MicroFooter("TAG_AI_CFG", null, Micro.Diamond)
         FormGap(24)
     }
 }

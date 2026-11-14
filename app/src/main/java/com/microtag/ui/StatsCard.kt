@@ -160,14 +160,16 @@ object StatsCard {
             Block("SHARE FROM THE TOP SOURCE\n" + f.topName.uppercase().take(26), "${f.topShare}%"),
             Block("HOURS OF THE DAY\nWITH ANY ACTIVITY", "${f.activeHours}/24")
         )
+        // Each block reads as one: a rule, the caption right under it, the number right under that. The space after a
+        // number is much bigger than the space inside a block, so a caption can only belong to the number below it.
         blocks.forEachIndexed { i, b ->
-            val top = 250f + i * 250f
+            val top = 236f + i * 258f
             val x0 = if (i % 2 == 0) 96f else 400f
-            b.label.split("\n").forEachIndexed { n, t -> c.drawText(t, x0, top + n * 32f, k.paint(k.ink, 24f, k.mono, 0.08f)) }
-            if (i % 2 == 0) c.drawLine(x0, top + 70f, right, top + 70f, k.line(k.ink, 2f))
-            else c.drawRect(x0, top + 62f, right, top + 74f, k.fill(k.ink))
+            if (i % 2 == 0) c.drawLine(x0, top, right, top, k.line(k.ink, 2f))
+            else c.drawRect(x0, top - 6f, right, top + 6f, k.fill(k.ink))
+            b.label.split("\n").forEachIndexed { n, t -> c.drawText(t, x0, top + 40f + n * 30f, k.paint(k.ink, 24f, k.mono, 0.08f)) }
             val num = fit(k.paint(k.ink, 150f, k.heavy, -0.03f, if (i % 2 == 0) Paint.Align.RIGHT else Paint.Align.LEFT), b.number, right - x0 - 6f, 150f)
-            c.drawText(b.number, if (i % 2 == 0) right else x0, top + 70f + 144f, num)
+            c.drawText(b.number, if (i % 2 == 0) right else x0, top + 40f + 30f + 24f + 108f, num)
         }
 
         // The day as a micro bar chart, 24 slim bars.

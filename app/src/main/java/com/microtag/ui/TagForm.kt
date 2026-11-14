@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -173,3 +174,37 @@ fun FormGap(h: Int = 8) = Spacer(Modifier.height(h.dp))
 fun FormGapW(w: Int = 8) = Spacer(Modifier.width(w.dp))
 
 val FormMono get() = TextStyle(fontFamily = TagFonts.data, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = TagColors.Outline)
+
+
+/**
+ * A single-choice row as a Material 3 Expressive connected button group: toggle buttons side by side with small inner
+ * corners that morph when pressed or picked. For short sets of up to four options; longer ones stay as wrapped chips.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun TagSegments(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val view = LocalView.current
+    androidx.compose.foundation.layout.Row(
+        modifier.fillMaxWidth(),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(androidx.compose.material3.ButtonGroupDefaults.ConnectedSpaceBetween)
+    ) {
+        options.forEachIndexed { index, label ->
+            androidx.compose.material3.ToggleButton(
+                checked = index == selectedIndex,
+                onCheckedChange = { view.tick(Tick.On); onSelect(index) },
+                modifier = Modifier.weight(1f).semantics { role = androidx.compose.ui.semantics.Role.RadioButton },
+                shapes = when (index) {
+                    0 -> androidx.compose.material3.ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    options.lastIndex -> androidx.compose.material3.ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    else -> androidx.compose.material3.ButtonGroupDefaults.connectedMiddleButtonShapes()
+                },
+                colors = androidx.compose.material3.ToggleButtonDefaults.toggleButtonColors(
+                    containerColor = TagColors.Surface, contentColor = TagColors.White,
+                    checkedContainerColor = TagColors.Lime, checkedContentColor = TagColors.OnLime
+                )
+            ) {
+                Text(label, maxLines = 1, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 14.sp))
+            }
+        }
+    }
+}

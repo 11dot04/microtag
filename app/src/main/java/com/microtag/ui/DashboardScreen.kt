@@ -370,7 +370,7 @@ fun DashboardScreen(
         // three accents reads as a patchwork; a single-accent palette (Lime) looks exactly as before.
         TagGrid {
             // ---- rows 0-1: Discord + Inspect
-            TagFrame("Inspect", TagColors.tone(2), Modifier.cell(2, 0, 2, 2, outset = 6.dp), note = "04 tools")
+            TagFrame("Inspect", TagColors.tone(2), Modifier.cell(2, 0, 2, 2, outset = 6.dp))
             TileTone(0) { BigTile(Modifier.cell(0, 0, 2, 2), R.drawable.ic_discord, "Discord", "CALLS", discord) }
             InspectTile(Modifier.cell(2, 0), R.drawable.ic_inspect_calc, onOpenInspect)
             InspectTile(Modifier.cell(3, 0), R.drawable.ic_inspect_colour, onOpenInspect)
@@ -413,7 +413,7 @@ fun DashboardScreen(
             }
 
             // ---- Micro Tags: small, single-purpose chips
-            TagFrame("Micro Tags", TagColors.Outline, Modifier.cell(0f, b, 4f, 3f, outset = 6.dp), labelBias = 0.55f, note = "live")
+            TagFrame("Micro Tags", TagColors.Outline, Modifier.cell(0f, b, 4f, 3f, outset = 6.dp), labelBias = 0.55f)
             TileTone(1) { MicroTile(Modifier.cell(0f, b, 2f, 1f), R.drawable.ic_upi_rupee, "UPI", "Credit", upi) }
             TileTone(1, always = true) { IconTile(Modifier.cell(2f, b), R.drawable.ic_download, download) }
             TileTone(1, always = true) { IconTile(Modifier.cell(3f, b), R.drawable.ic_upload, upload) }
@@ -463,7 +463,7 @@ fun DashboardScreen(
             // in different shapes, AI runs the full width under them, Moments (once found) closes the column.
             val own = b3 + 2f
             TileTone(0) { NavBigTile(Modifier.cell(0f, own, 2f, 2f).containerBounds("screen-Rules", TagShapes.Big), "Rules", "Build your own", onOpenRules) }
-            TileTone(2) { NavTile(Modifier.cell(2f, own, 2f, 1f).containerBounds("screen-Ai", TagShapes.Rect), "AI", "Writes your rules", onOpenAi, TagShapes.Rect) }
+            TileTone(2) { NavTile(Modifier.cell(2f, own, 2f, 1f).containerBounds("screen-Ai", TagShapes.Pill), "AI", "Rule helper", onOpenAi) }
             TileTone(1) { NavTile(Modifier.cell(2f, own + 1f, 2f, 1f).containerBounds("screen-Meds", TagShapes.Pill), "Meds", "Reminders", onOpenMeds) }
             // Pin runs the full width. Once Moments has something to show, Pin narrows to 3 wide and Moments
             // takes the last square, so the row morphs instead of jumping.

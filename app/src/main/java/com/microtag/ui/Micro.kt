@@ -1,6 +1,9 @@
 package com.microtag.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -246,17 +249,30 @@ fun BracketTag(text: String, modifier: Modifier = Modifier, color: Color = TagCo
     Text("[ ${text.uppercase()} ]", modifier, style = microStyle(color))
 }
 
+/** The brand colour for tabs and step markers: the palette's highlight if it has one (Graphite's orange), else its accent. */
+fun tabFill(): Color = TagColors.Highlight ?: TagColors.Lime
+
+/** The ink that reads on [tabFill]. */
+fun tabInk(): Color = if (TagColors.Highlight != null) TagColors.Black else TagColors.OnLime
+
 /**
- * A section header with an index number and a dotted leader: "01  SAMPLE ........ 3 SEEN".
- * The number is in the accent text colour; the leader runs to an optional note on the right.
+ * A section header: a small tab with the step number, then the title, then a quiet note on the right.
+ * It marks where a section starts and nothing more, so the content under it stays the main thing.
  */
 @Composable
 fun StepHeader(index: String, title: String, note: String? = null, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth().padding(top = 22.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(index, style = microStyle(TagColors.AccentText, bold = true, size = 12))
-        Text(title.uppercase(), Modifier.padding(start = 10.dp), style = microStyle(TagColors.White, bold = true, size = 12))
-        DottedLeader(Modifier.weight(1f).padding(horizontal = 10.dp))
-        if (note != null) Text(note.uppercase(), style = microStyle(TagColors.Outline))
+    Row(modifier.fillMaxWidth().padding(top = 26.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            index,
+            Modifier.clip(RoundedCornerShape(6.dp)).background(tabFill()).padding(horizontal = 8.dp, vertical = 3.dp),
+            style = microStyle(tabInk(), bold = true, size = 12)
+        )
+        Text(
+            title.uppercase(), Modifier.padding(start = 12.dp),
+            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 14.sp, letterSpacing = 1.sp, color = TagColors.White)
+        )
+        Spacer(Modifier.weight(1f))
+        if (note != null) Text(note.uppercase(), style = microStyle(TagColors.Dim))
     }
 }
 
@@ -495,6 +511,48 @@ fun MicroKatakana(text: String, modifier: Modifier = Modifier, color: Color = Ta
                 ch.toString(),
                 style = TextStyle(fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 13.sp, color = color)
             )
+        }
+    }
+}
+
+
+/**
+ * A measurement as on a technical drawing: a hairline with an end tick on each side and the value in the middle.
+ * Decorative, hidden from screen readers, and off when the micrographics are.
+ */
+@Composable
+fun MicroDimension(value: String, modifier: Modifier = Modifier, color: Color = TagColors.Dim) {
+    if (!TagColors.MicroOn) return
+    Row(modifier.fillMaxWidth().clearAndSetSemantics { }, verticalAlignment = Alignment.CenterVertically) {
+        Canvas(Modifier.weight(1f).height(10.dp)) {
+            val w = 1.dp.toPx()
+            drawLine(color, Offset(0f, 0f), Offset(0f, size.height), w)
+            drawLine(color, Offset(0f, size.height / 2f), Offset(size.width, size.height / 2f), w)
+        }
+        Text(value.uppercase(), Modifier.padding(horizontal = 8.dp), style = microStyle(color))
+        Canvas(Modifier.weight(1f).height(10.dp)) {
+            val w = 1.dp.toPx()
+            drawLine(color, Offset(size.width, 0f), Offset(size.width, size.height), w)
+            drawLine(color, Offset(0f, size.height / 2f), Offset(size.width, size.height / 2f), w)
+        }
+    }
+}
+
+/** The foot of a screen: an optional measurement, then a small glyph and an ID line. Quiet, and always below the content. */
+@Composable
+fun MicroFooter(code: String, measure: String? = null, glyph: Micro = Micro.Slashes, modifier: Modifier = Modifier) {
+    if (!TagColors.MicroOn) return
+    val year = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
+    androidx.compose.foundation.layout.Column(
+        modifier.fillMaxWidth().padding(top = 28.dp).clearAndSetSemantics { },
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        if (measure != null) MicroDimension(measure)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            MicroGlyph(glyph, size = 12.dp, color = TagColors.Dim)
+            Text("ID ${code.uppercase()}", Modifier.padding(start = 8.dp), style = microStyle(TagColors.Dim))
+            Spacer(Modifier.weight(1f))
+            Text("11DOT04 / $year", style = microStyle(TagColors.Dim))
         }
     }
 }

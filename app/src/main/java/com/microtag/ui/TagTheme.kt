@@ -277,7 +277,7 @@ data class TypefacePack(
 
 object TypefacePacks {
     /** Montserrat everywhere: the original. */
-    val Sans = TypefacePack("sans", "Montserrat")
+    val Sans = TypefacePack("sans", "Montserrat", mono = "dm_mono")
 
     /** Google Sans Flex, drawn with soft terminals; wider and rounder for headings, narrower for the small caps. */
     val Flex = TypefacePack(
@@ -290,13 +290,13 @@ object TypefacePacks {
         )
     )
 
-    val Bodoni = TypefacePack("bodoni", "Bodoni Moda", display = "bodoni_moda")
-    val Didot = TypefacePack("didot", "GFS Didot", display = "gfs_didot")
-    val Playfair = TypefacePack("playfair", "Playfair", display = "playfair_display")
-    val Instrument = TypefacePack("instrument", "Instrument Serif", display = "instrument_serif")
+    val Bodoni = TypefacePack("bodoni", "Bodoni Moda", display = "bodoni_moda", mono = "dm_mono")
+    val Didot = TypefacePack("didot", "GFS Didot", display = "gfs_didot", mono = "dm_mono")
+    val Playfair = TypefacePack("playfair", "Playfair", display = "playfair_display", mono = "dm_mono")
+    val Instrument = TypefacePack("instrument", "Instrument Serif", display = "instrument_serif", mono = "dm_mono")
 
     /** The blocky pixel face of the main screen's numeral, for headings. Pairs well with Graphite. */
-    val Dot = TypefacePack("dot", "Dot", display = "style")
+    val Dot = TypefacePack("dot", "Dot", display = "style", mono = "dm_mono")
 
     val All = listOf(Sans, Flex, Bodoni, Didot, Playfair, Instrument, Dot)
     fun byId(id: String?): TypefacePack = All.firstOrNull { it.id == id } ?: Sans
@@ -902,65 +902,32 @@ fun TagGrid(
 }
 
 /**
- * Print marks that wrap a block of tiles and sit in the gutter, so the tiles stay on the grid: a + at each corner and a dotted
- * bleed line, with the name and a tiny spec on the line. The marks are drawn behind the children so the label's plate cuts the line cleanly.
+ * Names a block of tiles with a small solid tab on its top edge. Nothing else is drawn, so the tiles stay on the grid and
+ * the mark stays quiet.
  */
 @Composable
 fun TagFrame(label: String, color: Color, modifier: Modifier = Modifier, labelBias: Float = 0f, note: String? = null) {
-    // Print marks instead of an outline: a + at the four corners, a dotted bleed line along the top that the
-    // label interrupts, and short ticks at the middle of the other three sides.
-    Box(
-        modifier.drawBehind {
-            val w = 1.5.dp.toPx()
-            val inset = 1.dp.toPx()
-            val c = color
-            // A + at each corner, the same mark that sits at the corners of the numeral on the main screen.
-            val plus = 11.dp.toPx()
-            microGlyph(Micro.Cross, Offset(inset, inset), plus, c, w)
-            microGlyph(Micro.Cross, Offset(size.width - inset, inset), plus, c, w)
-            microGlyph(Micro.Cross, Offset(inset, size.height - inset), plus, c, w)
-            microGlyph(Micro.Cross, Offset(size.width - inset, size.height - inset), plus, c, w)
-            // The bleed line, dotted, between the top corner marks.
-            drawLine(
-                c.copy(alpha = 0.7f), Offset(inset + plus, inset), Offset(size.width - inset - plus, inset), w,
-                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 5.dp.toPx()), 0f)
-            )
-            // Mid-side ticks.
-            val t = 6.dp.toPx()
-            drawLine(c, Offset(inset, size.height / 2 - t), Offset(inset, size.height / 2 + t), w)
-            drawLine(c, Offset(size.width - inset, size.height / 2 - t), Offset(size.width - inset, size.height / 2 + t), w)
-            drawLine(c, Offset(size.width / 2 - t, size.height - inset), Offset(size.width / 2 + t, size.height - inset), w)
-        }
-    ) {
+    // One small mark instead of a border: a solid tab on the group's top edge, like a bookmark tab on a page. It is the
+    // brand colour (the palette's highlight on Graphite), so it follows the theme, and it is the only thing drawn, so
+    // it never competes with the tiles. The tiles sit in front of its lower edge, which tucks it in.
+    Box(modifier) {
         Row(
             modifier = Modifier
                 .align(BiasAlignment(labelBias, -1f))
-                .offset(y = (-9).dp)
-                .background(TagColors.Black)
-                .padding(horizontal = 8.dp),
+                .offset(y = (-10).dp)
+                .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 3.dp, bottomEnd = 3.dp))
+                .background(tabFill())
+                .padding(horizontal = 11.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = label.uppercase(),
-                modifier = Modifier.padding(start = 2.dp, end = if (note != null) 8.dp else 2.dp),
-                style = TextStyle(
-                    fontFamily = TagFonts.mono,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
-                    letterSpacing = 1.4.sp,
-                    // The frame's own colour is in the marks; the word is in the ink so it reads on any tone.
-                    color = TagColors.White
-                )
+                style = TextStyle(fontFamily = TagFonts.data, fontWeight = FontWeight.Bold, fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 1.4.sp, color = tabInk())
             )
-            // A tiny spec after the name, in the same mono as the numeral's readout: "INSPECT / 04".
             if (note != null) Text(
-                text = "/ ${note.uppercase()}",
-                modifier = Modifier.padding(end = 2.dp),
-                style = TextStyle(
-                    fontFamily = TagFonts.data, fontWeight = FontWeight.Medium, fontSize = 11.sp,
-                    letterSpacing = 1.2.sp, color = TagColors.Outline
-                )
+                text = note.uppercase(),
+                modifier = Modifier.padding(start = 8.dp),
+                style = TextStyle(fontFamily = TagFonts.data, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 1.2.sp, color = tabInk().copy(alpha = 0.6f))
             )
         }
     }
