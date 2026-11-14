@@ -199,7 +199,7 @@ fun TagSegments(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Un
                     options.lastIndex -> androidx.compose.material3.ButtonGroupDefaults.connectedTrailingButtonShapes()
                     else -> androidx.compose.material3.ButtonGroupDefaults.connectedMiddleButtonShapes()
                 },
-                colors = androidx.compose.material3.ToggleButtonDefaults.toggleButtonColors(
+                colors = androidx.compose.material3.ToggleButtonDefaults.filledToggleButtonColors(
                     containerColor = TagColors.Surface, contentColor = TagColors.White,
                     checkedContainerColor = TagColors.Lime, checkedContentColor = TagColors.OnLime
                 )
@@ -209,3 +209,4 @@ fun TagSegments(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Un
         }
     }
 }
+
