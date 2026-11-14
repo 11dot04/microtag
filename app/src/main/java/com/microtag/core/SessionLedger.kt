@@ -36,7 +36,7 @@ object SessionLedger {
             if (f.exists()) {
                 runCatching {
                     f.forEachLine { line ->
-                        val p = line.split('\\t')
+                        val p = line.split('\t')
                         if (p.size >= 3) p[0].toLongOrNull()?.let { rows.add(Row(it, p[1], p[2])) }
                     }
                 }
@@ -65,12 +65,12 @@ object SessionLedger {
         if (previous != null && timeMs - previous <= GAP_MS) return
         rows.add(Row(timeMs, pkg, path))
         if (persist) {
-            runCatching { file?.appendText("$timeMs\\t$pkg\\t$path\\n") }
+            runCatching { file?.appendText("$timeMs\t$pkg\t$path\n") }
             if (rows.size > MAX_ROWS + 2_000) { while (rows.size > MAX_ROWS) rows.removeAt(0); rewrite() }
         }
     }
 
     private fun rewrite() {
-        runCatching { file?.writeText(rows.joinToString("") { "${it.timeMs}\\t${it.pkg}\\t${it.path}\\n" }) }
+        runCatching { file?.writeText(rows.joinToString("") { "${it.timeMs}\t${it.pkg}\t${it.path}\n" }) }
     }
 }
