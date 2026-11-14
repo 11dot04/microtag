@@ -62,7 +62,7 @@ internal fun labelFor(p: InspectPayload): String {
         "PIN" -> "POST"
         "NUM" -> "NUMBER"
         "DEFINE" -> "DEFINE"
-        "WIKI" -> "WIKI"
+        "WIKI" -> "WIKIPEDIA"
         "PINNED" -> "PINNED"
         "FOOD" -> "FOOD"
         "DIMS" -> "DIMENSIONS"

@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -159,6 +160,53 @@ private fun DrawScope.photoStrip(img: ImageBitmap, left: Float, top: Float, visW
     )
 }
 
+private val abbreviations = setOf(
+    "mr", "mrs", "ms", "dr", "prof", "st", "jr", "sr", "vs", "etc", "inc", "ltd", "co", "no", "vol", "ca", "c", "approx", "e.g", "i.e", "u.s", "u.k", "gen", "col", "lt", "capt", "mt", "ft", "dept", "est"
+)
+
+/** Splits at the end of a sentence, but not after "Dr.", "St.", "U.S.", an initial like "J." or a number's point. */
+internal fun splitSentences(text: String): List<String> {
+    val out = ArrayList<String>()
+    var start = 0
+    val ender = Regex("""[.!?]["”')\]]*\s+(?=["“'(\[]?[A-Z0-9])""")
+    for (m in ender.findAll(text)) {
+        val before = text.substring(start, m.range.first + 1)
+        val token = before.trimEnd('.', '!', '?', '"', '”', '\'', ')', ']').substringAfterLast(' ')
+        val isAbbrev = m.value.startsWith(".") && (token.lowercase() in abbreviations || (token.length <= 2 && token.firstOrNull()?.isUpperCase() == true))
+        if (isAbbrev) continue
+        out.add(text.substring(start, m.range.first + m.value.trimEnd().length).trim())
+        start = m.range.last + 1
+    }
+    if (start < text.length) out.add(text.substring(start).trim())
+    return out.filter { it.isNotEmpty() }
+}
+
+/**
+ * Splits a summary into what fits above the photo and what continues below it, at a sentence boundary: as many whole
+ * sentences as fit in [maxLines] lines go above, the rest below. If even the first sentence does not fit, the line is
+ * filled to the last whole word and the rest of that sentence continues below.
+ */
+internal fun splitBlurb(tm: androidx.compose.ui.text.TextMeasurer, text: String, style: TextStyle, widthPx: Int, maxLines: Int): Pair<String, String> {
+    fun lines(t: String) = tm.measure(AnnotatedString(t), style, constraints = Constraints(maxWidth = widthPx)).lineCount
+    if (lines(text) <= maxLines) return text to ""
+    val sentences = splitSentences(text)
+    var acc = ""
+    var used = 0
+    for (s in sentences) {
+        val next = if (acc.isEmpty()) s else "$acc $s"
+        if (lines(next) <= maxLines) { acc = next; used++ } else break
+    }
+    if (used > 0) return acc to sentences.drop(used).joinToString(" ")
+    val words = text.split(' ')
+    var cur = ""
+    var n = 0
+    for (w in words) {
+        val next = if (cur.isEmpty()) w else "$cur $w"
+        if (lines(next) <= maxLines) { cur = next; n++ } else break
+    }
+    return cur to words.drop(n).joinToString(" ")
+}
+
 private class Loaded(val bmp: Bitmap?)
 
 @Composable
@@ -269,16 +317,26 @@ private fun Poster(c: CardCtx) {
             val blurbBottom = bandTop - fy(0.014f)
             val lineH = 16.5f * u
             val maxLines = floor((blurbBottom - blurbTop).value / lineH).toInt().coerceAtLeast(3)
-            if (blurb.isNotBlank()) {
+            val blurbStyle = TextStyle(
+                fontFamily = Montserrat, fontWeight = FontWeight.Normal, fontSize = (12f * u).sp, lineHeight = lineH.sp,
+                color = Paper.Ink.copy(alpha = 0.92f), textIndent = TextIndent(firstLine = (30f * u).sp),
+                lineBreak = LineBreak.Paragraph, hyphens = Hyphens.Auto
+            )
+            // The summary runs above the photo; what does not fit continues in the free column below it, split at a sentence.
+            val widthA = with(density) { fx(0.56f).toPx() }.toInt()
+            val (partA, partB) = remember(blurb, widthA, maxLines, u) { splitBlurb(tm, blurb, blurbStyle, widthA, maxLines) }
+            if (partA.isNotBlank()) {
                 Text(
-                    blurb,
-                    style = TextStyle(
-                        fontFamily = Montserrat, fontWeight = FontWeight.Normal, fontSize = (12f * u).sp, lineHeight = lineH.sp,
-                        color = Paper.Ink.copy(alpha = 0.92f), textIndent = TextIndent(firstLine = (30f * u).sp),
-                        lineBreak = LineBreak.Paragraph, hyphens = Hyphens.Auto
-                    ),
-                    maxLines = maxLines, overflow = TextOverflow.Ellipsis,
+                    partA, style = blurbStyle, maxLines = maxLines, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.offset(x = fx(0.37f), y = blurbTop).width(fx(0.56f)).plainClick { c.onCopy(blurb) }
+                )
+            }
+            if (partB.isNotBlank()) {
+                val belowTop = bandTop + bandH + fy(0.022f)
+                val belowLines = floor((fy(0.968f) - belowTop).value / lineH).toInt().coerceAtLeast(1)
+                Text(
+                    partB, style = blurbStyle.copy(textIndent = null), maxLines = belowLines, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.offset(x = fx(0.46f), y = belowTop).width(fx(0.455f)).plainClick { c.onCopy(blurb) }
                 )
             }
             val arrowIcon = fx(0.19f)
@@ -305,20 +363,13 @@ private fun Poster(c: CardCtx) {
             if (stagger != null) {
                 val sp = (w.value * 0.095f) * (if (years.isBlank()) 0.78f else 1f)
                 val big = sans(sp, FontWeight.Bold, Paper.Ink, -0.5f).tight(0.95f)
-                Text(stagger.first, style = big, softWrap = false, maxLines = 1, modifier = Modifier.offset(x = fx(0.50f), y = fy(0.806f)))
+                // On the left now, lined up with the headline: the first figure at the margin, the second stepped in under it.
+                Text(stagger.first, style = big, softWrap = false, maxLines = 1, modifier = Modifier.offset(x = fx(0.085f), y = fy(0.806f)))
                 if (stagger.second.isNotEmpty()) {
-                    Box(Modifier.offset(y = fy(0.868f)).fillMaxWidth().padding(end = fx(0.15f)), contentAlignment = Alignment.CenterEnd) {
-                        Text(stagger.second, style = big, softWrap = false, maxLines = 1)
-                    }
+                    Text(stagger.second, style = big, softWrap = false, maxLines = 1, modifier = Modifier.offset(x = fx(0.17f), y = fy(0.868f)))
                 }
             }
 
-            // Source, bottom left.
-            Column(Modifier.offset(x = fx(0.085f), y = fy(0.915f)), horizontalAlignment = Alignment.End) {
-                val src = sans(12f * u, FontWeight.Light, Color(0xFF9A9A9A))
-                Text("source", style = src)
-                Text("[wikipedia]", style = src)
-            }
         }
     }
 }
