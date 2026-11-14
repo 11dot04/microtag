@@ -137,6 +137,7 @@ object MicrotagLog {
                 file?.let { runCatching { it.renameTo(File(it.parentFile, "$FILE_NAME.damaged")) } }
             }
             initialized = true
+            SessionLedger.init(ctx, entries.toList())
         }
     }
 
@@ -174,6 +175,7 @@ object MicrotagLog {
             meta = meta,
             ruleId = ruleId
         )
+        if (decision == Decision.PROMOTED) SessionLedger.record(key, pkg, path, entry.timeMs)
         synchronized(lock) {
             val previous = entries.firstOrNull { it.key == key }
             if (previous != null && previous.sameDecisionAs(entry)) {
