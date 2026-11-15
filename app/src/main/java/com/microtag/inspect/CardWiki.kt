@@ -2,6 +2,7 @@ package com.microtag.inspect
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -322,9 +323,22 @@ private fun Poster(c: CardCtx) {
                 color = Paper.Ink.copy(alpha = 0.92f), textIndent = TextIndent(firstLine = (30f * u).sp),
                 lineBreak = LineBreak.Paragraph, hyphens = Hyphens.Auto
             )
-            // The summary runs above the photo; what does not fit continues in the free column below it, split at a sentence.
+            // The summary runs above the photo. What does not fit continues in the second passage, split at a sentence,
+            // aligned with the first. It rides the lower part of the photo when the title block leaves room under it;
+            // if the title takes more, it moves down accordingly (below the photo), and with too little room it is dropped
+            // and the first passage simply ends in an ellipsis.
             val widthA = with(density) { fx(0.56f).toPx() }.toInt()
-            val (partA, partB) = remember(blurb, widthA, maxLines, u) { splitBlurb(tm, blurb, blurbStyle, widthA, maxLines) }
+            val titleLines = fit.lines.sumOf { it.size }
+            val titleH = (titleLines * fit.size * lead * density.fontScale).dp
+            val bandBottom = bandTop + bandH
+            val titleBottom = bandTop + (bandH + titleH) / 2f
+            val onPhoto = titleBottom + fy(0.016f) + (lineH * 2f).dp <= bandBottom - fy(0.012f)
+            val secondTop = if (onPhoto) titleBottom + fy(0.016f) else bandBottom + fy(0.022f)
+            val secondBottom = if (onPhoto) bandBottom - fy(0.012f) else fy(0.968f)
+            val secondLines = floor((secondBottom - secondTop).value / lineH).toInt()
+            val (partA, partB) = remember(blurb, widthA, maxLines, u, secondLines) {
+                if (secondLines >= 2) splitBlurb(tm, blurb, blurbStyle, widthA, maxLines) else blurb to ""
+            }
             if (partA.isNotBlank()) {
                 Text(
                     partA, style = blurbStyle, maxLines = maxLines, overflow = TextOverflow.Ellipsis,
@@ -332,11 +346,18 @@ private fun Poster(c: CardCtx) {
                 )
             }
             if (partB.isNotBlank()) {
-                val belowTop = bandTop + bandH + fy(0.022f)
-                val belowLines = floor((fy(0.968f) - belowTop).value / lineH).toInt().coerceAtLeast(1)
+                if (onPhoto) {
+                    // A soft shade behind it so white type holds up on a busy photo.
+                    Box(
+                        Modifier.offset(y = secondTop - fy(0.035f)).fillMaxWidth().height(bandBottom - secondTop + fy(0.035f))
+                            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f))))
+                    )
+                }
                 Text(
-                    partB, style = blurbStyle.copy(textIndent = null), maxLines = belowLines, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.offset(x = fx(0.46f), y = belowTop).width(fx(0.455f)).plainClick { c.onCopy(blurb) }
+                    partB,
+                    style = blurbStyle.copy(textIndent = null, color = if (onPhoto) Color.White.copy(alpha = 0.94f) else Paper.Ink.copy(alpha = 0.92f)),
+                    maxLines = secondLines, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.offset(x = fx(0.37f), y = secondTop).width(fx(0.56f)).plainClick { c.onCopy(blurb) }
                 )
             }
             val arrowIcon = fx(0.19f)

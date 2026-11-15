@@ -93,9 +93,32 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
                     moveTo(0f, 0f); lineTo(G * k, 0f); lineTo(G * k, 470f * k)
                     lineTo(640f * k, 470f * k); lineTo(640f * k, 600f * k); lineTo(0f, 600f * k); close()
                 }
-                drawPath(field, colour)
-                // A colour close to the card's own surface would vanish: give the block a faint edge.
-                drawPath(field, rule.copy(alpha = 0.35f), style = Stroke(hair))
+                // A soft field, not a flat block: the colour itself, lighter toward the top left and deeper toward the bottom
+                // right, a glow in the corner and a little grain. No border; the gradient keeps it from vanishing into the card.
+                val lighter = androidx.compose.ui.graphics.lerp(colour, Color.White, 0.20f)
+                val deeper = androidx.compose.ui.graphics.lerp(colour, Color.Black, 0.24f)
+                drawPath(
+                    field,
+                    androidx.compose.ui.graphics.Brush.linearGradient(
+                        listOf(lighter, colour, deeper), start = Offset(G * k * 0.10f, 0f), end = Offset(G * k * 0.90f, 600f * k)
+                    )
+                )
+                drawPath(
+                    field,
+                    androidx.compose.ui.graphics.Brush.radialGradient(
+                        listOf(Color.White.copy(alpha = 0.26f), Color.Transparent), center = Offset(G * k * 0.80f, 60f * k), radius = G * k * 0.60f
+                    )
+                )
+                androidx.compose.ui.graphics.drawscope.clipPath(field) {
+                    val rnd = java.util.Random(hex.hashCode().toLong())
+                    repeat(1100) { i ->
+                        drawCircle(
+                            if (i % 2 == 0) Color.White.copy(alpha = 0.07f) else Color.Black.copy(alpha = 0.08f),
+                            radius = (0.8f + rnd.nextFloat() * 1.6f) * k,
+                            center = Offset(rnd.nextFloat() * G * k, rnd.nextFloat() * 600f * k)
+                        )
+                    }
+                }
 
                 // Crop marks round the name zone.
                 val m = 36f * k; val l = 26f * k
