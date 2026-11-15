@@ -74,7 +74,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import com.microtag.core.MicrotagLog
-import com.microtag.core.SessionLedger
+import com.microtag.core.Interceptions
 import com.microtag.core.MicrotagPrefs
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -100,8 +100,8 @@ private fun epochDayOf(ms: Long): Long = (ms + TimeZone.getDefault().getOffset(m
 private fun loadStats(): StatsData {
     val all = MicrotagLog.snapshot()
     val c = Calendar.getInstance()
-    // The permanent ledger holds one row per interception, so this reaches back far beyond the 500 log entries.
-    val sessions = SessionLedger.snapshot().map { r ->
+    // The interception store keeps one record per interception for good, so this reaches back far beyond the 500 log entries.
+    val sessions = Interceptions.records().map { r ->
         c.timeInMillis = r.timeMs
         Session(r.timeMs, r.pkg, r.path, (c.get(Calendar.DAY_OF_WEEK) + 5) % 7, c.get(Calendar.HOUR_OF_DAY), epochDayOf(r.timeMs))
     }
@@ -297,7 +297,7 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
         FormWrap {
             StatsCard.Style.entries.forEach { st -> FormChoice(st.label, posterStyle == st, { posterStyle = st }) }
         }
-        MicroFooter("TAG_STATS_V01", "24 H", Micro.DotGrid)
+        MicroFooter("TAG_STATS_V01", Micro.DotGrid)
         Spacer(Modifier.height(110.dp))
     }
     androidx.compose.animation.AnimatedVisibility(

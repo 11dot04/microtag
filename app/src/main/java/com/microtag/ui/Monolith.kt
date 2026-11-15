@@ -26,6 +26,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.rotate
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -199,7 +200,11 @@ fun MonolithPoster(
     onTogglePause: () -> Unit,
     onStats: () -> Unit,
     onLogs: () -> Unit,
-    active: Boolean = true
+    active: Boolean = true,
+    /** When a timed pause ends (epoch ms), or 0. */
+    pausedUntil: Long = 0L,
+    /** Pause for this many minutes; 0 means until it is turned back on. */
+    onPauseFor: (Int) -> Unit = {}
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -280,8 +285,39 @@ fun MonolithPoster(
 
             Spacer(Modifier.height(18.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                ControlSegment(27.dp, 6.dp, 6.dp, 27.dp, paused, onTogglePause) { tint ->
+                ControlSegment(27.dp, 6.dp, 6.dp, 27.dp, paused, onTogglePause, padH = 18.dp) { tint ->
                     TagIcon(if (paused) R.drawable.ic_play else R.drawable.ic_pause, tint, size = 26.dp)
+                }
+                // The second half of a split button: the chevron opens how long to pause for.
+                var menuOpen by remember { mutableStateOf(false) }
+                Box {
+                    ControlSegment(6.dp, 6.dp, 6.dp, 6.dp, paused, { menuOpen = true }, padH = 10.dp) { tint ->
+                        TagIcon(R.drawable.ic_chevron_right, tint, Modifier.rotate(90f), 20.dp)
+                    }
+                    val fmt = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = menuOpen, onDismissRequest = { menuOpen = false },
+                        modifier = Modifier.background(TagColors.Surface)
+                    ) {
+                        fun item(text: String, enabled: Boolean = true, onClick: () -> Unit) = androidx.compose.material3.DropdownMenuItem(
+                            text = { Text(text, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (enabled) TagColors.White else TagColors.Dim)) },
+                            onClick = { menuOpen = false; onClick() }, enabled = enabled
+                        )
+                        if (paused && pausedUntil > 0L) item("Paused until ${fmt.format(java.util.Date(pausedUntil))}", enabled = false) {}
+                        if (paused) item("Resume now") { onTogglePause() }
+                        item("Pause for 30 minutes") { onPauseFor(30) }
+                        item("Pause for 1 hour") { onPauseFor(60) }
+                        item("Pause for 3 hours") { onPauseFor(180) }
+                        item("Pause until 8:00") {
+                            val c = java.util.Calendar.getInstance()
+                            val target = java.util.Calendar.getInstance().apply {
+                                set(java.util.Calendar.HOUR_OF_DAY, 8); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0)
+                                if (timeInMillis <= c.timeInMillis) add(java.util.Calendar.DAY_OF_YEAR, 1)
+                            }
+                            onPauseFor(((target.timeInMillis - c.timeInMillis) / 60_000L).toInt().coerceAtLeast(1))
+                        }
+                        item("Pause until I turn it on") { onPauseFor(0) }
+                    }
                 }
                 ControlSegment(6.dp, 6.dp, 6.dp, 6.dp, paused, onStats) { tint ->
                     TagIcon(R.drawable.ic_stats, tint, size = 26.dp)
@@ -607,7 +643,7 @@ fun MonolithOverlay(
             // the numeral and bleeds off the left edge; a small upright one sits under the annotation text on the
             // right. Both scroll away with the poster and slide into register each time the numeral spins up.
             val sy = -scroll.value.toFloat()
-            val unitA = wPx * 0.56f
+            val unitA = wPx * 0.46f
             val unitB = wPx * 0.12f
             val slide = 1f - reg.value
             fun place(path: NativePath, cx: Float, cy: Float, scale: Float, angle: Float) {

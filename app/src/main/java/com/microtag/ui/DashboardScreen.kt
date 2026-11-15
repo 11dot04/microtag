@@ -182,6 +182,7 @@ fun DashboardScreen(
     val proton = rememberToggle(prefs, MicrotagPrefs.KEY_PROTON)
 
     var paused by remember { mutableStateOf(settings.paused) }
+    var pausedUntil by remember { mutableStateOf(settings.pausedUntil) }
     // Pausing dims the tile section with a scrim that runs edge to edge, so the group frames in the gutter dim too.
     val dimAlpha by animateFloatAsState(
         if (paused) 0.62f else 0f, TagMotion.effects(), label = "pausedDim"
@@ -237,6 +238,7 @@ fun DashboardScreen(
     val togglePause: () -> Unit = {
         paused = !paused
         settings.paused = paused
+        pausedUntil = 0L
         // Coming back on posts the same Live Update the old simulate button did.
         if (!paused) {
             MicrotagReminder.showCapsule(
@@ -249,6 +251,19 @@ fun DashboardScreen(
                 iconName = "ic_capsule_bolt"
             )
         }
+    }
+
+    // A timed pause ends by itself while this screen is open; the listener re-reads the setting on its own.
+    LaunchedEffect(paused, pausedUntil) {
+        if (paused && pausedUntil > 0L) {
+            kotlinx.coroutines.delay((pausedUntil - System.currentTimeMillis()).coerceAtLeast(0L))
+            if (settings.pausedUntil == pausedUntil) { paused = settings.paused; pausedUntil = settings.pausedUntil }
+        }
+    }
+    val pauseFor: (Int) -> Unit = { minutes ->
+        settings.pauseFor(minutes)
+        paused = true
+        pausedUntil = settings.pausedUntil
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(TagColors.Black)) {
@@ -340,6 +355,8 @@ fun DashboardScreen(
             onTogglePause = togglePause,
             onStats = onOpenStats,
             onLogs = onOpenLogs,
+            pausedUntil = pausedUntil,
+            onPauseFor = pauseFor,
             active = posterVisible
         )
         // Graphite's orange strip: a divider that is also a ticker. Other palettes have no highlight and skip it.
@@ -361,7 +378,7 @@ fun DashboardScreen(
         val streakDrop = ease((p / 0.35f).coerceIn(0f, 1f))
         val streakSlide = ease(((p - 0.35f) / 0.30f).coerceIn(0f, 1f))
         val weatherGrow = ease(((p - 0.30f) / 0.70f).coerceIn(0f, 1f))
-        val b = 4f + p       // first Micro Tags row
+        val b = 4f + p + 0.4f   // first Micro Tags row, with room above it for the group's tab
         val b2 = b + 3f      // earbuds / sound mode
         val b3 = b2 + 2f     // music / VPN
         val hasMoments = remember { com.microtag.inspect.PillPrefs.attach(context); com.microtag.inspect.MomentsStore.any() }
@@ -413,7 +430,8 @@ fun DashboardScreen(
             }
 
             // ---- Micro Tags: small, single-purpose chips
-            TagFrame("Micro Tags", TagColors.Outline, Modifier.cell(0f, b, 4f, 3f, outset = 6.dp), labelBias = 0.55f)
+            // The band runs edge to edge: 20 dp of screen padding plus the 6 dp outset on each side.
+            TagFrame("Micro Tags", TagColors.Outline, Modifier.cell(0f, b, 4f, 3f, outset = 6.dp), labelBias = 0.55f, bleed = 26.dp)
             TileTone(1) { MicroTile(Modifier.cell(0f, b, 2f, 1f), R.drawable.ic_upi_rupee, "UPI", "Credit", upi) }
             TileTone(1, always = true) { IconTile(Modifier.cell(2f, b), R.drawable.ic_download, download) }
             TileTone(1, always = true) { IconTile(Modifier.cell(3f, b), R.drawable.ic_upload, upload) }
@@ -714,7 +732,7 @@ private fun WeatherTile(
                         ChevronButton(true, fg) { onOpenChange(false) }
                     }
                     LocationPair(auto, fg, face, onAuto, onPickCity)
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(4.dp))
                     val ctx = LocalContext.current
                     val iconRes = remember(iconName) { iconName?.let { ctx.resources.getIdentifier(it, "drawable", ctx.packageName) } ?: 0 }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -727,28 +745,27 @@ private fun WeatherTile(
                             )
                         )
                     }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            if (auto) "Auto" else city.ifBlank { "Set city" },
-                            modifier = Modifier.weight(1f).padding(end = 6.dp),
-                            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = fg.copy(alpha = 0.85f))
-                        )
-                        Text(
-                            "EVERY ",
-                            style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 9.sp, letterSpacing = 0.8.sp, color = fg.copy(alpha = 0.7f))
-                        )
-                        Text(
-                            labels.getOrElse(index) { "" }, maxLines = 1, softWrap = false,
-                            style = TextStyle(
-                                fontFamily = TagFonts.display, fontWeight = FontWeight.Light, fontSize = 16.sp,
-                                color = fg, fontSynthesis = TagFonts.NoSynthesis
-                            )
-                        )
-                    }
+                    // The place gets the whole row, so a long name is not cut short.
+                    Text(
+                        if (auto) "Auto" else city.ifBlank { "Set city" },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = fg.copy(alpha = 0.85f))
+                    )
                     // The wheel is far bigger than this box: its centre is below the bottom edge, so only the top of the arc shows.
                     Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                         TagDial(labels, index, onIndex, ink = fg, cool = cool, warm = warm, modifier = Modifier.fillMaxSize(), showValue = false)
+                        // The interval sits inside the wheel, under the needle, in the space the arc leaves.
+                        Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 1.dp), verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                "EVERY ",
+                                style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 8.sp, letterSpacing = 0.8.sp, color = fg.copy(alpha = 0.7f))
+                            )
+                            Text(
+                                labels.getOrElse(index) { "" }, maxLines = 1, softWrap = false,
+                                style = TextStyle(fontFamily = TagFonts.display, fontWeight = FontWeight.Light, fontSize = 13.sp, color = fg, fontSynthesis = TagFonts.NoSynthesis)
+                            )
+                        }
                     }
                 }
             }
@@ -831,7 +848,7 @@ private fun StravaTile(
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     val view = LocalView.current
-                    listOf("pace" to "Pace", "time" to "Time", "distance" to "Distance").forEach { (key, label) ->
+                    listOf("state" to "State", "time" to "Time", "distance" to "Distance").forEach { (key, label) ->
                         val selected = key == metric
                         Box(
                             Modifier
@@ -864,7 +881,10 @@ private fun StravaTile(
 /** Song Up Next and Now Playing: two tiles that meet with no gap and read as one shape. */
 @Composable
 private fun MusicPair(modifier: Modifier, song: PrefToggle, ambient: PrefToggle) {
-    Column(modifier) {
+    // Two outlined tiles would draw their shared edge twice, side by side. With both off they overlap by one border
+    // width, so the two inner borders coincide and the join is a single line.
+    val bothOff = song.state == TileState.Off && ambient.state == TileState.Off
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(if (bothOff) (-2).dp else 0.dp)) {
         TagTile(Modifier.weight(1f).fillMaxWidth(), TagShapes.CapRight, song.state, song::toggle) { fg ->
             Row(Modifier.fillMaxSize().padding(start = 22.dp, end = 24.dp), verticalAlignment = Alignment.CenterVertically) {
                 TagLabel("Song", "Up Next", fg, Modifier.weight(1f), size = 16.sp)

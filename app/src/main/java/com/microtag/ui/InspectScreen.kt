@@ -163,13 +163,16 @@ private val Blocks = listOf(
     )
 )
 
-/** Rows in a block interlock like the ones on the Settings screen: big radius outside, a tight 6dp where they meet. */
-private fun tipShape(index: Int, count: Int): Shape {
-    val big = CornerSize(22.dp)
-    val small = CornerSize(6.dp)
+/**
+ * Rows in a block interlock like the ones on the Settings screen: big radius outside, a tight 6dp where they meet.
+ * An open row rounds its inner corners out too ([open] 0 to 1), like a selected button in a button group.
+ */
+private fun tipShape(index: Int, count: Int, open: Float = 0f): Shape {
+    val big = 22.dp
+    val small = 6.dp + (big - 6.dp) * open
     val top = if (index == 0) big else small
     val bottom = if (index == count - 1) big else small
-    return RoundedCornerShape(topStart = top, topEnd = top, bottomEnd = bottom, bottomStart = bottom)
+    return RoundedCornerShape(topStart = CornerSize(top), topEnd = CornerSize(top), bottomEnd = CornerSize(bottom), bottomStart = CornerSize(bottom))
 }
 
 @Composable
@@ -234,13 +237,15 @@ fun InspectScreen(onBack: () -> Unit, onOpenPriority: () -> Unit = {}) {
 private fun TipBlock(block: TipBlockSpec) {
     TagSectionLabel(block.label, Modifier.padding(start = 4.dp, top = 8.dp))
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        block.tips.forEachIndexed { i, tip -> TipRow(tip, tipShape(i, block.tips.size)) }
+        block.tips.forEachIndexed { i, tip -> TipRow(tip, i, block.tips.size) }
     }
 }
 
 @Composable
-private fun TipRow(tip: InspectTip, shape: Shape) {
+private fun TipRow(tip: InspectTip, index: Int, count: Int) {
     var open by remember { mutableStateOf(false) }
+    val openP by androidx.compose.animation.core.animateFloatAsState(if (open) 1f else 0f, TagMotion.spatial(), label = "tipOpen")
+    val shape = tipShape(index, count, openP)
     val view = LocalView.current
     val text = remember(tip) { runCatching { InspectSamples.input(tip.key) }.getOrDefault(tip.key) }
     // Picking another pill text bumps this, which rebuilds the sample.

@@ -498,7 +498,7 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
                     .onFailure { problem = "No browser to open it with" }
             }
         }, filled = false, enabled = regex.isNotBlank())
-        MicroFooter("TAG_RULE", if (regex.isNotBlank()) "${regex.length} CH PATTERN" else null, Micro.Diamond)
+        MicroFooter("TAG_RULE", Micro.Diamond)
         FormGap(28)
     }
 }

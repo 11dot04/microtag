@@ -21,6 +21,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -249,11 +251,19 @@ fun BracketTag(text: String, modifier: Modifier = Modifier, color: Color = TagCo
     Text("[ ${text.uppercase()} ]", modifier, style = microStyle(color))
 }
 
-/** The brand colour for tabs and step markers: the palette's highlight if it has one (Graphite's orange), else its accent. */
-fun tabFill(): Color = TagColors.Highlight ?: TagColors.Lime
+/**
+ * The colour of tabs and step markers. It must not be a tile colour, or a tab would melt into the tiles under it:
+ * the palette's highlight (Graphite's orange), else its tertiary accent, else, for a single-accent palette such as
+ * Lime, the ink colour.
+ */
+fun tabFill(): Color = TagColors.Highlight ?: (if (TagColors.HasTones) TagColors.Tertiary else TagColors.White)
 
-/** The ink that reads on [tabFill]. */
-fun tabInk(): Color = if (TagColors.Highlight != null) TagColors.Black else TagColors.OnLime
+/** Whichever end of the palette reads on [tabFill]. */
+fun tabInk(): Color {
+    val f = tabFill()
+    fun contrast(a: Color, b: Color): Float { val la = a.luminance(); val lb = b.luminance(); return (maxOf(la, lb) + 0.05f) / (minOf(la, lb) + 0.05f) }
+    return if (contrast(f, TagColors.Black) >= contrast(f, TagColors.White)) TagColors.Black else TagColors.White
+}
 
 /**
  * A section header: a small tab with the step number, then the title, then a quiet note on the right.
@@ -367,20 +377,20 @@ fun MicroLabel(
     wrap: Boolean = true
 ) {
     if (!TagColors.MicroOn) return
-    Text(
-        text.uppercase(),
-        modifier = modifier.clearAndSetSemantics { },
-        softWrap = wrap,
-        maxLines = if (wrap) Int.MAX_VALUE else 1,
-        style = TextStyle(
-            fontFamily = TagFonts.data,
-            fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium,
-            fontSize = size.coerceAtLeast(10).sp,
-            lineHeight = (size.coerceAtLeast(10) + 4).sp,
-            letterSpacing = 0.6.sp,
-            color = color
-        )
+    val style = TextStyle(
+        fontFamily = TagFonts.data,
+        fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium,
+        fontSize = size.coerceAtLeast(10).sp,
+        lineHeight = (size.coerceAtLeast(10) + 4).sp,
+        letterSpacing = 0.6.sp,
+        color = color
     )
+    if (wrap) {
+        Text(text.uppercase(), modifier = modifier.clearAndSetSemantics { }, style = style)
+    } else {
+        // One line, never cut: the type shrinks to the room it has ("TARGET: LISTENER" in a wide mono face).
+        FitText(AnnotatedString(text.uppercase()), style, modifier.clearAndSetSemantics { }, minSize = 7.sp)
+    }
 }
 
 /** A tile's state as a bare dot: solid when on, a ring when off. */
@@ -516,38 +526,15 @@ fun MicroKatakana(text: String, modifier: Modifier = Modifier, color: Color = Ta
 }
 
 
-/**
- * A measurement as on a technical drawing: a hairline with an end tick on each side and the value in the middle.
- * Decorative, hidden from screen readers, and off when the micrographics are.
- */
+/** The foot of a screen: a small glyph and an ID line. Quiet, and always below the content. */
 @Composable
-fun MicroDimension(value: String, modifier: Modifier = Modifier, color: Color = TagColors.Dim) {
-    if (!TagColors.MicroOn) return
-    Row(modifier.fillMaxWidth().clearAndSetSemantics { }, verticalAlignment = Alignment.CenterVertically) {
-        Canvas(Modifier.weight(1f).height(10.dp)) {
-            val w = 1.dp.toPx()
-            drawLine(color, Offset(0f, 0f), Offset(0f, size.height), w)
-            drawLine(color, Offset(0f, size.height / 2f), Offset(size.width, size.height / 2f), w)
-        }
-        Text(value.uppercase(), Modifier.padding(horizontal = 8.dp), style = microStyle(color))
-        Canvas(Modifier.weight(1f).height(10.dp)) {
-            val w = 1.dp.toPx()
-            drawLine(color, Offset(size.width, 0f), Offset(size.width, size.height), w)
-            drawLine(color, Offset(0f, size.height / 2f), Offset(size.width, size.height / 2f), w)
-        }
-    }
-}
-
-/** The foot of a screen: an optional measurement, then a small glyph and an ID line. Quiet, and always below the content. */
-@Composable
-fun MicroFooter(code: String, measure: String? = null, glyph: Micro = Micro.Slashes, modifier: Modifier = Modifier) {
+fun MicroFooter(code: String, glyph: Micro = Micro.Slashes, modifier: Modifier = Modifier) {
     if (!TagColors.MicroOn) return
     val year = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
     androidx.compose.foundation.layout.Column(
         modifier.fillMaxWidth().padding(top = 28.dp).clearAndSetSemantics { },
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        if (measure != null) MicroDimension(measure)
         Row(verticalAlignment = Alignment.CenterVertically) {
             MicroGlyph(glyph, size = 12.dp, color = TagColors.Dim)
             Text("ID ${code.uppercase()}", Modifier.padding(start = 8.dp), style = microStyle(TagColors.Dim))

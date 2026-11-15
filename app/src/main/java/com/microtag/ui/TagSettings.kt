@@ -24,10 +24,31 @@ class TagSettings(context: Context) {
     private val appContext = context.applicationContext
     private val sp = context.getSharedPreferences("tag_settings", Context.MODE_PRIVATE)
 
-    /** Master pause switch for all interceptions. */
+    /**
+     * Master pause switch for all interceptions. A timed pause ends by itself: reading this clears it once its time is up.
+     */
     var paused: Boolean
-        get() = sp.getBoolean("master_paused", false)
-        set(v) = sp.edit { putBoolean("master_paused", v) }
+        get() {
+            val p = sp.getBoolean("master_paused", false)
+            val until = pausedUntil
+            if (p && until > 0L && System.currentTimeMillis() >= until) {
+                sp.edit { putBoolean("master_paused", false); putLong("master_paused_until", 0L) }
+                return false
+            }
+            return p
+        }
+        set(v) = sp.edit { putBoolean("master_paused", v); if (!v) putLong("master_paused_until", 0L) }
+
+    /** When a timed pause ends, in epoch milliseconds, or 0 for a pause that lasts until it is turned off. */
+    var pausedUntil: Long
+        get() = sp.getLong("master_paused_until", 0L)
+        set(v) = sp.edit { putLong("master_paused_until", v) }
+
+    /** Pauses for [minutes], or until turned off when it is 0 or less. */
+    fun pauseFor(minutes: Int) = sp.edit {
+        putBoolean("master_paused", true)
+        putLong("master_paused_until", if (minutes > 0) System.currentTimeMillis() + minutes * 60_000L else 0L)
+    }
 
     /**
      * Where the weather chip comes from. False (default): Open-Meteo, and the weather app's own notification is left alone.
@@ -42,9 +63,9 @@ class TagSettings(context: Context) {
         get() = sp.getInt("weather_interval_min", 60)
         set(v) = sp.edit { putInt("weather_interval_min", v) }
 
-    /** "pace", "time" or "distance". */
+    /** "state", "time" or "distance". Pace used to be an option; Strava's notification does not carry it, so it is state now. */
     var stravaMetric: String
-        get() = sp.getString("strava_metric", "pace") ?: "pace"
+        get() = (sp.getString("strava_metric", "state") ?: "state").let { if (it == "pace") "state" else it }
         set(v) = sp.edit { putString("strava_metric", v) }
 
     /** Which ringer modes announce themselves: "ring", "vibrate", "silent". */
@@ -155,6 +176,7 @@ class TagSettings(context: Context) {
 
     /** Why TAG should stay silent right now ("night" or "battery saver"), or null when it shouldn't. */
     fun quietReason(): String? = when {
+        paused -> "paused"
         inNightHours() -> "night"
         pauseOnBatterySaver && (appContext.getSystemService(Context.POWER_SERVICE) as PowerManager).isPowerSaveMode ->
             "battery saver"
@@ -163,7 +185,7 @@ class TagSettings(context: Context) {
 
     companion object {
         /** Changing any of these should make the listener re-evaluate straight away. */
-        val QUIET_KEYS = setOf("night_pause", "night_start_min", "night_end_min", "pause_battery_saver")
+        val QUIET_KEYS = setOf("night_pause", "night_start_min", "night_end_min", "pause_battery_saver", "master_paused", "master_paused_until")
 
         private fun currentMinuteOfDay(): Int {
             val c = Calendar.getInstance()

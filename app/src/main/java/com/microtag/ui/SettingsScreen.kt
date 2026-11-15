@@ -243,7 +243,7 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
         )
         Block("Intro", listOf(Item("Replay intro", "Walk through the welcome screens again.", onClick = onReplayIntro)))
         Block("About", listOf(Item("TAG", "Version $version")))
-        MicroFooter("TAG_SYS_V$version", null, Micro.Slashes)
+        MicroFooter("TAG_SYS_V$version", Micro.Slashes)
         Spacer(Modifier.height(24.dp))
     }
 }
@@ -275,7 +275,9 @@ private fun SettingRow(item: Item, corners: List<Dp>) {
     val interactive = item.checked != null || item.onClick != null
     // Rows in a block are a connected group: pressing one opens all four of its corners to a full round.
     val source = remember { MutableInteractionSource() }
-    val shape = PressCornerShape(corners[0], corners[1], corners[2], corners[3], if (interactive) pressMorph(source) else 0f)
+    // A switched-on row also rounds its inner corners out, like a selected button in a button group.
+    val onP by androidx.compose.animation.core.animateFloatAsState(if (item.checked == true) 1f else 0f, TagMotion.spatial(), label = "rowOn")
+    val shape = PressCornerShape(corners[0], corners[1], corners[2], corners[3], maxOf(if (interactive) pressMorph(source) else 0f, onP))
     Row(
         Modifier
             .fillMaxWidth()

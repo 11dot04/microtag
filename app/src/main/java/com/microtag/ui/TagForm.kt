@@ -194,6 +194,7 @@ fun TagSegments(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Un
                 checked = index == selectedIndex,
                 onCheckedChange = { view.tick(Tick.On); onSelect(index) },
                 modifier = Modifier.weight(1f).semantics { role = androidx.compose.ui.semantics.Role.RadioButton },
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
                 shapes = when (index) {
                     0 -> androidx.compose.material3.ButtonGroupDefaults.connectedLeadingButtonShapes()
                     options.lastIndex -> androidx.compose.material3.ButtonGroupDefaults.connectedTrailingButtonShapes()
@@ -206,7 +207,8 @@ fun TagSegments(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Un
                     checkedContentColor = TagColors.OnLime
                 )
             ) {
-                Text(label, maxLines = 1, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 14.sp))
+                // Fitted to the segment, so a longer label in a wide face shrinks instead of being cut off.
+                FitText(AnnotatedString(label), TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (index == selectedIndex) TagColors.OnLime else TagColors.White), minSize = 9.sp, contentAlignment = Alignment.Center)
             }
         }
     }

@@ -196,7 +196,7 @@ object TagPalettes {
         id = "lime", name = "Lime",
         base = Color(0xFF000000), ink = Color(0xFFF6F6F6),
         accent = Color(0xFFCCFF00), onAccent = Color(0xFF000000),
-        surface = Color(0xFF15161A), pausedPoster = Color(0xFF101114),
+        surface = Color(0xFF212329), pausedPoster = Color(0xFF101114),
         outline = Color(0xFFC3C9D4), dim = Color(0xFF6E737C),
         paper = Color(0xFFF6F6F6), paperInk = Color(0xFF000000)
     )
@@ -206,7 +206,7 @@ object TagPalettes {
         id = "oldmoney", name = "Old money",
         base = Color(0xFF0E1A14), ink = Color(0xFFEDE6D3),
         accent = Color(0xFFC9A24B), onAccent = Color(0xFF0E1A14),
-        surface = Color(0xFF16251D), pausedPoster = Color(0xFF1B2D23),
+        surface = Color(0xFF1F3128), pausedPoster = Color(0xFF1B2D23),
         outline = Color(0xFFA7A58F), dim = Color(0xFF6E7466),
         signal = Color(0xFFD9825B),
         paper = Color(0xFFEDE6D3), paperInk = Color(0xFF0E1A14),
@@ -223,7 +223,7 @@ object TagPalettes {
         id = "graphite", name = "Graphite",
         base = Color(0xFF0C0C0C), ink = Color(0xFFEDEDED),
         accent = Color(0xFFA6A6A6), onAccent = Color(0xFF0C0C0C),
-        surface = Color(0xFF161616), pausedPoster = Color(0xFF1A1A1A),
+        surface = Color(0xFF232323), pausedPoster = Color(0xFF1A1A1A),
         outline = Color(0xFF8A8A8A), dim = Color(0xFF5E5E5E),
         signal = Color(0xFFE5484D),
         paper = Color(0xFFEDEDED), paperInk = Color(0xFF0C0C0C),
@@ -906,18 +906,29 @@ fun TagGrid(
  * the mark stays quiet.
  */
 @Composable
-fun TagFrame(label: String, color: Color, modifier: Modifier = Modifier, labelBias: Float = 0f, note: String? = null) {
-    // One small mark instead of a border: a solid tab on the group's top edge, like a bookmark tab on a page. It is the
-    // brand colour (the palette's highlight on Graphite), so it follows the theme, and it is the only thing drawn, so
-    // it never competes with the tiles. The tiles sit in front of its lower edge, which tucks it in.
-    Box(modifier) {
+fun TagFrame(
+    label: String, color: Color, modifier: Modifier = Modifier, labelBias: Float = 0f, note: String? = null,
+    /** How far the surface panel runs past the frame on each side; a full-width band uses the screen's side padding. */
+    bleed: Dp = 0.dp,
+    panelRadius: Dp = 10.dp
+) {
+    // A panel in the surface colour behind the group says which tiles belong together, and a small tab on its top edge
+    // names it. The tab is a tab colour (never a tile colour) with sharp corners, like a bookmark. The tiles sit in front.
+    val panel = TagColors.Surface
+    Box(
+        modifier.drawBehind {
+            val b = bleed.toPx()
+            val r = panelRadius.toPx()
+            drawRoundRect(panel, Offset(-b, 0f), Size(size.width + 2 * b, size.height), CornerRadius(if (b > 0f) 0f else r))
+        }
+    ) {
         Row(
             modifier = Modifier
                 .align(BiasAlignment(labelBias, -1f))
-                .offset(y = (-10).dp)
-                .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 3.dp, bottomEnd = 3.dp))
+                .offset(y = (-11).dp)
+                .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp, bottomStart = 0.dp, bottomEnd = 0.dp))
                 .background(tabFill())
-                .padding(horizontal = 11.dp, vertical = 3.dp),
+                .padding(horizontal = 11.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(

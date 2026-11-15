@@ -153,7 +153,7 @@ fun MedsScreen(onBack: () -> Unit) {
                 }
             }
         }
-        MicroFooter("TAG_MEDS", null, Micro.Chevrons)
+        MicroFooter("TAG_MEDS", Micro.Chevrons)
         FormGap(28)
     }
 }

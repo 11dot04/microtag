@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -304,7 +305,7 @@ private fun loadCalendars(ctx: Context): List<CalEntry> = try {
     emptyList()
 }
 
-private val LeadTimes = listOf(5, 15, 30, 60, 120)
+private val LeadTimes = listOf(5, 10, 15, 30)
 
 fun hasCalendarPermission(ctx: Context): Boolean =
     ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
@@ -314,21 +315,16 @@ fun CalendarSheet(settings: TagSettings, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     var granted by remember { mutableStateOf(hasCalendarPermission(ctx)) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
-    var lead by remember { mutableIntStateOf(settings.calendarLeadMin) }
+    // Longer lead times were dropped; a saved 1h or 2h counts as the longest one left.
+    var lead by remember { mutableIntStateOf(settings.calendarLeadMin.takeIf { it in LeadTimes } ?: LeadTimes.last()) }
     var excluded by remember { mutableStateOf(settings.calendarExcluded) }
     val calendars by produceState(emptyList<CalEntry>(), granted) {
         value = if (granted) withContext(Dispatchers.IO) { loadCalendars(ctx) } else emptyList()
     }
 
     TagSheet("Countdown", "starts before each event", onDismiss) {
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            LeadTimes.forEach { m ->
-                TagChip(intervalLabel(m), selected = lead == m) {
-                    lead = m
-                    settings.calendarLeadMin = m
-                }
-            }
-        }
+        // Four short choices side by side: a connected button group, so the picked one reads as part of the row.
+        TagSegments(LeadTimes.map { intervalLabel(it) }, LeadTimes.indexOf(lead), { lead = LeadTimes[it]; settings.calendarLeadMin = lead })
         Spacer(Modifier.height(20.dp))
         if (!granted) {
             Box(
@@ -341,13 +337,30 @@ fun CalendarSheet(settings: TagSettings, onDismiss: () -> Unit) {
                 TagLabel("Allow calendar access", color = TagColors.OnLime, size = 15.sp)
             }
         } else {
+            Text(
+                "${calendars.count { it.id !in excluded }} OF ${calendars.size} CALENDARS",
+                style = TextStyle(fontFamily = TagFonts.data, fontWeight = FontWeight.Medium, fontSize = 11.sp, letterSpacing = 1.2.sp, color = TagColors.Dim)
+            )
+            Spacer(Modifier.height(10.dp))
             LazyColumn(
                 Modifier.weight(1f, fill = false),
                 contentPadding = PaddingValues(bottom = 40.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                items(calendars, key = { it.id }) { cal ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                // A stacked group like the Settings rows: big corners outside, tight where they meet, and a switched-on
+                // calendar rounds its inner corners out.
+                itemsIndexed(calendars, key = { _, c -> c.id }) { index, cal ->
+                    val on = cal.id !in excluded
+                    val onP by androidx.compose.animation.core.animateFloatAsState(if (on) 1f else 0f, TagMotion.spatial(), label = "calOn")
+                    val big = 22.dp
+                    val small = 6.dp + (big - 6.dp) * onP
+                    val top = if (index == 0) big else small
+                    val bottom = if (index == calendars.lastIndex) big else small
+                    val rowShape = RoundedCornerShape(topStart = top, topEnd = top, bottomEnd = bottom, bottomStart = bottom)
+                    Row(
+                        Modifier.fillMaxWidth().clip(rowShape).background(TagColors.Surface).padding(horizontal = 18.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Box(Modifier.size(14.dp).clip(CircleShape).background(Color(cal.color)))
                         Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
                             Text(
