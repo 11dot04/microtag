@@ -11,6 +11,9 @@
     <!-- Required for Android 16 Live Updates / Promoted Ongoing Status Chips -->
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- CallStyle test (core/CallStyleProbe.kt): a throwaway foreground service. Remove with the probe. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- Bluetooth chips: device name and battery of connecting accessories -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
@@ -46,6 +49,15 @@
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
+        </service>
+
+        <service
+            android:name=".core.CallProbeService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="CallStyle capability test, debug only" />
         </service>
 
         <activity
