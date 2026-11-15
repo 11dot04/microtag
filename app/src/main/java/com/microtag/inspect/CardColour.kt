@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -109,7 +110,7 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
                         listOf(Color.White.copy(alpha = 0.26f), Color.Transparent), center = Offset(G * k * 0.80f, 60f * k), radius = G * k * 0.60f
                     )
                 )
-                androidx.compose.ui.graphics.drawscope.clipPath(field) {
+                clipPath(field) {
                     val rnd = java.util.Random(hex.hashCode().toLong())
                     repeat(1100) { i ->
                         drawCircle(
