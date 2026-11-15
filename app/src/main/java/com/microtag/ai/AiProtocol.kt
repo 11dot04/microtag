@@ -6,7 +6,9 @@ import java.net.URI
 enum class AiProvider(val label: String) {
     /** Anthropic's Messages API. */
     ANTHROPIC("Anthropic"),
-    /** Anything that speaks the chat-completions protocol: OpenAI, Gemini's compatible endpoint, OpenRouter, a local Ollama. */
+    /** Google's own Gemini API (generateContent), so any model name works, aliases such as "-latest" included. */
+    GEMINI("Gemini"),
+    /** Anything that speaks the chat-completions protocol: OpenAI, OpenRouter, a local Ollama. */
     OPENAI_COMPATIBLE("OpenAI-compatible")
 }
 
@@ -38,11 +40,13 @@ fun interface Completer {
 object AiProtocol {
     fun defaultBase(p: AiProvider) = when (p) {
         AiProvider.ANTHROPIC -> "https://api.anthropic.com"
+        AiProvider.GEMINI -> "https://generativelanguage.googleapis.com/v1beta"
         AiProvider.OPENAI_COMPATIBLE -> "https://api.openai.com/v1"
     }
 
     fun defaultModel(p: AiProvider) = when (p) {
         AiProvider.ANTHROPIC -> "claude-haiku-5-5"
+        AiProvider.GEMINI -> "gemini-flash-latest"
         AiProvider.OPENAI_COMPATIBLE -> "gpt-4o-mini"
     }
 
@@ -75,6 +79,14 @@ object AiProtocol {
                 body = """{"model":${jsonString(cfg.model)},"max_tokens":$maxTokens,"system":${jsonString(system)},""" +
                     """"messages":[{"role":"user","content":${jsonString(user)}}]}"""
             )
+            AiProvider.GEMINI -> AiRequest(
+                // The model is part of the address. The key goes in a header, not the URL, so it does not end up in a log.
+                url = "$base/models/${cfg.model.trim().removePrefix("models/")}:generateContent",
+                headers = mapOf("x-goog-api-key" to key, "content-type" to "application/json"),
+                body = """{"systemInstruction":{"parts":[{"text":${jsonString(system)}}]},""" +
+                    """"contents":[{"role":"user","parts":[{"text":${jsonString(user)}}]}],""" +
+                    """"generationConfig":{"maxOutputTokens":$maxTokens,"temperature":0${geminiThinking(cfg.model)}}}"""
+            )
             AiProvider.OPENAI_COMPATIBLE -> AiRequest(
                 url = "$base/chat/completions",
                 headers = mapOf("Authorization" to "Bearer $key", "content-type" to "application/json"),
@@ -91,6 +103,13 @@ object AiProtocol {
     private fun thinkingOff(base: String, model: String): String =
         if (base.contains("generativelanguage.googleapis.com") && model.startsWith("gemini-2.5-flash")) """"reasoning_effort":"none",""" else ""
 
+    /**
+     * Gemini 2.5 models think first and the thinking counts against the output limit, so a short answer can be cut off
+     * before it starts. Where the model supports a thinking budget, it is set to none; a model that rejects it is not given it.
+     */
+    private fun geminiThinking(model: String): String =
+        if (model.contains("2.5") && model.contains("flash")) ""","thinkingConfig":{"thinkingBudget":0}""" else ""
+
     /** The reply's text, or null if the body is not in the shape the provider promises. */
     fun parse(cfg: AiConfig, body: String): String? = runCatching {
         val o = JSONObject(body)
@@ -98,6 +117,11 @@ object AiProtocol {
             AiProvider.ANTHROPIC -> {
                 val arr = o.optJSONArray("content") ?: return null
                 (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("text")?.takeIf { t -> t.isNotEmpty() } }
+                    .joinToString("").ifBlank { null }
+            }
+            AiProvider.GEMINI -> {
+                val parts = o.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: return null
+                (0 until parts.length()).mapNotNull { parts.optJSONObject(it)?.optString("text")?.takeIf { t -> t.isNotEmpty() } }
                     .joinToString("").ifBlank { null }
             }
             AiProvider.OPENAI_COMPATIBLE -> {
