@@ -299,6 +299,7 @@ fun MonolithPoster(
                         expanded = menuOpen, onDismissRequest = { menuOpen = false },
                         modifier = Modifier.background(TagColors.Surface)
                     ) {
+                        @Composable
                         fun item(text: String, enabled: Boolean = true, onClick: () -> Unit) = androidx.compose.material3.DropdownMenuItem(
                             text = { Text(text, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (enabled) TagColors.White else TagColors.Dim)) },
                             onClick = { menuOpen = false; onClick() }, enabled = enabled
