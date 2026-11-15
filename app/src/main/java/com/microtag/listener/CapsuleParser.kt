@@ -56,7 +56,19 @@ object CapsuleParser {
     private fun isCalendar(pkg: String) = pkg == "com.google.android.calendar" || pkg.contains("calendar")
     private fun isStrava(pkg: String) = pkg == "com.strava" || pkg.contains("workout") || pkg.contains("fitness")
     private fun isDiscord(pkg: String) = pkg == "com.discord" || pkg.contains("discord")
-    private fun isWeather(pkg: String) = pkg.contains("weather") || pkg == "com.google.android.googlequicksearchbox"
+    /**
+     * A weather app's notifications are weather. The Google app posts everything (stocks, sports, news, reminders), so
+     * there it counts only when the notification itself reads like weather: a temperature, or the word weather or forecast.
+     */
+    private fun isWeather(pkg: String, extras: Bundle): Boolean {
+        if (pkg.contains("weather")) return true
+        if (pkg != "com.google.android.googlequicksearchbox") return false
+        val text = listOf(Notification.EXTRA_TITLE, Notification.EXTRA_TEXT, Notification.EXTRA_BIG_TEXT, Notification.EXTRA_SUB_TEXT)
+            .mapNotNull { extras.getCharSequence(it)?.toString() }.joinToString(" ")
+        return googleWeather.containsMatchIn(text)
+    }
+
+    private val googleWeather = Regex("""(?i)-?\d{1,3}\s?°|\b(?:weather|forecast)\b""")
     // Apps whose notifications can carry a one-time code: SMS apps, the common chat apps that send
     // verification messages, and mail apps. The code rule below still needs real OTP wording, so
     // ordinary chat or mail with a number in it is left alone.
@@ -149,7 +161,7 @@ object CapsuleParser {
         pkg == "ch.protonvpn.android" -> MicrotagPrefs.KEY_PROTON
         isStrava(pkg) -> MicrotagPrefs.KEY_STRAVA
         isDiscord(pkg) -> MicrotagPrefs.KEY_DISCORD
-        isWeather(pkg) -> TagKeys.WEATHER
+        isWeather(pkg, extras) -> TagKeys.WEATHER
         isPromoted(extras) && isTransfer(extras) -> null
         carriesCode(extras) -> MicrotagPrefs.KEY_OTP
         isTransfer(extras) -> if (isUpload(pkg, extras)) TagKeys.UPLOADS else MicrotagPrefs.KEY_DOWNLOADS
@@ -198,7 +210,7 @@ object CapsuleParser {
             pkg == "ch.protonvpn.android" -> parseProtonVpn(notif, title, text)
             isStrava(pkg) -> parseStrava(notif, combined, title, text, ctx)
             isDiscord(pkg) -> parseDiscord(notif, combined, title, text)
-            isWeather(pkg) -> parseWeather(combined, title, text)
+            isWeather(pkg, extras) -> parseWeather(combined, title, text)
             isPromoted(extras) && isTransfer(extras) -> null
             carriesCode(extras) -> parseOtp(fullText(extras), title, text)
             isTransfer(extras) -> parseProgress(notif, title, text, isUpload(pkg, extras), fullText(extras))
@@ -333,9 +345,13 @@ object CapsuleParser {
 
     private fun parseStrava(notif: Notification, combined: String, title: String, text: String, ctx: ParseContext): ParsedCapsule? {
         val actions = notif.actions?.toList() ?: emptyList()
-        val value = stravaMetricValue(combined, ctx.stravaMetric)
+        // Paused when the text says so or the action on offer is Resume.
+        val paused = stravaPausedPattern.containsMatchIn(combined) ||
+            actions.any { it.title?.toString()?.contains("resume", ignoreCase = true) == true }
+        // "State" shows what the workout is doing; the other choices show a number from the notification.
+        val value = if (ctx.stravaMetric == "state") (if (paused) "Paused" else "Active") else stravaMetricValue(combined, ctx.stravaMetric)
 
-        if (stravaPausedPattern.containsMatchIn(combined)) {
+        if (paused) {
             return ParsedCapsule(
                 pillText = value ?: "Paused",
                 title = title.ifBlank { "Workout Paused" },
@@ -457,11 +473,24 @@ object CapsuleParser {
         return ParsedCapsule(
             pillText = place,
             title = title,
-            content = text,
+            content = speedsOnSeparateLines(text),
             iconName = ICON_VPN,
             timeoutSeconds = 0, 
             actions = notif.actions?.toList() ?: emptyList()
         )
+    }
+
+    private val upMarker = Regex("""(?i)↑|⬆|▲|\bupload\b|\bup\b""")
+    private val downMarker = Regex("""(?i)↓|⬇|▼|\bdownload\b|\bdown\b""")
+
+    /** "↑ 12 KB/s  ↓ 3 MB/s" -> upload on one line, download on the next, whichever order they come in. */
+    internal fun speedsOnSeparateLines(text: String): String {
+        if (text.contains('\n')) return text
+        val up = upMarker.find(text) ?: return text
+        val down = downMarker.find(text) ?: return text
+        val second = if (up.range.first > down.range.first) up else down
+        val head = text.substring(0, second.range.first).trimEnd(' ', '|', '•', '·', ',', ';', '/', '-', '–')
+        return head + "\n" + text.substring(second.range.first)
     }
 
     /** Kept for the tests: the code in [haystack], or null. */
