@@ -154,7 +154,12 @@ class InterceptionBook(private val env: Env) {
                 val f = raw.trim('\n', '\r').split('\t')
                 // A damaged or cut-short line is skipped; the rest still counts.
                 val t = f.getOrNull(0)?.toLongOrNull()
-                if (f.size == 3 && t != null) records.add(Record(t, f[1], f[2]))
+                if (t != null && f.size >= 3) {
+                    // A short-lived duplicate writer once glued its own line onto the end of a record
+                    // ("...<path><13-digit time>\t<pkg>\t<path>"). The first record is the real one: keep it, drop the glue.
+                    // A real path never ends in 13 digits.
+                    records.add(Record(t, f[1], f[2].replace(Regex("\\d{13}$"), "")))
+                }
             }
         }
         records.sortBy { it.timeMs }
