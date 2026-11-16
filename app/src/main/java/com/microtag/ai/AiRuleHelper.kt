@@ -10,7 +10,7 @@ import com.microtag.rules.SafeRegex
  */
 class AiRuleHelper(private val completer: () -> Completer?) {
 
-    class Sample(val title: String, val text: String) { val target: String get() = "$title $text".trim() }
+    class Sample(val title: String, val text: String, val shape: com.microtag.rules.NotificationShape = com.microtag.rules.NotificationShape.NONE) { val target: String get() = "$title $text".trim() }
 
     class Request(
         val appLabel: String,
