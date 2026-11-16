@@ -60,6 +60,16 @@
                 android:value="CallStyle capability test, debug only" />
         </service>
 
+        <!-- Holds a Discord voice session as a call card (core/DiscordCall.kt) -->
+        <service
+            android:name=".core.DiscordCallService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Shows an ongoing Discord voice session as a call notification" />
+        </service>
+
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
