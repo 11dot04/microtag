@@ -27,6 +27,7 @@ import com.microtag.core.TileGate
 import com.microtag.ai.Ai
 import com.microtag.rules.MatchResult
 import com.microtag.rules.NotificationSamples
+import com.microtag.rules.NotificationShape
 import com.microtag.rules.UserRule
 import com.microtag.rules.UserRules
 import com.microtag.rules.AppIcons
@@ -419,8 +420,9 @@ class MicrotagNotificationService : NotificationListenerService() {
         // 1. Dynamic rules (custom_rules.json). The gate runs before each rule's regex, so a rule
         //    that is off (tile off, app not picked for streaks) is never matched against the text.
         //    Rules the person made (UserRules) come first, then the built-in file.
-        NotificationSamples.record(pkg, title, text) // memory only, for the rule builder's sample picker
-        val userMatch = UserRules.evaluate(applicationContext, pkg, title, text)
+        val shape = shapeOf(notif)
+        NotificationSamples.record(pkg, title, text, shape) // memory only, for the rule builder's sample picker
+        val userMatch = UserRules.evaluate(applicationContext, pkg, title, text, shape)
         val match = userMatch?.let {
             MatchResult(pillText = it.pill, iconName = it.rule.iconName, timeoutSeconds = it.rule.timeoutSeconds, tile = UserRules.TILE)
         } ?: RuleEngine.evaluate(pkg, title, text) { rule ->
@@ -808,6 +810,42 @@ class MicrotagNotificationService : NotificationListenerService() {
             meta = metaOf(sbn),
             ruleId = ruleId
         )
+    }
+
+    /**
+     * What the notification is made of beyond its two lines: the style it was posted in, who sent the latest message
+     * (or who is calling) and the chat's name. Rules can read these as fields, and the builder suggests presets from them.
+     */
+    private fun shapeOf(n: Notification): NotificationShape {
+        val x = n.extras ?: return NotificationShape.NONE
+        return try {
+            val tmpl = x.getString(Notification.EXTRA_TEMPLATE)?.substringAfterLast('$').orEmpty()
+            var sender = ""
+            when (tmpl) {
+                "MessagingStyle" -> {
+                    @Suppress("DEPRECATION")
+                    val arr = x.getParcelableArray(Notification.EXTRA_MESSAGES)
+                    val last = arr?.let { Notification.MessagingStyle.Message.getMessagesFromBundleArray(it).lastOrNull() }
+                    sender = (if (Build.VERSION.SDK_INT >= 28) last?.senderPerson?.name else null)?.toString()
+                        ?: last?.sender?.toString().orEmpty()
+                }
+                "CallStyle" -> if (Build.VERSION.SDK_INT >= 31) {
+                    @Suppress("DEPRECATION")
+                    sender = (x.getParcelable<android.app.Person>(Notification.EXTRA_CALL_PERSON))?.name?.toString().orEmpty()
+                }
+            }
+            NotificationShape(
+                template = tmpl,
+                category = n.category.orEmpty(),
+                sender = sender,
+                conversation = x.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString().orEmpty(),
+                group = x.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION),
+                bar = x.getInt(Notification.EXTRA_PROGRESS_MAX, 0) > 0 || x.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE),
+                timer = x.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER)
+            )
+        } catch (e: Exception) {
+            NotificationShape.NONE
+        }
     }
 
     private fun metaOf(sbn: StatusBarNotification): String {
