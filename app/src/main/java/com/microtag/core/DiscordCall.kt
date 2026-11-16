@@ -128,15 +128,13 @@ object DiscordCall {
         listOfNotNull(
             source.firstOrNull { kind(it) == Kind.MUTE },
             source.firstOrNull { kind(it) == Kind.DEAFEN }
-        ).forEach { b.addAction(copy(context, it)) }
+        ).forEach { b.addAction(copy(it)) }
         return b.build()
     }
 
-    /** Discord's own button: its label, its icon and its PendingIntent. */
-    private fun copy(context: Context, a: Notification.Action): Notification.Action {
-        val icon = a.getIcon() ?: Icon.createWithResource(context, R.drawable.ic_capsule_bolt)
-        return Notification.Action.Builder(icon, a.title, a.actionIntent).build()
-    }
+    /** Discord's own button: its label and its PendingIntent, with no icon so the card shows the words alone. */
+    private fun copy(a: Notification.Action): Notification.Action =
+        Notification.Action.Builder(null as Icon?, a.title, a.actionIntent).build()
 }
 
 /** Holds the call card as a foreground service for as long as the Discord session lasts. */
