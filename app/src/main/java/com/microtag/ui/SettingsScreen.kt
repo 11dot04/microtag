@@ -241,17 +241,6 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
                 )
             )
         )
-        Block(
-            "CallStyle test",
-            listOf(
-                Item("Plain notification", "Post a fake ongoing call the way capsules are posted today.",
-                    onClick = { com.microtag.core.CallStyleProbe.postPlain(context) }),
-                Item("From a foreground service", "The same call, held by a foreground service.",
-                    onClick = { com.microtag.core.CallStyleProbe.postForeground(context) }),
-                Item("End test call", "Remove the fake call.",
-                    onClick = { com.microtag.core.CallStyleProbe.stop(context) })
-            )
-        )
         Block("Intro", listOf(Item("Replay intro", "Walk through the welcome screens again.", onClick = onReplayIntro)))
         Block("About", listOf(Item("TAG", "Version $version")))
         MicroFooter("TAG_SYS_V$version", Micro.Slashes)
