@@ -25,7 +25,8 @@ data class UserRule(
     val createdAt: Long = 0L,
     val contributed: Boolean = false
 ) {
-    enum class Field { TITLE, TEXT, BOTH }
+    /** SENDER is who sent the latest message (or who is calling); CONVERSATION is the chat or group's name. Both come from the notification's own structure. */
+    enum class Field { TITLE, TEXT, BOTH, SENDER, CONVERSATION }
     /** APP: the app's own monochrome icon. BUILTIN: [iconName]. NONE: the default bolt. */
     enum class IconMode { APP, BUILTIN, NONE }
     /** EXACT: the template as written. FIT: cut to the pill's room. AI: fitted at once, then improved by the model if it is on. */
@@ -128,6 +129,14 @@ class UserRuleBook(private val dir: File) {
         return null
     }
 
+    private fun targetOf(field: UserRule.Field, title: String, text: String, shape: NotificationShape): String = when (field) {
+        UserRule.Field.TITLE -> title
+        UserRule.Field.TEXT -> text
+        UserRule.Field.BOTH -> "$title $text".trim()
+        UserRule.Field.SENDER -> shape.sender
+        UserRule.Field.CONVERSATION -> shape.conversation
+    }
+
     private fun regexOf(rule: UserRule): Regex? {
         val sig = "${rule.regex}|${rule.ignoreCase}"
         synchronized(compiled) {
@@ -139,14 +148,11 @@ class UserRuleBook(private val dir: File) {
     }
 
     /** What [rule] would show for this notification, or null when it does not match (or is not valid). For the live test in the builder. */
-    fun preview(rule: UserRule, title: String, text: String, limit: Int = PillText.LIMIT): String? {
+    fun preview(rule: UserRule, title: String, text: String, limit: Int = PillText.LIMIT, shape: NotificationShape = NotificationShape.NONE): String? {
         if (validate(rule) != null) return null
         val rx = SafeRegex.compile(rule.regex, rule.ignoreCase).getOrNull() ?: return null
-        val target = when (rule.field) {
-            UserRule.Field.TITLE -> title
-            UserRule.Field.TEXT -> text
-            UserRule.Field.BOTH -> "$title $text".trim()
-        }
+        val target = targetOf(rule.field, title, text, shape)
+        if (target.isBlank() && (rule.field == UserRule.Field.SENDER || rule.field == UserRule.Field.CONVERSATION)) return null
         val found = SafeRegex.find(rx, target) as? SafeRegex.Outcome.Found ?: return null
         val full = RuleTemplate.expand(rule.pill, found.groups)
         if (full.isBlank()) return null
@@ -154,15 +160,13 @@ class UserRuleBook(private val dir: File) {
     }
 
     /** The first enabled rule for [pkg] that matches, with its pill built and fitted. */
-    fun evaluate(pkg: String, title: String, text: String, limit: Int = PillText.LIMIT): UserMatch? {
+    fun evaluate(pkg: String, title: String, text: String, limit: Int = PillText.LIMIT, shape: NotificationShape = NotificationShape.NONE): UserMatch? {
         for (rule in rules) {
             if (!rule.enabled || !rule.pkg.equals(pkg, ignoreCase = true)) continue
             val rx = regexOf(rule) ?: continue
-            val target = when (rule.field) {
-                UserRule.Field.TITLE -> title
-                UserRule.Field.TEXT -> text
-                UserRule.Field.BOTH -> "$title $text".trim()
-            }
+            val target = targetOf(rule.field, title, text, shape)
+            // A rule about the sender or the conversation has nothing to read on a notification that has neither.
+            if (target.isBlank() && (rule.field == UserRule.Field.SENDER || rule.field == UserRule.Field.CONVERSATION)) continue
             val found = SafeRegex.find(rx, target) as? SafeRegex.Outcome.Found ?: continue
             val full = RuleTemplate.expand(rule.pill, found.groups)
             if (full.isBlank()) continue

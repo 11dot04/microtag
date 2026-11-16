@@ -32,7 +32,8 @@ object UserRules {
     fun book(context: Context): UserRuleBook { init(context); return book!! }
 
     /** Used by the listener, for every notification. Cheap when there are no rules for the app. */
-    fun evaluate(context: Context, pkg: String, title: String, text: String): UserMatch? = book(context).evaluate(pkg, title, text)
+    fun evaluate(context: Context, pkg: String, title: String, text: String, shape: NotificationShape = NotificationShape.NONE): UserMatch? =
+        book(context).evaluate(pkg, title, text, shape = shape)
 
     /** The status-bar icon for a match: the app's own monochrome icon when asked and readable, otherwise null (use the drawable name). */
     fun iconFor(context: Context, rule: UserRule): Icon? = when (rule.iconMode) {
