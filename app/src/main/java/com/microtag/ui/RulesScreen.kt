@@ -47,6 +47,7 @@ import com.microtag.ai.Ai
 import com.microtag.ai.AiRuleHelper
 import com.microtag.rules.AppIcons
 import com.microtag.rules.NotificationSamples
+import com.microtag.rules.NotificationShape
 import com.microtag.rules.Redactor
 import com.microtag.rules.RuleExport
 import com.microtag.rules.RuleSuggester
@@ -232,8 +233,12 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
     // What this app has sent lately, plus one the person types or pastes.
     val seen = remember {
         // The log entry comes first, so it is the sample that is picked when the builder opens.
-        val fromLog = prefill?.let { listOf(AiRuleHelper.Sample(it.title, it.text)) }.orEmpty()
-        fromLog + NotificationSamples.recent(pkg).map { AiRuleHelper.Sample(it.title, it.text) }
+        val recent = NotificationSamples.recent(pkg)
+        val fromLog = prefill?.let { p ->
+            val shape = recent.firstOrNull { it.title == p.title && it.text == p.text }?.shape ?: NotificationShape.NONE
+            listOf(AiRuleHelper.Sample(p.title, p.text, shape))
+        }.orEmpty()
+        fromLog + recent.map { AiRuleHelper.Sample(it.title, it.text, it.shape) }
             .filterNot { s -> prefill != null && s.title == prefill.title && s.text == prefill.text }
     }
     var manualTitle by remember { mutableStateOf("") }
@@ -317,7 +322,9 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
     val err = remember(regex, pill, field, ignoreCase) { if (regex.isBlank()) null else book.validate(rule) }
     val ruleOk = regex.isNotBlank() && err == null
     val previewMode = if (pillMode == UserRule.PillMode.AI) UserRule.PillMode.FIT else pillMode
-    val previewText = if (ruleOk) sample?.let { book.preview(rule.copy(pillMode = previewMode), it.title, it.text) } else null
+    val previewText = if (ruleOk) sample?.let { book.preview(rule.copy(pillMode = previewMode), it.title, it.text, shape = it.shape) } else null
+    // Ready-made rules for the notification in use: from how it was posted and from what its words contain.
+    val smart = remember(sample) { sample?.let { RuleSuggester.presets(it.title, it.text, it.shape) }.orEmpty() }
 
     SubScreen(onDone, spacing = 10.dp) {
         FormGap(12)
@@ -365,7 +372,23 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
 
         // ---- 02 say what you want
         if (sample != null) {
-            StepHeader("02", "Describe it", if (aiReady) "ask, then refine" else "tap the words")
+            StepHeader("02", "Describe it", if (smart.isNotEmpty()) "pick, ask or tap" else if (aiReady) "ask, then refine" else "tap the words")
+            if (smart.isNotEmpty()) {
+                // Quick picks. Each one was run on this very notification, so every one of them gives a chip.
+                FormCaption(
+                    if (sample.shape.template.isNotBlank()) "Quick picks, from how this notification is built and what it says"
+                    else "Quick picks, from what this notification says"
+                )
+                FormWrap {
+                    smart.forEach { p ->
+                        FormChoice("${p.label} · ${p.value}", regex == p.regex && field == p.field && pill == p.pill, {
+                            regex = p.regex; pill = p.pill; field = p.field; note = p.explain; problem = null
+                            if (name.isBlank()) name = p.label
+                        })
+                    }
+                }
+                FormGap(4)
+            }
             if (aiReady) {
                 // A chat, so follow-ups work: the helper sees the conversation, the rule so far and the samples each time.
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -467,8 +490,16 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
             FormField(pill, { pill = it }, "Chip text, e.g. \$1 or \$1 left", mono = true)
             FormCaption("\$1, \$2 … are the bracketed parts of the pattern.")
             FormLabel("Look in")
-            val fields = listOf(UserRule.Field.TITLE, UserRule.Field.TEXT, UserRule.Field.BOTH)
-            TagSegments(listOf("Title", "Text", "Both"), fields.indexOf(field), { field = fields[it] })
+            // Sender and Chat read the notification's own structure; they are offered where it has them.
+            val fields = buildList {
+                add(UserRule.Field.TITLE); add(UserRule.Field.TEXT); add(UserRule.Field.BOTH)
+                if (sample?.shape?.sender?.isNotBlank() == true || field == UserRule.Field.SENDER) add(UserRule.Field.SENDER)
+                if (sample?.shape?.conversation?.isNotBlank() == true || field == UserRule.Field.CONVERSATION) add(UserRule.Field.CONVERSATION)
+            }
+            TagSegments(
+                fields.map { when (it) { UserRule.Field.TITLE -> "Title"; UserRule.Field.TEXT -> "Text"; UserRule.Field.BOTH -> "Both"; UserRule.Field.SENDER -> "Sender"; UserRule.Field.CONVERSATION -> "Chat" } },
+                fields.indexOf(field).coerceAtLeast(0), { field = fields[it] }
+            )
             FormLabel("Chip length")
             val modes = buildList { add(UserRule.PillMode.FIT); add(UserRule.PillMode.EXACT); if (aiPills || pillMode == UserRule.PillMode.AI) add(UserRule.PillMode.AI) }
             TagSegments(modes.map { when (it) { UserRule.PillMode.FIT -> "Fit"; UserRule.PillMode.EXACT -> "Exact"; UserRule.PillMode.AI -> "AI" } }, modes.indexOf(pillMode).coerceAtLeast(0), { pillMode = modes[it] })
