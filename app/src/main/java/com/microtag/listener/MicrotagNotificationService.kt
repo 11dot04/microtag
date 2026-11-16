@@ -541,6 +541,13 @@ class MicrotagNotificationService : NotificationListenerService() {
             // System capsules (Bluetooth, DND, battery) open the matching settings page; every other
             // capsule names its app and opens what the original notification would have opened.
             val isSystem = pkg == "com.android.bluetooth" || pkg == "com.android.systemui"
+            // A Discord voice session is a call: show it as the system's call card, with Discord's own buttons.
+            // If that cannot be done (older Android, no Disconnect button, service refused) the capsule below runs.
+            if (parsed.call && com.microtag.core.DiscordCall.show(
+                    applicationContext, id, parsed.content.ifBlank { "Discord voice" }, parsed.pillText,
+                    parsed.actions, notif.contentIntent
+                )
+            ) return
             MicrotagReminder.showCapsule(
                 context = applicationContext,
                 pillText = parsed.pillText,
@@ -754,6 +761,8 @@ class MicrotagNotificationService : NotificationListenerService() {
         cancelDeferred(key)
         if (id != null) {
             MicrotagReminder.cancelTicker(id)
+            // A call card is held by a foreground service, which cancel() cannot remove: stop the service.
+            com.microtag.core.DiscordCall.endIf(applicationContext, id)
             val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             manager.cancel(id)
         }

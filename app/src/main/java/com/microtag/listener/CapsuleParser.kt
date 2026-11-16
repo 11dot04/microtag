@@ -22,7 +22,9 @@ data class ParsedCapsule(
     /** Dashboard tile (MicrotagPrefs key) this capsule belongs to, if any. */
     val tile: String? = null,
     /** 0-100 for a transfer: shown as the notification's own progress bar. */
-    val progress: Int? = null
+    val progress: Int? = null,
+    /** A live voice call (Discord): shown as a real call card rather than an ordinary capsule. */
+    val call: Boolean = false
 )
 
 /** Settings the parser needs, passed in so the parser itself stays free of Android storage. */
@@ -94,7 +96,7 @@ object CapsuleParser {
         pkg in otpPackages || pkg.contains("messaging") || smsSegment.containsMatchIn(pkg)
 
     /** Everything a notification can say, including the body, the line list and MessagingStyle messages. */
-    private fun fullText(extras: Bundle): String {
+    private fun fullText(extras: Bundle, withMessages: Boolean = true): String {
         val parts = ArrayList<String>()
         for (key in listOf(
             Notification.EXTRA_TITLE, Notification.EXTRA_TEXT, Notification.EXTRA_SUB_TEXT,
@@ -102,7 +104,7 @@ object CapsuleParser {
         )) extras.getCharSequence(key)?.toString()?.let { if (it.isNotBlank()) parts.add(it) }
         extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.forEach { if (it.isNotBlank()) parts.add(it.toString()) }
         // MessagingStyle (Google Messages, WhatsApp, Telegram): the code can be in an earlier message of the thread.
-        try {
+        if (withMessages) try {
             @Suppress("DEPRECATION")
             extras.getParcelableArray(Notification.EXTRA_MESSAGES)?.forEach { m ->
                 (m as? Bundle)?.getCharSequence("text")?.toString()?.let { if (it.isNotBlank()) parts.add(it) }
@@ -111,6 +113,12 @@ object CapsuleParser {
         }
         return parts.distinct().joinToString(" ")
     }
+
+    /** What the notification itself says, without the chat thread: a message someone typed is never a transfer's status. */
+    private fun statusText(extras: Bundle): String = fullText(extras, withMessages = false)
+
+    private fun isChat(extras: Bundle): Boolean =
+        extras.getString(Notification.EXTRA_TEMPLATE)?.endsWith("MessagingStyle") == true
 
     /** An app that is not a messenger, but whose notification clearly carries a code (a bank app, a game launcher...). */
     private fun carriesCode(extras: Bundle): Boolean = OtpExtractor.isCodeMessage(fullText(extras))
@@ -123,7 +131,28 @@ object CapsuleParser {
         "com.microsoft.skydrive", "com.amazon.clouddrive.photos", "com.mega.android", "com.synology.dsphoto"
     )
 
-    private val percentIn = Regex("""(\d{1,3})\s?%""")
+    private val percentIn = Regex("""(?<![\d.])(\d{1,3})(?:\.\d+)?\s?%""")
+    /** A percentage that is about something else: "50% off", "80% charged", "30% chance of rain". */
+    private val notProgressAfter = Regex("""(?i)^\s*(?:off\b|discount|cashback|cash back|charged|charge\b|battery|chance|humidity|rain|storage|used|full\b|cpu|ram\b|ram,)""")
+    private val notProgressBefore = Regex("""(?i)(?:battery|charge[ds]?|charging|humidity|chance|rain|storage|cpu|ram)\W*(?:is|at|:|-|of)?\W*$""")
+
+    /**
+     * The transfer percentage the text states, or null. A percentage only counts when a transfer word (uploading,
+     * downloading, backing up...) sits right beside it and it is not a discount, a battery level or a forecast.
+     */
+    private fun transferPercent(text: String): Int? {
+        for (m in percentIn.findAll(text)) {
+            val v = m.groupValues[1].toIntOrNull() ?: continue
+            if (v > 100) continue
+            val after = text.substring(m.range.last + 1, minOf(text.length, m.range.last + 1 + 16))
+            if (notProgressAfter.containsMatchIn(after)) continue
+            val before = text.substring(maxOf(0, m.range.first - 24), m.range.first)
+            if (notProgressBefore.containsMatchIn(before)) continue
+            val near = text.substring(maxOf(0, m.range.first - 70), minOf(text.length, m.range.last + 1 + 40))
+            if (uploadWords.containsMatchIn(near) || downloadWords.containsMatchIn(near)) return v
+        }
+        return null
+    }
 
     /**
      * A transfer in progress. Checked before the messenger test: WhatsApp is a code app, but its backup and media
@@ -135,8 +164,8 @@ object CapsuleParser {
 
     private fun isTransfer(extras: Bundle): Boolean {
         if (extras.containsKey(Notification.EXTRA_PROGRESS) && extras.getInt(Notification.EXTRA_PROGRESS_MAX, 0) > 0) return true
-        val text = fullText(extras)
-        return percentIn.containsMatchIn(text) && (uploadWords.containsMatchIn(text) || downloadWords.containsMatchIn(text))
+        // No real bar: only the notification's own words count, and never a chat message.
+        return !isChat(extras) && transferPercent(statusText(extras)) != null
     }
 
     private fun isUpload(pkg: String, extras: Bundle): Boolean {
@@ -166,7 +195,6 @@ object CapsuleParser {
         carriesCode(extras) -> MicrotagPrefs.KEY_OTP
         isTransfer(extras) -> if (isUpload(pkg, extras)) TagKeys.UPLOADS else MicrotagPrefs.KEY_DOWNLOADS
         isMessaging(pkg) -> MicrotagPrefs.KEY_OTP
-        extras.containsKey(Notification.EXTRA_PROGRESS) -> if (isUpload(pkg, extras)) TagKeys.UPLOADS else MicrotagPrefs.KEY_DOWNLOADS
         carriesCode(extras) -> MicrotagPrefs.KEY_OTP
         else -> null
     }
@@ -213,9 +241,8 @@ object CapsuleParser {
             isWeather(pkg, extras) -> parseWeather(combined, title, text)
             isPromoted(extras) && isTransfer(extras) -> null
             carriesCode(extras) -> parseOtp(fullText(extras), title, text)
-            isTransfer(extras) -> parseProgress(notif, title, text, isUpload(pkg, extras), fullText(extras))
+            isTransfer(extras) -> parseProgress(notif, title, text, isUpload(pkg, extras), statusText(extras))
             isMessaging(pkg) -> parseOtp(fullText(extras).ifBlank { combined }, title, text)
-            extras.containsKey(Notification.EXTRA_PROGRESS) -> parseProgress(notif, title, text, isUpload(pkg, extras), fullText(extras))
             carriesCode(extras) -> parseOtp(fullText(extras), title, text)
             else -> null
         }
@@ -427,7 +454,8 @@ object CapsuleParser {
                 content = text,
                 iconName = ICON_CHAT,
                 timeoutSeconds = 0,
-                actions = actions
+                actions = actions,
+                call = true
             )
         }
 
@@ -524,7 +552,7 @@ object CapsuleParser {
             if (progress >= max) return null
             ((progress.toDouble() / max) * 100).toInt()
         } else {
-            val said = percentIn.find(full)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+            val said = transferPercent(full) ?: return null
             if (said >= 100) return null
             said
         }
