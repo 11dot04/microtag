@@ -198,9 +198,8 @@ object RuleSuggester {
             add(check(k.label, k.regex, k.pill, k.field, k.explain, title, text, shape))
         }
 
-        // 3. Always something to start from.
+        // 3. Something to start from when nothing else matched. A whole sentence never makes a good chip, so only the title.
         now("Whole title", "(.+)", UserRule.Field.TITLE, "Shows the title, cut to fit.")
-        now("First sentence", "^(.+?)(?:[.!?](?=\\s|$)|$)", UserRule.Field.TEXT, "Shows the first sentence of the text.")
 
         return out.take(MAX_PRESETS)
     }
