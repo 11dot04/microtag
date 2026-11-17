@@ -375,13 +375,12 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
             StepHeader("02", "Describe it", if (smart.isNotEmpty()) "pick, ask or tap" else if (aiReady) "ask, then refine" else "tap the words")
             if (smart.isNotEmpty()) {
                 // Quick picks. Each one was run on this very notification, so every one of them gives a chip.
-                FormCaption(
-                    if (sample.shape.template.isNotBlank()) "Quick picks, from how this notification is built and what it says"
-                    else "Quick picks, from what this notification says"
-                )
+                FormCaption("Quick picks for this notification")
                 FormWrap {
                     smart.forEach { p ->
-                        FormChoice("${p.label} · ${p.value}", regex == p.regex && field == p.field && pill == p.pill, {
+                        // A long value would make a long chip; the full text still shows in the result below.
+                        val shown = if (p.value.length > 22) p.value.take(21).trimEnd() + "…" else p.value
+                        FormChoice("${p.label} · $shown", regex == p.regex && field == p.field && pill == p.pill, {
                             regex = p.regex; pill = p.pill; field = p.field; note = p.explain; problem = null
                             if (name.isBlank()) name = p.label
                         })
@@ -393,13 +392,19 @@ private fun RuleBuilderPage(pkg: String, label: String, existing: UserRule?, pre
                 // A chat, so follow-ups work: the helper sees the conversation, the rule so far and the samples each time.
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (chat.isEmpty()) {
-                        ChatBubble(false, "What should the chip show? For example “the minutes left”, “the amount” or “who it is from”.")
-                        FormWrap {
-                            listOf(
-                                "The most important number" to "Show the most important number",
-                                "Who it’s from" to "Show who it is from",
-                                "Time left" to "Show the time left"
-                            ).forEach { (shown, sent) -> FormChoice(shown, false, { ask(sent) }) }
+                        if (smart.isEmpty()) {
+                            // Nothing in the notification suggested itself, so the helper offers the starting points.
+                            ChatBubble(false, "What should the chip show? For example “the minutes left”, “the amount” or “who it is from”.")
+                            FormWrap {
+                                listOf(
+                                    "The most important number" to "Show the most important number",
+                                    "Who it’s from" to "Show who it is from",
+                                    "Time left" to "Show the time left"
+                                ).forEach { (shown, sent) -> FormChoice(shown, false, { ask(sent) }) }
+                            }
+                        } else {
+                            // The quick picks above are the suggestions; this is only the way to ask for something else.
+                            FormCaption("None of these? Describe it in your own words and the AI will build it.", color = TagColors.Dim)
                         }
                     }
                     chat.forEach { ChatBubble(it.fromPerson, it.text) }
