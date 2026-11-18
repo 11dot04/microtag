@@ -92,7 +92,7 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
                 // The field: full width on top, stepping in on the right.
                 val field = Path().apply {
                     moveTo(0f, 0f); lineTo(G * k, 0f); lineTo(G * k, 470f * k)
-                    lineTo(640f * k, 470f * k); lineTo(640f * k, 600f * k); lineTo(0f, 600f * k); close()
+                    lineTo(640f * k, 470f * k); lineTo(640f * k, 640f * k); lineTo(0f, 640f * k); close()
                 }
                 // A soft field, not a flat block: the colour itself, lighter toward the top left and deeper toward the bottom
                 // right, a glow in the corner and a little grain. No border; the gradient keeps it from vanishing into the card.
@@ -120,6 +120,22 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
                         )
                     }
                 }
+
+                // No hard edge against the card: the colour is most opaque at the top left and thins out toward the lower right,
+                // and every edge it shares with the surface (the foot, the step, the notch) feathers into the surface colour.
+                val surf = Surface.Black
+                val none = Color.Transparent
+                val Br = androidx.compose.ui.graphics.Brush
+                // the scatter: a slow thinning along the diagonal
+                drawRect(
+                    Br.linearGradient(listOf(none, surf.copy(alpha = 0.38f)), start = Offset(0f, 0f), end = Offset(G * k, 640f * k)),
+                    Offset(0f, 0f), Size(G * k, 640f * k)
+                )
+                // the foot
+                drawRect(Br.verticalGradient(listOf(none, surf), startY = 540f * k, endY = 640f * k), Offset(0f, 540f * k), Size(G * k, 102f * k))
+                // the inner step, and the notch's top edge
+                drawRect(Br.horizontalGradient(listOf(none, surf), startX = 592f * k, endX = 640f * k), Offset(592f * k, 470f * k), Size(50f * k, 172f * k))
+                drawRect(Br.verticalGradient(listOf(none, surf), startY = 424f * k, endY = 470f * k), Offset(636f * k, 424f * k), Size(G * k - 636f * k, 48f * k))
 
                 // Crop marks round the name zone.
                 val m = 36f * k; val l = 26f * k

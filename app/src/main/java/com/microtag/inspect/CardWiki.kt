@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -208,6 +209,46 @@ internal fun splitBlurb(tm: androidx.compose.ui.text.TextMeasurer, text: String,
     return cur to words.drop(n).joinToString(" ")
 }
 
+/**
+ * Two passages, both ending on a whole sentence: as many whole sentences as fit [linesA] lines go in the first, the next
+ * ones that fit [linesB] lines go in the second, and whatever is left is dropped rather than cut mid-sentence. Only when
+ * the very first sentence is longer than the first passage does it fall back to [splitBlurb] (filled to the last whole
+ * word, the rest continuing in the second).
+ */
+internal fun splitBlurbWhole(
+    tm: androidx.compose.ui.text.TextMeasurer, text: String, styleA: TextStyle, styleB: TextStyle,
+    widthA: Int, widthB: Int, linesA: Int, linesB: Int
+): Pair<String, String> {
+    fun lines(t: String, st: TextStyle, wd: Int) = tm.measure(AnnotatedString(t), st, constraints = Constraints(maxWidth = wd)).lineCount
+    val sentences = splitSentences(text)
+    var a = ""
+    var used = 0
+    for (x in sentences) {
+        val next = if (a.isEmpty()) x else "$a $x"
+        if (lines(next, styleA, widthA) <= linesA) { a = next; used++ } else break
+    }
+    if (used == 0) return splitBlurb(tm, text, styleA, widthA, linesA)
+    var b = ""
+    if (linesB > 0) {
+        for (x in sentences.drop(used)) {
+            val next = if (b.isEmpty()) x else "$b $x"
+            if (lines(next, styleB, widthB) <= linesB) b = next else break
+        }
+    }
+    return a to b
+}
+
+/** Reads bottom to top: the text is laid out on its side, and takes the room a rotated line really takes. */
+private fun Modifier.readsUpward(): Modifier = this.layout { measurable, _ ->
+    val placeable = measurable.measure(Constraints())
+    layout(placeable.height, placeable.width) {
+        placeable.placeWithLayer(0, placeable.width) {
+            rotationZ = -90f
+            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+        }
+    }
+}
+
 private class Loaded(val bmp: Bitmap?)
 
 @Composable
@@ -313,55 +354,76 @@ private fun Poster(c: CardCtx) {
             // Header: category and OPEN.
             Box(Modifier.padding(start = fx(0.085f), end = fx(0.09f), top = fy(0.037f))) { CardHeader(ctx, arrowHere = false) }
 
-            // The summary, ragged-right with a first-line indent, and the big arrow beside it.
-            val blurbTop = fy(0.125f)
-            val blurbBottom = bandTop - fy(0.014f)
+            // ---- The summary: two passages, aligned, both ending on whole sentences.
+            // The first runs from under the header down to the title block, riding the top of the photo. The second starts
+            // under the title and runs toward the foot. The figures (years or coordinates) sit low on the left; when the
+            // whole summary would not fit beside them they turn on their side so the second passage can have the full height.
             val lineH = 16.5f * u
-            val maxLines = floor((blurbBottom - blurbTop).value / lineH).toInt().coerceAtLeast(3)
+            val blurbTop = fy(0.125f)
+            val gap = fy(0.016f)
+            val titleH = (fit.lines.sumOf { it.size } * fit.size * lead * density.fontScale).dp
+            val bandBottom = bandTop + bandH
+            val titleTop = bandTop + (bandH - titleH) / 2f
+            val titleBottom = bandTop + (bandH + titleH) / 2f
+            val arrowBottom = bandTop - fy(0.014f)
+            val aBottom = maxOf(arrowBottom, titleTop - gap)
+            val linesA = floor((aBottom - blurbTop).value / lineH).toInt().coerceAtLeast(3)
+            val bTop = titleBottom + gap
+            val footY = fy(0.968f)
+            val linesBFull = floor((footY - bTop).value / lineH).toInt().coerceAtLeast(0)
+            val linesBBeside = if (stagger == null) linesBFull else floor((fy(0.80f) - bTop).value / lineH).toInt().coerceAtLeast(0)
             val blurbStyle = TextStyle(
                 fontFamily = Montserrat, fontWeight = FontWeight.Normal, fontSize = (12f * u).sp, lineHeight = lineH.sp,
                 color = Paper.Ink.copy(alpha = 0.92f), textIndent = TextIndent(firstLine = (30f * u).sp),
                 lineBreak = LineBreak.Paragraph, hyphens = Hyphens.Auto
             )
-            // The summary runs above the photo. What does not fit continues in the second passage, split at a sentence,
-            // aligned with the first. It rides the lower part of the photo when the title block leaves room under it;
-            // if the title takes more, it moves down accordingly (below the photo), and with too little room it is dropped
-            // and the first passage simply ends in an ellipsis.
-            val widthA = with(density) { fx(0.56f).toPx() }.toInt()
-            val titleLines = fit.lines.sumOf { it.size }
-            val titleH = (titleLines * fit.size * lead * density.fontScale).dp
-            val bandBottom = bandTop + bandH
-            val titleBottom = bandTop + (bandH + titleH) / 2f
-            val onPhoto = titleBottom + fy(0.016f) + (lineH * 2f).dp <= bandBottom - fy(0.012f)
-            val secondTop = if (onPhoto) titleBottom + fy(0.016f) else bandBottom + fy(0.022f)
-            val secondBottom = if (onPhoto) bandBottom - fy(0.012f) else fy(0.968f)
-            val secondLines = floor((secondBottom - secondTop).value / lineH).toInt()
-            val (partA, partB) = remember(blurb, widthA, maxLines, u, secondLines) {
-                if (secondLines >= 2) splitBlurb(tm, blurb, blurbStyle, widthA, maxLines) else blurb to ""
+            val styleB = blurbStyle.copy(textIndent = null)
+            val colW = with(density) { fx(0.56f).toPx() }.toInt()
+            val squash = remember(blurb) { blurb.replace(Regex("\\s+"), " ").trim() }
+            val beside = remember(squash, colW, linesA, linesBBeside, u) {
+                splitBlurbWhole(tm, squash, blurbStyle, styleB, colW, colW, linesA, linesBBeside)
+            }
+            val allShownBeside = (beside.first + " " + beside.second).trim() == squash
+            val vertical = stagger != null && !allShownBeside
+            val (partA, partB) = if (!vertical) beside else remember(squash, colW, linesA, linesBFull, u) {
+                splitBlurbWhole(tm, squash, blurbStyle, styleB, colW, colW, linesA, linesBFull)
+            }
+            val linesB = if (vertical) linesBFull else linesBBeside
+
+            // A soft shade where the first passage rides the photo.
+            val aUsed = remember(partA, colW, u) {
+                tm.measure(AnnotatedString(partA), blurbStyle, constraints = Constraints(maxWidth = colW)).lineCount
+            }.coerceAtMost(linesA)
+            val aTextBottom = blurbTop + (lineH * aUsed).dp
+            if (partA.isNotBlank() && aTextBottom > bandTop) {
+                Box(
+                    Modifier.offset(y = bandTop).fillMaxWidth().height(aTextBottom - bandTop + fy(0.02f))
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f), Color.Black.copy(alpha = 0.5f), Color.Transparent)))
+                )
             }
             if (partA.isNotBlank()) {
                 Text(
-                    partA, style = blurbStyle, maxLines = maxLines, overflow = TextOverflow.Ellipsis,
+                    partA, style = blurbStyle, maxLines = linesA, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.offset(x = fx(0.37f), y = blurbTop).width(fx(0.56f)).plainClick { c.onCopy(blurb) }
                 )
             }
-            if (partB.isNotBlank()) {
-                if (onPhoto) {
-                    // A soft shade behind it so white type holds up on a busy photo.
+            val bOnPhoto = bTop < bandBottom - (lineH * 2f).dp
+            if (partB.isNotBlank() && linesB > 0) {
+                if (bOnPhoto) {
                     Box(
-                        Modifier.offset(y = secondTop - fy(0.035f)).fillMaxWidth().height(bandBottom - secondTop + fy(0.035f))
-                            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f))))
+                        Modifier.offset(y = bTop - fy(0.035f)).fillMaxWidth().height(bandBottom - bTop + fy(0.035f))
+                            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f))))
                     )
                 }
                 Text(
                     partB,
-                    style = blurbStyle.copy(textIndent = null, color = if (onPhoto) Color.White.copy(alpha = 0.94f) else Paper.Ink.copy(alpha = 0.92f)),
-                    maxLines = secondLines, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.offset(x = fx(0.37f), y = secondTop).width(fx(0.56f)).plainClick { c.onCopy(blurb) }
+                    style = styleB.copy(color = if (bOnPhoto) Color.White.copy(alpha = 0.94f) else Paper.Ink.copy(alpha = 0.92f)),
+                    maxLines = linesB, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.offset(x = fx(0.37f), y = bTop).width(fx(0.56f)).plainClick { c.onCopy(blurb) }
                 )
             }
             val arrowIcon = fx(0.19f)
-            ShareArrowAt(c, Modifier.offset(x = fx(0.085f) - 7.dp, y = blurbBottom - arrowIcon - 14.dp), arrowIcon)
+            ShareArrowAt(c, Modifier.offset(x = fx(0.085f) - 7.dp, y = arrowBottom - arrowIcon - 14.dp), arrowIcon)
 
             // The title block, centred on the photo band.
             Box(Modifier.offset(y = bandTop).fillMaxWidth().height(bandH), contentAlignment = Alignment.CenterStart) {
@@ -380,14 +442,31 @@ private fun Poster(c: CardCtx) {
                 }
             }
 
-            // The staggered pair: years, or coordinates. Absent data leaves the slot empty.
+            // The staggered pair: years, or coordinates. Absent data leaves the slot empty. Horizontal when the summary
+            // clears it; on its side along the left margin when the second passage needs the height.
             if (stagger != null) {
                 val sp = (w.value * 0.095f) * (if (years.isBlank()) 0.78f else 1f)
-                val big = sans(sp, FontWeight.Bold, Paper.Ink, -0.5f).tight(0.95f)
-                // On the left now, lined up with the headline: the first figure at the margin, the second stepped in under it.
-                Text(stagger.first, style = big, softWrap = false, maxLines = 1, modifier = Modifier.offset(x = fx(0.085f), y = fy(0.806f)))
-                if (stagger.second.isNotEmpty()) {
-                    Text(stagger.second, style = big, softWrap = false, maxLines = 1, modifier = Modifier.offset(x = fx(0.17f), y = fy(0.868f)))
+                if (!vertical) {
+                    val big = sans(sp, FontWeight.Bold, Paper.Ink, -0.5f).tight(0.95f)
+                    // On the left, lined up with the headline: the first figure at the margin, the second stepped in under it.
+                    Text(stagger.first, style = big, softWrap = false, maxLines = 1, modifier = Modifier.offset(x = fx(0.085f), y = fy(0.806f)))
+                    if (stagger.second.isNotEmpty()) {
+                        Text(stagger.second, style = big, softWrap = false, maxLines = 1, modifier = Modifier.offset(x = fx(0.17f), y = fy(0.868f)))
+                    }
+                } else {
+                    val line = if (stagger.second.isEmpty()) stagger.first else if (years.isBlank()) stagger.first + "   " + stagger.second else stagger.first + stagger.second
+                    val room = with(density) { (footY - bTop).toPx() }
+                    var size = sp * 0.8f
+                    var m = tm.measure(line, sans(size, FontWeight.Bold, Paper.Ink, -0.5f).tight(0.95f), softWrap = false, maxLines = 1)
+                    if (m.size.width > room) {
+                        size = (size * room / m.size.width).coerceAtLeast(9f)
+                        m = tm.measure(line, sans(size, FontWeight.Bold, Paper.Ink, -0.5f).tight(0.95f), softWrap = false, maxLines = 1)
+                    }
+                    val len = with(density) { m.size.width.toDp() }
+                    Text(
+                        line, style = sans(size, FontWeight.Bold, Paper.Ink, -0.5f).tight(0.95f), softWrap = false, maxLines = 1,
+                        modifier = Modifier.offset(x = fx(0.085f), y = footY - len).readsUpward()
+                    )
                 }
             }
 

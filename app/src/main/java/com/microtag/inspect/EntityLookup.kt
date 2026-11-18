@@ -52,7 +52,28 @@ internal object EntityDetector {
         val r = Http.get("https://en.wikipedia.org/api/rest_v1/page/summary/$title", 3500)
         if (!r.ok) return null
         val s = parse(r.body) ?: return null
+        // The summary of a disambiguation page is one line ("X may refer to:"). The choices come from the page's own text.
+        if (s.type == "disambiguation") {
+            val lines = disambiguationLines(s.title)
+            if (lines != null && lines.size > 1) {
+                return build(Summary(s.type, s.title, s.description, lines.joinToString("\n"), s.url, s.image, s.lat, s.lon))
+            }
+        }
         return build(s)
+    }
+
+    /** The plain text of a disambiguation page, one entry per line, section headings dropped. Null when it cannot be fetched. */
+    private fun disambiguationLines(title: String): List<String>? {
+        val url = "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&redirects=1&format=json&formatversion=2&titles=" +
+            Http.encode(title)
+        val r = Http.get(url, 3500)
+        if (!r.ok) return null
+        val extract = try {
+            JSONObject(r.body).getJSONObject("query").getJSONArray("pages").getJSONObject(0).optString("extract", "")
+        } catch (_: Exception) {
+            return null
+        }
+        return extract.split('\n').map { it.trim() }.filter { it.isNotEmpty() && !(it.startsWith("==") && it.endsWith("==")) }
     }
 
     /** Whole words only, at least the first one: "Albert Einstein" gives "Albert". */
@@ -78,9 +99,16 @@ internal object EntityDetector {
                 status = Status.WARN, timeoutSeconds = 20
             )
         }
-        // The first two sentences are plenty for a card.
-        val sentences = s.extract.split(Regex("(?<=[.!?])\\s+(?=[A-Z])"))
-        val body = sentences.take(3).joinToString(" ").take(560)
+        // Whole sentences only, so the card never has to cut one in half: up to five, about 700 characters, at least the first.
+        val sentences = splitSentences(s.extract.replace(Regex("\\s+"), " "))
+        var body = ""
+        for (x in sentences) {
+            val next = if (body.isEmpty()) x else "$body $x"
+            if (body.isNotEmpty() && next.length > 700) break
+            body = next
+            if (body.length >= 700) break
+        }
+        if (body.isBlank()) body = s.extract.take(560)
         return InspectResult(
             domain = "WIKI",
             pill = WikiPill.pill(PillConfig.WIKI, s.title, s.description, ::fitWords),

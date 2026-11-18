@@ -53,6 +53,13 @@ object InspectSamples {
         null
     }
 
+    /** Like [resolve], but only the one kind of reading, so a tip's preview never depends on the user's priority order. */
+    fun resolveKind(text: String, kind: String): InspectResult? = try {
+        Detectors.resolveKind(text, Source.SELECTION, env(), kind)
+    } catch (_: Exception) {
+        null
+    }
+
     fun bank(): InspectResult = IfscDetector.build(
         "SBIN0001234",
         mapOf(
