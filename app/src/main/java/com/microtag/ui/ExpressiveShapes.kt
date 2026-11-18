@@ -37,6 +37,10 @@ object ExpressiveShapes {
         10, innerRadius = 0.65f, rounding = CornerRounding(0.1f), innerRounding = CornerRounding(0.2f)
     )
     val Cookie6: RoundedPolygon = RoundedPolygon.star(6, innerRadius = 0.75f, rounding = CornerRounding(0.5f))
+    /** Four lobes with soft dents between them. Turn it 45 degrees (RotatedPolygonShape) for a lobe in each corner. */
+    val Cookie4: RoundedPolygon = RoundedPolygon.star(
+        4, innerRadius = 0.68f, rounding = CornerRounding(0.5f), innerRounding = CornerRounding(0.3f)
+    )
     val Cookie12: RoundedPolygon = RoundedPolygon.star(12, innerRadius = 0.8f, rounding = CornerRounding(0.5f))
 
     /** The set the onboarding pile draws from, in order. */
@@ -63,6 +67,33 @@ class MorphShape(private val morph: Morph, private val progress: Float) : Shape 
         matrix.scale(size.width / 2f, size.height / 2f)
         matrix.translate(1f, 1f)
         path.transform(matrix)
+        return Outline.Generic(path)
+    }
+}
+
+/** One polygon as a [Shape]: turned by [degrees], then fitted to the box (its bounds fill the box, aspect kept, centred). */
+class RotatedPolygonShape(private val polygon: RoundedPolygon, private val degrees: Float) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val path = Path()
+        var started = false
+        for (c in polygon.cubics) {
+            if (!started) {
+                path.moveTo(c.anchor0X, c.anchor0Y)
+                started = true
+            }
+            path.cubicTo(c.control0X, c.control0Y, c.control1X, c.control1Y, c.anchor1X, c.anchor1Y)
+        }
+        path.close()
+        val turn = Matrix()
+        turn.rotateZ(degrees)
+        path.transform(turn)
+        val b = path.getBounds()
+        val s = minOf(size.width / b.width, size.height / b.height)
+        val fit = Matrix()
+        fit.translate(size.width / 2f, size.height / 2f)
+        fit.scale(s, s)
+        fit.translate(-b.center.x, -b.center.y)
+        path.transform(fit)
         return Outline.Generic(path)
     }
 }

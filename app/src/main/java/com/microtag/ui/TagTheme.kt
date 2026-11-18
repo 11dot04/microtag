@@ -57,6 +57,7 @@ import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -83,6 +84,7 @@ import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -925,7 +927,11 @@ fun TagFrame(
         Row(
             modifier = Modifier
                 .align(BiasAlignment(labelBias, -1f))
-                .offset(y = (-11).dp)
+                // The tab sits wholly above the panel's top edge, so it never runs into the first row of tiles.
+                .layout { measurable, constraints ->
+                    val p = measurable.measure(constraints.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity))
+                    layout(p.width, 0) { p.place(0, -p.height) }
+                }
                 .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp, bottomStart = 0.dp, bottomEnd = 0.dp))
                 .background(tabFill())
                 .padding(horizontal = 11.dp, vertical = 4.dp),
@@ -1035,6 +1041,8 @@ fun TagTile(
     shape: Shape = TagShapes.Rect,
     state: TileState,
     onClick: (() -> Unit)? = null,
+    /** For the lower half of a pair that should read as one shape: erase the top border between the two round caps. */
+    eraseTopBetweenCaps: Boolean = false,
     content: @Composable BoxScope.(fg: Color) -> Unit
 ) {
     val view = LocalView.current
@@ -1132,6 +1140,14 @@ fun TagTile(
                     shader.setColorUniform("fromColor", fillOf(base, tone).toArgb())
                     shader.setColorUniform("toColor", fillOf(target, tone).toArgb())
                     drawRect(ShaderBrush(shader))
+                }
+            }
+            .drawWithContent {
+                drawContent()
+                if (eraseTopBetweenCaps) {
+                    // Drawn over the border, so the join between the two tiles leaves no line behind.
+                    val r = size.height / 2f
+                    drawRect(fillOf(target, tone), Offset(r, 0f), Size((size.width - 2f * r).coerceAtLeast(0f), 2.dp.toPx()))
                 }
             }
             .border(2.dp, edgeColor, shape)

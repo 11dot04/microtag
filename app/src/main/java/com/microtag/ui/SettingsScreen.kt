@@ -277,7 +277,11 @@ private fun SettingRow(item: Item, corners: List<Dp>) {
     val source = remember { MutableInteractionSource() }
     // A switched-on row also rounds its inner corners out, like a selected button in a button group.
     val onP by androidx.compose.animation.core.animateFloatAsState(if (item.checked == true) 1f else 0f, TagMotion.spatial(), label = "rowOn")
-    val shape = PressCornerShape(corners[0], corners[1], corners[2], corners[3], maxOf(if (interactive) pressMorph(source) else 0f, onP))
+    // Pressed or on: the tight inner corners open to the same radius as the outer ones. Never to a full pill.
+    val open = maxOf(if (interactive) pressMorph(source) else 0f, onP)
+    val big = 22.dp
+    val c = corners.map { (it + (big - it) * open).coerceAtLeast(0.dp) }
+    val shape = RoundedCornerShape(topStart = c[0], topEnd = c[1], bottomEnd = c[2], bottomStart = c[3])
     Row(
         Modifier
             .fillMaxWidth()

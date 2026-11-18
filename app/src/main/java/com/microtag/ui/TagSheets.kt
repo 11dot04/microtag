@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -121,7 +122,9 @@ private fun TagSheet(
         val noRipple = remember { MutableInteractionSource() }
         val maxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.88f
         val threshold = with(density) { 110.dp.toPx() }
-        val topShape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp)
+        // Floats a little off the edges, rounded all round, with a chamfered notch bitten out of the bottom edge where the
+        // gesture bar lives: the same language as the Inspect cards' chamfers and notches.
+        val topShape = remember { SheetShape(top = 36.dp, bottom = 30.dp, notchWidth = 112.dp, notchDepth = 16.dp) }
 
         Box(
             Modifier
@@ -138,6 +141,8 @@ private fun TagSheet(
                 Column(
                     Modifier
                         .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
+                        .padding(bottom = 8.dp)
                         .heightIn(max = maxHeight)
                         .offset { IntOffset(0, drag.value.roundToInt()) }
                         .clip(topShape)
@@ -438,5 +443,45 @@ fun CitySheet(settings: TagSettings, onDismiss: () -> Unit) {
             TagChip("Back to Auto", false) { use("") }
         }
         Spacer(Modifier.height(40.dp))
+    }
+}
+
+/**
+ * The sheet's outline: big rounded corners all round, and a centred notch in the bottom edge with 45 degree sides.
+ * The notch is where the system gesture bar sits, so the bar reads as part of the sheet instead of floating over it.
+ */
+private class SheetShape(
+    private val top: Dp, private val bottom: Dp, private val notchWidth: Dp, private val notchDepth: Dp
+) : androidx.compose.ui.graphics.Shape {
+    override fun createOutline(
+        size: androidx.compose.ui.geometry.Size,
+        layoutDirection: androidx.compose.ui.unit.LayoutDirection,
+        density: androidx.compose.ui.unit.Density
+    ): androidx.compose.ui.graphics.Outline {
+        val w = size.width
+        val h = size.height
+        val t = with(density) { top.toPx() }.coerceAtMost(h / 2f)
+        val b = with(density) { bottom.toPx() }.coerceAtMost(h / 2f)
+        val nw = with(density) { notchWidth.toPx() }
+        val d = with(density) { notchDepth.toPx() }
+        val cx = w / 2f
+        fun arc(left: Float, topY: Float, r: Float, start: Float, p: androidx.compose.ui.graphics.Path) =
+            p.arcTo(androidx.compose.ui.geometry.Rect(left, topY, left + 2 * r, topY + 2 * r), start, 90f, false)
+        val p = androidx.compose.ui.graphics.Path().apply {
+            moveTo(0f, t)
+            arc(0f, 0f, t, 180f, this)                    // top left
+            lineTo(w - t, 0f)
+            arc(w - 2 * t, 0f, t, 270f, this)             // top right
+            lineTo(w, h - b)
+            arc(w - 2 * b, h - 2 * b, b, 0f, this)        // bottom right
+            lineTo(cx + nw / 2f + d, h)
+            lineTo(cx + nw / 2f, h - d)                   // up the chamfer
+            lineTo(cx - nw / 2f, h - d)                   // across
+            lineTo(cx - nw / 2f - d, h)                   // down the chamfer
+            lineTo(b, h)
+            arc(0f, h - 2 * b, b, 90f, this)              // bottom left
+            close()
+        }
+        return androidx.compose.ui.graphics.Outline.Generic(p)
     }
 }

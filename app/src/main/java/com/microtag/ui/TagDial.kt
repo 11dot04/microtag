@@ -83,7 +83,9 @@ fun TagDial(
     warm: Color,
     modifier: Modifier = Modifier,
     /** False when the caller draws the value itself (a small box has no room for the big one above the needle). */
-    showValue: Boolean = true
+    showValue: Boolean = true,
+    /** A small box: the arc hugs the top edge, the marks are shorter and the needle is only a small tick above the arc. */
+    compact: Boolean = false
 ) {
     val view = LocalView.current
     val scope = rememberCoroutineScope()
@@ -118,7 +120,8 @@ fun TagDial(
 
     // Geometry. The arc's top sits 40% down the box; its centre is R below that.
     fun radius(w: Float) = w * 0.62f
-    fun arcTop(h: Float) = h * 0.40f
+    val compactTop = with(androidx.compose.ui.platform.LocalDensity.current) { 9.dp.toPx() }
+    fun arcTop(h: Float) = if (compact) compactTop else h * 0.40f
 
     /** The pointer's angle from straight up around the wheel's centre, clockwise positive, in degrees. */
     fun angleAt(p: Offset): Float {
@@ -192,7 +195,7 @@ fun TagDial(
                 val screen = j * TICK_DEG - wheel               // degrees from straight up, clockwise
                 if (abs(screen) > VISIBLE_DEG) continue
                 val major = j % MAJOR_EVERY == 0
-                val len = (if (major) 17.dp else 10.dp).toPx()
+                val len = (if (compact) (if (major) 11.dp else 6.5.dp) else (if (major) 17.dp else 10.dp)).toPx()
                 val rad = Math.toRadians(screen.toDouble())
                 val dx = sin(rad).toFloat()
                 val dy = -cos(rad).toFloat()
@@ -208,15 +211,26 @@ fun TagDial(
                 )
             }
 
-            // the needle: fixed at the top, fading as it runs down into the clip
-            val nw = 4.dp.toPx()
-            val nTop = top - 12.dp.toPx()
-            drawRoundRect(
-                brush = Brush.verticalGradient(listOf(ink, ink.copy(alpha = 0f)), startY = nTop, endY = h),
-                topLeft = Offset(cx - nw / 2f, nTop),
-                size = Size(nw, h - nTop),
-                cornerRadius = CornerRadius(nw / 2f)
-            )
+            if (compact) {
+                // just a small tick above the arc, over the value that is selected
+                val tw = 3.dp.toPx()
+                drawRoundRect(
+                    color = ink,
+                    topLeft = Offset(cx - tw / 2f, top - 8.dp.toPx()),
+                    size = Size(tw, 6.dp.toPx()),
+                    cornerRadius = CornerRadius(tw / 2f)
+                )
+            } else {
+                // the needle: fixed at the top, fading as it runs down into the clip
+                val nw = 4.dp.toPx()
+                val nTop = top - 12.dp.toPx()
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(ink, ink.copy(alpha = 0f)), startY = nTop, endY = h),
+                    topLeft = Offset(cx - nw / 2f, nTop),
+                    size = Size(nw, h - nTop),
+                    cornerRadius = CornerRadius(nw / 2f)
+                )
+            }
         }
 
         // The value, above the needle. It rolls up or down as it changes.

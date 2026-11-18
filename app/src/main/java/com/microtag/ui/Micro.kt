@@ -446,8 +446,33 @@ fun MicroRunBlock(running: Boolean, target: String, modifier: Modifier = Modifie
             MicroPill(running)
             MicroPill(false)
         }
-        MicroLabel("Target: $target", wrap = false)
-        MicroLabel("State: " + (if (running) "Active" else "Paused"), wrap = false)
+        // Target and State are the same kind of data, so they share one size: the largest that fits the longest of them.
+        // Measured against both states, so the size does not jump when TAG is paused.
+        MicroLabelsSameSize(
+            lines = listOf("Target: $target", "State: " + (if (running) "Active" else "Paused")),
+            fitAgainst = listOf("Target: $target", "State: Active", "State: Paused")
+        )
+    }
+}
+
+/** Mono annotation lines that always share one font size. [fitAgainst] decides the size (the widest wins). */
+@Composable
+private fun MicroLabelsSameSize(lines: List<String>, fitAgainst: List<String> = lines, modifier: Modifier = Modifier) {
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.clearAndSetSemantics { }) {
+        val maxW = if (constraints.hasBoundedWidth) constraints.maxWidth else Int.MAX_VALUE
+        fun styleAt(size: Float) = TextStyle(
+            fontFamily = TagFonts.data, fontWeight = FontWeight.Medium, fontSize = size.sp,
+            lineHeight = (size + 4f).sp, letterSpacing = 0.6.sp, color = TagColors.Outline
+        )
+        val size = remember(fitAgainst, maxW) {
+            var s = 10f
+            while (s > 7f && fitAgainst.any { measurer.measure(it.uppercase(), styleAt(s), softWrap = false).size.width > maxW }) s *= 0.96f
+            s.coerceAtLeast(7f)
+        }
+        Column {
+            lines.forEach { Text(it.uppercase(), style = styleAt(size), softWrap = false, maxLines = 1) }
+        }
     }
 }
 

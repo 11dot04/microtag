@@ -51,6 +51,15 @@ object StatsCard {
         context.startActivity(Intent.createChooser(send, "Share stats").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
+    /** A small copy of a poster for the style picker. Null if it could not be drawn. Call off the main thread. */
+    fun preview(
+        context: Context, days: String, total: Int, values: IntArray, peakHour: Int?,
+        sources: List<Pair<String, Int>>, style: Style, width: Int = 540
+    ): Bitmap? = runCatching {
+        val full = render(context, days, total, values, peakHour, sources, style)
+        Bitmap.createScaledBitmap(full, width, width * H / W, true).also { if (it !== full) full.recycle() }
+    }.getOrNull()
+
     private fun save(context: Context, bitmap: Bitmap): Uri? {
         val resolver = context.contentResolver
         val details = ContentValues().apply {

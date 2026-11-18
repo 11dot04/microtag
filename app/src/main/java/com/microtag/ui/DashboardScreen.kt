@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -360,7 +361,7 @@ fun DashboardScreen(
             active = posterVisible
         )
         // Graphite's orange strip: a divider that is also a ticker. Other palettes have no highlight and skip it.
-        InfoStrip(count, hourly, paused)
+        InfoStrip()
         Box {
         Column(Modifier.padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(20.dp))
@@ -387,12 +388,8 @@ fun DashboardScreen(
         // three accents reads as a patchwork; a single-accent palette (Lime) looks exactly as before.
         TagGrid {
             // ---- rows 0-1: Discord + Inspect
-            TagFrame("Inspect", TagColors.tone(2), Modifier.cell(2, 0, 2, 2, outset = 6.dp))
             TileTone(0) { BigTile(Modifier.cell(0, 0, 2, 2), R.drawable.ic_discord, "Discord", "CALLS", discord) }
-            InspectTile(Modifier.cell(2, 0), R.drawable.ic_inspect_calc, onOpenInspect)
-            InspectTile(Modifier.cell(3, 0), R.drawable.ic_inspect_colour, onOpenInspect)
-            InspectTile(Modifier.cell(2, 1), R.drawable.ic_inspect_convert, onOpenInspect)
-            InspectTile(Modifier.cell(3, 1), R.drawable.ic_inspect_define, onOpenInspect)
+            InspectGroup(Modifier.cell(2, 0, 2, 2, outset = 6.dp), onOpenInspect)
 
             // ---- weather (top) / streaks (under it) / strava
             TileTone(2) {
@@ -480,7 +477,7 @@ fun DashboardScreen(
             // ---- Your own: Rules is the major feature, so it is the big tile. Pin and Meds stack beside it
             // in different shapes, AI runs the full width under them, Moments (once found) closes the column.
             val own = b3 + 2f
-            TileTone(0) { NavBigTile(Modifier.cell(0f, own, 2f, 2f).containerBounds("screen-Rules", TagShapes.Big), "Rules", "Build your own", onOpenRules) }
+            TileTone(0) { NavBigTile(Modifier.cell(0f, own, 2f, 2f).containerBounds("screen-Rules", TagShapes.Big), "Rules", "BUILDER", onOpenRules) }
             TileTone(2) { NavTile(Modifier.cell(2f, own, 2f, 1f).containerBounds("screen-Ai", TagShapes.Pill), "AI", "Rule helper", onOpenAi) }
             TileTone(1) { NavTile(Modifier.cell(2f, own + 1f, 2f, 1f).containerBounds("screen-Meds", TagShapes.Pill), "Meds", "Reminders", onOpenMeds) }
             // Pin runs the full width. Once Moments has something to show, Pin narrows to 3 wide and Moments
@@ -662,6 +659,42 @@ private fun IconTile(modifier: Modifier, icon: Int, t: PrefToggle) {
     }
 }
 
+/**
+ * The Inspect group: a four-sided cookie (Material shape) with one tile in each lobe and "inspect" across the middle, in the
+ * card-title display face, outlined in lime so it stands out from the tiles.
+ */
+@Composable
+private fun InspectGroup(modifier: Modifier, onOpen: () -> Unit) {
+    val cookie = remember { RotatedPolygonShape(ExpressiveShapes.Cookie4, 45f) }
+    BoxWithConstraints(modifier) {
+        val side = minOf(maxWidth, maxHeight)
+        val t = side * 0.30f
+        val at: (Float, Float) -> Modifier = { fx, fy -> Modifier.offset(x = maxWidth * fx - t / 2f, y = maxHeight * fy - t / 2f).size(t) }
+        Box(Modifier.fillMaxSize().clip(cookie).background(TagColors.Surface))
+        InspectTile(at(0.27f, 0.27f), R.drawable.ic_inspect_calc, onOpen)
+        InspectTile(at(0.73f, 0.27f), R.drawable.ic_inspect_colour, onOpen)
+        InspectTile(at(0.27f, 0.73f), R.drawable.ic_inspect_convert, onOpen)
+        InspectTile(at(0.73f, 0.73f), R.drawable.ic_inspect_define, onOpen)
+        val title = TextStyle(
+            fontFamily = com.microtag.inspect.DisplayFont, fontWeight = FontWeight.Black, fontSize = (side.value * 0.15f).sp,
+            letterSpacing = (-0.5).sp, fontSynthesis = androidx.compose.ui.text.font.FontSynthesis.None
+        )
+        Box(Modifier.align(Alignment.Center).clearAndSetSemantics { }) {
+            Text(
+                "inspect", maxLines = 1, softWrap = false,
+                style = title.copy(
+                    color = TagColors.Lime,
+                    drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = side.value * 0.045f * LocalDensity.current.density,
+                        join = androidx.compose.ui.graphics.StrokeJoin.Round
+                    )
+                )
+            )
+            Text("inspect", maxLines = 1, softWrap = false, style = title.copy(color = TagColors.Black))
+        }
+    }
+}
+
 @Composable
 private fun InspectTile(modifier: Modifier, icon: Int, onClick: () -> Unit) {
     TagTile(modifier, TagShapes.Rect, TileState.Static, onClick) { fg ->
@@ -753,17 +786,18 @@ private fun WeatherTile(
                         style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = fg.copy(alpha = 0.85f))
                     )
                     // The wheel is far bigger than this box: its centre is below the bottom edge, so only the top of the arc shows.
-                    Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
-                        TagDial(labels, index, onIndex, ink = fg, cool = cool, warm = warm, modifier = Modifier.fillMaxSize(), showValue = false)
-                        // The interval sits inside the wheel, under the needle, in the space the arc leaves.
-                        Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 1.dp), verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                "EVERY ",
-                                style = TextStyle(fontFamily = TagFonts.mono, fontWeight = FontWeight.Bold, fontSize = 8.sp, letterSpacing = 0.8.sp, color = fg.copy(alpha = 0.7f))
-                            )
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                        TagDial(labels, index, onIndex, ink = fg, cool = cool, warm = warm, modifier = Modifier.fillMaxSize(), showValue = false, compact = true)
+                        // The interval sits in the open centre under the arc, as big as the room allows. No "every": the wheel
+                        // is already a picker of intervals.
+                        val room = (maxHeight - 21.dp).coerceAtLeast(14.dp)
+                        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(room), contentAlignment = Alignment.Center) {
                             Text(
                                 labels.getOrElse(index) { "" }, maxLines = 1, softWrap = false,
-                                style = TextStyle(fontFamily = TagFonts.display, fontWeight = FontWeight.Light, fontSize = 13.sp, color = fg, fontSynthesis = TagFonts.NoSynthesis)
+                                style = TextStyle(
+                                    fontFamily = TagFonts.display, fontWeight = FontWeight.Light,
+                                    fontSize = (room.value * 0.8f).coerceIn(12f, 22f).sp, color = fg, fontSynthesis = TagFonts.NoSynthesis
+                                )
                             )
                         }
                     }
@@ -891,7 +925,7 @@ private fun MusicPair(modifier: Modifier, song: PrefToggle, ambient: PrefToggle)
                 TagIcon(R.drawable.ic_song_next, fg, size = 28.dp)
             }
         }
-        TagTile(Modifier.weight(1f).fillMaxWidth(), TagShapes.CapLeft, ambient.state, ambient::toggle) { fg ->
+        TagTile(Modifier.weight(1f).fillMaxWidth(), TagShapes.CapLeft, ambient.state, ambient::toggle, eraseTopBetweenCaps = bothOff) { fg ->
             Row(Modifier.fillMaxSize().padding(start = 24.dp, end = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                 TagIcon(R.drawable.ic_ambient_music, fg, size = 28.dp)
                 Spacer(Modifier.width(12.dp))

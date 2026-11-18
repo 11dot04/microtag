@@ -85,7 +85,9 @@ private class InspectTip(
     /** Kept for the sample builders: true when the sample could go online. The screen always uses the offline sample. */
     val network: Boolean = false,
     /** Builds the sample; the flag says whether it may go online. Null means: run the real detector on the text. */
-    val make: ((Boolean) -> InspectResult?)? = null
+    val make: ((Boolean) -> InspectResult?)? = null,
+    /** The reading this tip demonstrates ("define", "reading"). Pins the preview to it, whatever the priority list says. */
+    val kind: String? = null
 )
 
 private class TipBlockSpec(val label: String, val tips: List<InspectTip>)
@@ -129,7 +131,7 @@ private val Blocks = listOf(
     TipBlockSpec(
         "Words and web",
         listOf(
-            InspectTip(R.drawable.ic_inspect_define, "Definitions", "Select a word. Tap the chip for the full entry, with every meaning.", "raster", pill = "DEFINE", chip = "scanning"),
+            InspectTip(R.drawable.ic_inspect_define, "Definitions", "Select a word. Tap the chip for the full entry, with every meaning.", "raster", pill = "DEFINE", chip = "scanning", kind = "define"),
             InspectTip(
                 R.drawable.ic_inspect_define, "Wikipedia", "Select a person, place or thing, even a long title, for the summary and a photo when there is one.",
                 "Leonhard Euler", pill = "WIKI", network = true, make = { _ -> InspectSamples.wiki(false) }, chip = "mathematician"
@@ -137,7 +139,7 @@ private val Blocks = listOf(
             InspectTip(
                 R.drawable.ic_inspect_define, "Reading time", "Select a longer passage for how long it takes to read or say aloud.",
                 "Select a passage like this one, a few sentences long, and the card will estimate how long it takes to read it out loud, and how many words it holds.",
-                pill = "TEXT", chip = "8s read"
+                pill = "TEXT", chip = "8s read", kind = "reading"
             ),
             InspectTip(R.drawable.ic_inspect_convert, "Links", "Copy or select a link. Trackers are stripped, shortened links can be unrolled, and a check looks at the site.", "https://bit.ly/3xYzAb", chip = "bit.ly")
         )
@@ -257,7 +259,13 @@ private fun TipRow(tip: InspectTip, index: Int, count: Int) {
     if (open) {
         LaunchedEffect(tip, rev) {
             val r = withContext(Dispatchers.IO) {
-                runCatching { if (tip.make != null) tip.make.invoke(false) else InspectSamples.resolve(text) }.getOrNull()
+                runCatching {
+                    when {
+                        tip.make != null -> tip.make.invoke(false)
+                        tip.kind != null -> InspectSamples.resolveKind(text, tip.kind) ?: InspectSamples.resolve(text)
+                        else -> InspectSamples.resolve(text)
+                    }
+                }.getOrNull()
             }
             live = r
             failed = r == null

@@ -8,6 +8,10 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -131,7 +135,8 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
     val order = remember(today) { rollingOrder(today) }
     val nowHour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
     var selected by remember { mutableStateOf(setOf(today)) }
-    var posterStyle by remember { mutableStateOf(StatsCard.Style.Index) }
+    // Share opens the picker; the poster is only made once a look has been chosen there.
+    var pickerOpen by remember { mutableStateOf(false) }
 
     // A screenshot of this screen is a hint that the person wants to share it: offer the poster instead (Android 14+).
     var offerShare by remember { mutableStateOf(false) }
@@ -186,10 +191,7 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
     SubScreen(
         onBack = onBack,
         action = {
-            FloatingButton(filled = false, onClick = {
-                val days = selected.sorted().joinToString(" ") { DayLabels[it] }
-                scope.launch { StatsCard.share(context, days, total, values, peakHour, sourcesOf(context, scoped), posterStyle) }
-            }) { tint -> TagIcon(R.drawable.ic_share, tint, size = 26.dp) }
+            FloatingButton(filled = false, onClick = { pickerOpen = true }) { tint -> TagIcon(R.drawable.ic_share, tint, size = 26.dp) }
         }
     ) {
         Spacer(Modifier.height(12.dp))
@@ -292,11 +294,6 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
 
         ByType(scoped)
         Sources(sourcesOf(context, scoped))
-        // The look of the shared poster. The share button in the corner uses the one picked here.
-        SectionLabel("SHARE AS")
-        FormWrap {
-            StatsCard.Style.entries.forEach { st -> FormChoice(st.label, posterStyle == st, { posterStyle = st }) }
-        }
         MicroFooter("TAG_STATS_V01", Micro.DotGrid)
         Spacer(Modifier.height(110.dp))
     }
@@ -319,14 +316,122 @@ fun StatsScreen(prefs: MicrotagPrefs, onBack: () -> Unit) {
             Box(
                 Modifier.clip(CircleShape).background(TagColors.OnLime).clickable {
                     offerShare = false
-                    val days = selected.sorted().joinToString(" ") { DayLabels[it] }
-                    scope.launch { StatsCard.share(context, days, total, values, peakHour, sourcesOf(context, scoped), posterStyle) }
+                    pickerOpen = true
                 }.padding(horizontal = 16.dp, vertical = 9.dp)
             ) {
                 Text("SHARE", style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 1.sp, color = TagColors.Lime))
             }
         }
     }
+    if (pickerOpen) {
+        val days = selected.sorted().joinToString(" ") { DayLabels[it] }
+        val sources = remember(scoped) { sourcesOf(context, scoped) }
+        PosterPicker(
+            preview = { st -> StatsCard.preview(context, days, total, values, peakHour, sources, st) },
+            onShare = { st ->
+                pickerOpen = false
+                scope.launch { StatsCard.share(context, days, total, values, peakHour, sources, st) }
+            },
+            onDismiss = { pickerOpen = false }
+        )
+    }
+    }
+}
+
+/**
+ * Where the poster's look is chosen: all three, side by side as real previews, swiped through. Sharing makes the image
+ * in the look that is showing.
+ */
+@Composable
+private fun PosterPicker(
+    preview: (StatsCard.Style) -> android.graphics.Bitmap?,
+    onShare: (StatsCard.Style) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
+    val styles = StatsCard.Style.entries
+    val pager = androidx.compose.foundation.pager.rememberPagerState(pageCount = { styles.size })
+    val chosen = styles[pager.currentPage.coerceIn(0, styles.lastIndex)]
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Column(
+            Modifier.fillMaxSize().background(TagColors.Black.copy(alpha = 0.97f))
+                .statusBarsPadding().navigationBarsPadding().padding(vertical = 20.dp)
+        ) {
+            Column(Modifier.padding(horizontal = 24.dp)) {
+                Text(
+                    "Share as",
+                    style = TextStyle(
+                        fontFamily = TagFonts.display, fontWeight = FontWeight.Black, fontSize = 40.sp, lineHeight = 44.sp,
+                        letterSpacing = (-1).sp, color = TagColors.White, fontSynthesis = TagFonts.NoSynthesis
+                    )
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Swipe to compare. The image is made when you share.",
+                    style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = TagColors.Outline)
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            androidx.compose.foundation.pager.HorizontalPager(
+                state = pager,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 44.dp),
+                pageSpacing = 14.dp
+            ) { page ->
+                val st = styles[page]
+                val bmp by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, st) {
+                    value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { preview(st) }?.asImageBitmap()
+                }
+                val shape = RoundedCornerShape(20.dp)
+                Box(
+                    Modifier.fillMaxSize().padding(vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        Modifier.aspectRatio(1080f / 1350f).clip(shape).background(TagColors.Surface)
+                            .border(if (st == chosen) 3.dp else 1.dp, if (st == chosen) TagColors.Lime else TagColors.Outline.copy(alpha = 0.4f), shape)
+                            .clickable { scope.launch { pager.animateScrollToPage(page) } }
+                    ) {
+                        bmp?.let {
+                            androidx.compose.foundation.Image(
+                                it, st.label, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                styles.forEachIndexed { i, st ->
+                    FormChoice(st.label, chosen == st, { view.tick(Tick.Detent); scope.launch { pager.animateScrollToPage(i) } })
+                    if (i < styles.lastIndex) Spacer(Modifier.width(8.dp))
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.clip(CircleShape).border(2.dp, TagColors.Outline, CircleShape).clickable { onDismiss() }
+                        .padding(horizontal = 22.dp, vertical = 14.dp)
+                ) {
+                    Text("Cancel", style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TagColors.White))
+                }
+                Spacer(Modifier.width(12.dp))
+                Box(
+                    Modifier.weight(1f).clip(CircleShape).background(TagColors.Lime).clickable { view.tick(Tick.Confirm); onShare(chosen) }
+                        .padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Share " + chosen.label,
+                        style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = TagColors.OnLime)
+                    )
+                }
+            }
+        }
     }
 }
 
