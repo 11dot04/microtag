@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -43,8 +44,9 @@ import com.microtag.ui.FitText
 
 // ==========================================================
 // COLOUR. The colour is the card.
-//   field     a flat block of the colour, full bleed, stepped like a Nezu chart: it runs the whole width at the top and
-//             steps in on the right, leaving a notch for the complement as a second, smaller block (Mosaic: colour as the object).
+//   field     the colour, full bleed, fading into the card's surface with no hard edge: most opaque at the top left,
+//             thinning toward the right and dissolving along a soft staircase that leaves a notch for the complement
+//             (Mosaic: colour as the object).
 //             On it, in whichever ink contrasts: the label pill, tiny mono spec lines (hex, rgb, hsl), crop marks, the share arrow,
 //             and the name set large, tight and ragged-left (Aurora).
 //   lower     the theme's own surface and ink (they follow light, dark and AMOLED): a lightness ruler with a pointer,
@@ -89,36 +91,70 @@ internal fun ColourCard(c: CardCtx, modifier: Modifier) {
                 val hair = 2f * k
                 val fieldInk = onField.copy(alpha = 0.9f)
 
-                // The field: full width on top, stepping in on the right.
+                // The field is drawn into its own layer and then masked by alpha, so it dissolves into the card's
+                // surface instead of ending on an edge: full colour at the top left, thinning toward the right and
+                // fading out along a soft staircase that carries it from the foot up to the notch for the complement.
+                val fieldH = 700f
                 val field = Path().apply {
-                    moveTo(0f, 0f); lineTo(G * k, 0f); lineTo(G * k, 470f * k)
-                    lineTo(640f * k, 470f * k); lineTo(640f * k, 640f * k); lineTo(0f, 640f * k); close()
+                    moveTo(0f, 0f); lineTo(G * k, 0f); lineTo(G * k, fieldH * k); lineTo(0f, fieldH * k); close()
                 }
-                // A soft field, not a flat block: the colour itself, lighter toward the top left and deeper toward the bottom
-                // right, a glow in the corner and a little grain. No border; the gradient keeps it from vanishing into the card.
                 val lighter = androidx.compose.ui.graphics.lerp(colour, Color.White, 0.20f)
                 val deeper = androidx.compose.ui.graphics.lerp(colour, Color.Black, 0.24f)
-                drawPath(
-                    field,
-                    androidx.compose.ui.graphics.Brush.linearGradient(
-                        listOf(lighter, colour, deeper), start = Offset(G * k * 0.10f, 0f), end = Offset(G * k * 0.90f, 600f * k)
+                val bounds = androidx.compose.ui.geometry.Rect(0f, 0f, size.width, fieldH * k)
+                drawIntoCanvas { canvas ->
+                    canvas.saveLayer(bounds, androidx.compose.ui.graphics.Paint())
+
+                    // A soft field, not a flat block: lighter toward the top left, deeper toward the lower right, a glow
+                    // in the corner and a little grain.
+                    drawPath(
+                        field,
+                        androidx.compose.ui.graphics.Brush.linearGradient(
+                            listOf(lighter, colour, deeper), start = Offset(G * k * 0.10f, 0f), end = Offset(G * k * 0.90f, 600f * k)
+                        )
                     )
-                )
-                drawPath(
-                    field,
-                    androidx.compose.ui.graphics.Brush.radialGradient(
-                        listOf(Color.White.copy(alpha = 0.26f), Color.Transparent), center = Offset(G * k * 0.80f, 60f * k), radius = G * k * 0.60f
+                    drawPath(
+                        field,
+                        androidx.compose.ui.graphics.Brush.radialGradient(
+                            listOf(Color.White.copy(alpha = 0.26f), Color.Transparent), center = Offset(G * k * 0.80f, 60f * k), radius = G * k * 0.60f
+                        )
                     )
-                )
-                clipPath(field) {
                     val rnd = java.util.Random(hex.hashCode().toLong())
                     repeat(1100) { i ->
                         drawCircle(
                             if (i % 2 == 0) Color.White.copy(alpha = 0.07f) else Color.Black.copy(alpha = 0.08f),
                             radius = (0.8f + rnd.nextFloat() * 1.6f) * k,
-                            center = Offset(rnd.nextFloat() * G * k, rnd.nextFloat() * 600f * k)
+                            center = Offset(rnd.nextFloat() * G * k, rnd.nextFloat() * fieldH * k)
                         )
                     }
+
+                    // Mask 1: thinning along the diagonal, most opaque at the top left.
+                    drawRect(
+                        androidx.compose.ui.graphics.Brush.linearGradient(
+                            0f to Color.Black, 0.55f to Color.Black.copy(alpha = 0.9f), 1f to Color.Black.copy(alpha = 0.4f),
+                            start = Offset(0f, 0f), end = Offset(G * k, 560f * k)
+                        ),
+                        Offset(0f, 0f), Size(G * k, fieldH * k), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn
+                    )
+                    // Mask 2: the foot. One thin column at a time, each fading out at its own height, so the bottom edge
+                    // slides from the foot (700) up to the notch (500) over a smooth stretch instead of stepping.
+                    val cols = 120
+                    val colW = G / cols
+                    for (i in 0 until cols) {
+                        val x = i * colW
+                        val t = ((x + colW / 2f - 560f) / 180f).coerceIn(0f, 1f)
+                        val ease = t * t * (3f - 2f * t)
+                        val end = fieldH - (fieldH - 500f) * ease
+                        val start = end - 170f
+                        drawRect(
+                            androidx.compose.ui.graphics.Brush.verticalGradient(
+                                0f to Color.Black, 0.25f to Color.Black.copy(alpha = 0.84f), 0.5f to Color.Black.copy(alpha = 0.5f),
+                                0.75f to Color.Black.copy(alpha = 0.16f), 1f to Color.Transparent,
+                                startY = start * k, endY = end * k
+                            ),
+                            Offset(x * k, 0f), Size(colW * k + 1f, fieldH * k), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn
+                        )
+                    }
+                    canvas.restore()
                 }
 
                 // No hard edge against the card: the colour is most opaque at the top left and thins out toward the lower right,
