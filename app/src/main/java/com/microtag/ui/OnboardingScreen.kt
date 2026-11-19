@@ -93,7 +93,7 @@ import kotlin.math.pow
 import kotlin.math.sin
 
 /**
- * Two pages. Page one asks for permissions. Page two explains, with a loop of tiles lifting
+ * Three pages. Page one asks for permissions. Page two asks which hand holds the phone. Page three explains, with a loop of tiles lifting
  * off and shrinking into the real camera cutout, that TAG will sometimes show up there.
  */
 @Composable
@@ -111,7 +111,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
     val cy: Dp = cutout?.let { with(density) { it.exactCenterY().toDp() } } ?: 26.dp
     val mirrored = cx > screenW / 2 + 40.dp
 
-    BackHandler(enabled = page == 1) { page = 0 }
+    BackHandler(enabled = page > 0) { page -= 1 }
 
     Box(
         Modifier
@@ -131,8 +131,11 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             },
             label = "onboardingPage"
         ) { p ->
-            if (p == 0) PermissionPage(perms, cx, cy, mirrored, onNext = { page = 1 })
-            else LiftPage(cx, cy, onFinish = onFinish)
+            when (p) {
+                0 -> PermissionPage(perms, cx, cy, mirrored, onNext = { page = 1 })
+                1 -> HandPage(onNext = { page = 2 })
+                else -> LiftPage(cx, cy, onFinish = onFinish)
+            }
         }
     }
 }
@@ -306,7 +309,7 @@ private fun PageDots(current: Int) {
         Modifier.fillMaxWidth().padding(vertical = 14.dp),
         horizontalArrangement = Arrangement.Center
     ) {
-        repeat(2) { i ->
+        repeat(3) { i ->
             Box(
                 Modifier
                     .padding(horizontal = 4.dp)
@@ -319,7 +322,126 @@ private fun PageDots(current: Int) {
 }
 
 // ==========================================================
-// PAGE 2: "I'll bring some stuff up here too"
+// PAGE 2: WHICH HAND
+// The answer is applied at once, so the preview and every screen after it already follow it.
+// ==========================================================
+
+@Composable
+private fun HandPage(onNext: () -> Unit) {
+    val view = LocalView.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val settings = remember { TagSettings(context) }
+    var right by remember { mutableStateOf(settings.rightHanded) }
+    fun pick(r: Boolean) {
+        if (r == right) return
+        view.tick(Tick.Press)
+        right = r
+        settings.rightHanded = r
+        TagHand.right = r
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .navigationBarsPadding()
+            .padding(horizontal = 34.dp)
+    ) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Spacer(Modifier.height(120.dp))
+            FitText(
+                text = AnnotatedString("Which hand"),
+                style = TextStyle(
+                    fontFamily = TagFonts.display, fontWeight = FontWeight.Black,
+                    fontSize = 52.sp, lineHeight = 56.sp, letterSpacing = (-1.5).sp, color = TagColors.OnLime,
+                    fontSynthesis = TagFonts.NoSynthesis
+                ),
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.CenterEnd
+            )
+            FitText(
+                text = AnnotatedString("holds me more?"),
+                style = TextStyle(
+                    fontFamily = Montserrat, fontWeight = FontWeight.Light,
+                    fontSize = 34.sp, lineHeight = 38.sp, letterSpacing = (-0.5).sp, color = TagColors.OnLime
+                ),
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.CenterEnd
+            )
+            Spacer(Modifier.height(36.dp))
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HandChoice("Left", !right, Modifier.weight(1f), TagShapes.JoinLeft) { pick(false) }
+                HandChoice("Right", right, Modifier.weight(1f), TagShapes.JoinRight) { pick(true) }
+            }
+            Spacer(Modifier.height(28.dp))
+
+            // Where the back button will be, and the control that takes the other side.
+            val bias by animateFloatAsState(if (right) 1f else -1f, TagMotion.spatial(), label = "handBias")
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(72.dp)
+                    .clip(TagShapes.Pill)
+                    .border(2.dp, TagColors.OnLime.copy(alpha = 0.35f), TagShapes.Pill)
+                    .padding(8.dp)
+            ) {
+                Box(
+                    Modifier
+                        .align(androidx.compose.ui.BiasAlignment(bias, 0f))
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(TagColors.Black),
+                    contentAlignment = Alignment.Center
+                ) { TagIcon(R.drawable.ic_chevron_right, TagColors.Lime, Modifier.graphicsLayer { rotationZ = 180f }, 26.dp) }
+                Box(
+                    Modifier
+                        .align(androidx.compose.ui.BiasAlignment(-bias, 0f))
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, TagColors.OnLime, CircleShape)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Back and the main button of each screen go on your side, so your thumb reaches them. You can change this in Settings.",
+                style = TextStyle(
+                    fontFamily = Montserrat, fontWeight = FontWeight.Medium, fontSize = 13.sp,
+                    lineHeight = 18.sp, color = TagColors.OnLime
+                )
+            )
+            Spacer(Modifier.height(24.dp))
+        }
+
+        PageDots(1)
+        BlackPill("Continue") { view.tick(Tick.Confirm); onNext() }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+/** A two-way choice: filled black when picked, outlined otherwise. */
+@Composable
+private fun HandChoice(label: String, picked: Boolean, modifier: Modifier, shape: Shape, onClick: () -> Unit) {
+    Box(
+        modifier
+            .height(64.dp)
+            .clip(shape)
+            .background(if (picked) TagColors.Black else TagColors.Lime)
+            .border(2.dp, if (picked) TagColors.Black else TagColors.OnLime, shape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            style = TextStyle(
+                fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 18.sp,
+                color = if (picked) TagColors.Lime else TagColors.OnLime
+            )
+        )
+    }
+}
+
+// ==========================================================
+// PAGE 3: "I'll bring some stuff up here too"
 // The tiles settle at the bottom like sediment, bigger than before, and stay put. Tapping the
 // button lifts them out one by one, tilts them level and shrinks each into the camera cutout.
 // They are never black, so they may touch the button.
@@ -447,7 +569,7 @@ private fun LiftPage(cx: Dp, cy: Dp, onFinish: () -> Unit) {
                 .navigationBarsPadding()
                 .padding(horizontal = 34.dp)
         ) {
-            PageDots(1)
+            PageDots(2)
             BlackPill("Got it") {
                 if (!launched) {
                     view.tick(Tick.Confirm)

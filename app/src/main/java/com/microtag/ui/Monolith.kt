@@ -41,6 +41,9 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -284,52 +287,102 @@ fun MonolithPoster(
             }
 
             Spacer(Modifier.height(18.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                ControlSegment(27.dp, 6.dp, 6.dp, 27.dp, paused, onTogglePause, padH = 18.dp) { tint ->
+            // Pause and its duration form a split button on the side of the hand that holds the phone (TagHand);
+            // Stats and Logs are separate buttons on the other side.
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                val split = @Composable {
+                    PauseSplitButton(paused, pausedUntil, onTogglePause, onPauseFor)
+                }
+                val pair = @Composable {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ControlSegment(27.dp, 27.dp, 27.dp, 27.dp, paused, onStats) { tint ->
+                            TagIcon(R.drawable.ic_stats, tint, size = 26.dp)
+                        }
+                        ControlSegment(27.dp, 27.dp, 27.dp, 27.dp, paused, onLogs, padH = 24.dp) { tint ->
+                            Text(
+                                "Logs",
+                                style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 20.sp, color = tint)
+                            )
+                        }
+                    }
+                }
+                if (TagHand.right) { pair(); split() } else { split(); pair() }
+            }
+        }
+    }
+}
+
+/**
+ * Pause as a Material 3 split button: the leading half pauses or resumes, the trailing half opens how long to pause for.
+ * Lit lime while paused, like the other poster buttons.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun PauseSplitButton(
+    paused: Boolean,
+    pausedUntil: Long,
+    onTogglePause: () -> Unit,
+    onPauseFor: (Int) -> Unit
+) {
+    val view = LocalView.current
+    var menuOpen by remember { mutableStateOf(false) }
+    val colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+        containerColor = if (paused) TagColors.Lime else TagColors.Surface,
+        contentColor = if (paused) TagColors.OnLime else TagColors.AccentText
+    )
+    val tint = if (paused) TagColors.OnLime else TagColors.AccentText
+    val chevron by animateFloatAsState(if (menuOpen) 270f else 90f, TagMotion.fastSpatial(), label = "pauseChevron")
+    val fmt = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+
+    Box {
+        androidx.compose.material3.SplitButtonLayout(
+            leadingButton = {
+                androidx.compose.material3.SplitButtonDefaults.LeadingButton(
+                    onClick = { view.tick(Tick.Press); onTogglePause() },
+                    modifier = Modifier.heightIn(min = 54.dp),
+                    colors = colors
+                ) {
                     TagIcon(if (paused) R.drawable.ic_play else R.drawable.ic_pause, tint, size = 26.dp)
                 }
-                // The second half of a split button: the chevron opens how long to pause for.
-                var menuOpen by remember { mutableStateOf(false) }
-                Box {
-                    ControlSegment(6.dp, 6.dp, 6.dp, 6.dp, paused, { menuOpen = true }, padH = 10.dp) { tint ->
-                        TagIcon(R.drawable.ic_chevron_right, tint, Modifier.rotate(90f), 20.dp)
-                    }
-                    val fmt = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
-                    androidx.compose.material3.DropdownMenu(
-                        expanded = menuOpen, onDismissRequest = { menuOpen = false },
-                        modifier = Modifier.background(TagColors.Surface)
-                    ) {
-                        @Composable
-                        fun item(text: String, enabled: Boolean = true, onClick: () -> Unit) = androidx.compose.material3.DropdownMenuItem(
-                            text = { Text(text, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (enabled) TagColors.White else TagColors.Dim)) },
-                            onClick = { menuOpen = false; onClick() }, enabled = enabled
-                        )
-                        if (paused && pausedUntil > 0L) item("Paused until ${fmt.format(java.util.Date(pausedUntil))}", enabled = false) {}
-                        if (paused) item("Resume now") { onTogglePause() }
-                        item("Pause for 30 minutes") { onPauseFor(30) }
-                        item("Pause for 1 hour") { onPauseFor(60) }
-                        item("Pause for 3 hours") { onPauseFor(180) }
-                        item("Pause until 8:00") {
-                            val c = java.util.Calendar.getInstance()
-                            val target = java.util.Calendar.getInstance().apply {
-                                set(java.util.Calendar.HOUR_OF_DAY, 8); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0)
-                                if (timeInMillis <= c.timeInMillis) add(java.util.Calendar.DAY_OF_YEAR, 1)
-                            }
-                            onPauseFor(((target.timeInMillis - c.timeInMillis) / 60_000L).toInt().coerceAtLeast(1))
-                        }
-                        item("Pause until I turn it on") { onPauseFor(0) }
-                    }
-                }
-                ControlSegment(6.dp, 6.dp, 6.dp, 6.dp, paused, onStats) { tint ->
-                    TagIcon(R.drawable.ic_stats, tint, size = 26.dp)
-                }
-                ControlSegment(6.dp, 27.dp, 27.dp, 6.dp, paused, onLogs, padH = 24.dp) { tint ->
-                    Text(
-                        "Logs",
-                        style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Black, fontSize = 20.sp, color = tint)
-                    )
+            },
+            trailingButton = {
+                androidx.compose.material3.SplitButtonDefaults.TrailingButton(
+                    checked = menuOpen,
+                    onCheckedChange = { view.tick(Tick.Press); menuOpen = it },
+                    modifier = Modifier.heightIn(min = 54.dp).semantics { contentDescription = "Pause options" },
+                    colors = colors
+                ) {
+                    TagIcon(R.drawable.ic_chevron_right, tint, Modifier.rotate(chevron), 20.dp)
                 }
             }
+        )
+        androidx.compose.material3.DropdownMenu(
+            expanded = menuOpen, onDismissRequest = { menuOpen = false },
+            modifier = Modifier.background(TagColors.Surface)
+        ) {
+            @Composable
+            fun item(text: String, enabled: Boolean = true, onClick: () -> Unit) = androidx.compose.material3.DropdownMenuItem(
+                text = { Text(text, style = TextStyle(fontFamily = Montserrat, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = if (enabled) TagColors.White else TagColors.Dim)) },
+                onClick = { menuOpen = false; onClick() }, enabled = enabled
+            )
+            if (paused && pausedUntil > 0L) item("Paused until ${fmt.format(java.util.Date(pausedUntil))}", enabled = false) {}
+            if (paused) item("Resume now") { onTogglePause() }
+            item("Pause for 30 minutes") { onPauseFor(30) }
+            item("Pause for 1 hour") { onPauseFor(60) }
+            item("Pause for 3 hours") { onPauseFor(180) }
+            item("Pause until 8:00") {
+                val c = java.util.Calendar.getInstance()
+                val target = java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, 8); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0)
+                    if (timeInMillis <= c.timeInMillis) add(java.util.Calendar.DAY_OF_YEAR, 1)
+                }
+                onPauseFor(((target.timeInMillis - c.timeInMillis) / 60_000L).toInt().coerceAtLeast(1))
+            }
+            item("Pause until I turn it on") { onPauseFor(0) }
         }
     }
 }
@@ -365,8 +418,8 @@ private fun mono(size: Int, color: Color, weight: FontWeight, spacing: Float) = 
 )
 
 /**
- * The poster has no slab behind it, so the buttons are raised surfaces; paused, the segments light up. The three
- * sit side by side as one connected group (tight inner corners); pressing one opens all its corners to a full round.
+ * The poster has no slab behind it, so the buttons are raised surfaces; paused, the segments light up. Each
+ * of Stats and Logs is a button of its own, a full round.
  */
 @Composable
 private fun ControlSegment(

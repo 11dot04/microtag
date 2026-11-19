@@ -660,45 +660,53 @@ private fun IconTile(modifier: Modifier, icon: Int, t: PrefToggle) {
 }
 
 /**
- * The Inspect group: a four-sided cookie (Material shape) with one tile in each lobe and "inspect" across the middle, in the
- * card-title display face, outlined in lime so it stands out from the tiles.
+ * The Inspect group: Material's four-sided cookie in the palette's paper colour. The four function icons sit straight on it, one
+ * in each lobe, with no tile behind them, and "inspect" runs across the middle in the card-title display face: black,
+ * outlined in the accent so it stands out from the icons.
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun InspectGroup(modifier: Modifier, onOpen: () -> Unit) {
-    val cookie = remember { RotatedPolygonShape(ExpressiveShapes.Cookie4, 45f) }
+    val cookie = remember { RotatedPolygonShape(androidx.compose.material3.MaterialShapes.Cookie4Sided, 0f) }
+    val view = LocalView.current
     BoxWithConstraints(modifier) {
         val side = minOf(maxWidth, maxHeight)
-        val t = side * 0.30f
-        val at: (Float, Float) -> Modifier = { fx, fy -> Modifier.offset(x = maxWidth * fx - t / 2f, y = maxHeight * fy - t / 2f).size(t) }
-        Box(Modifier.fillMaxSize().clip(cookie).background(TagColors.Surface))
-        InspectTile(at(0.27f, 0.27f), R.drawable.ic_inspect_calc, onOpen)
-        InspectTile(at(0.73f, 0.27f), R.drawable.ic_inspect_colour, onOpen)
-        InspectTile(at(0.27f, 0.73f), R.drawable.ic_inspect_convert, onOpen)
-        InspectTile(at(0.73f, 0.73f), R.drawable.ic_inspect_define, onOpen)
+        val icon = side * 0.27f
+        // Lobe centres, as fractions of the box. The icons are the glyphs themselves, so they need no frame.
+        val at: (Float, Float) -> Modifier = { fx, fy ->
+            Modifier.offset(x = maxWidth * fx - icon / 2f, y = maxHeight * fy - icon / 2f).size(icon)
+        }
+        val paper = TagColors.Paper
+        val ink = TagColors.PaperInk
+        Box(Modifier.fillMaxSize().clip(cookie).background(paper).clickable(
+            interactionSource = remember { MutableInteractionSource() }, indication = null
+        ) { view.tick(Tick.Press); onOpen() })
+        listOf(
+            Triple(0.27f, 0.27f, R.drawable.ic_inspect_calc),
+            Triple(0.73f, 0.27f, R.drawable.ic_inspect_colour),
+            Triple(0.27f, 0.73f, R.drawable.ic_inspect_convert),
+            Triple(0.73f, 0.73f, R.drawable.ic_inspect_define)
+        ).forEach { (fx, fy, res) ->
+            Box(at(fx, fy), contentAlignment = Alignment.Center) { TagIcon(res, ink, Modifier.fillMaxSize(), icon) }
+        }
         val title = TextStyle(
-            fontFamily = com.microtag.inspect.DisplayFont, fontWeight = FontWeight.Black, fontSize = (side.value * 0.15f).sp,
+            fontFamily = com.microtag.inspect.DisplayFont, fontWeight = FontWeight.Black, fontSize = (side.value * 0.125f).sp,
             letterSpacing = (-0.5).sp, fontSynthesis = androidx.compose.ui.text.font.FontSynthesis.None
         )
         Box(Modifier.align(Alignment.Center).clearAndSetSemantics { }) {
+            // The outline is drawn first and the black type over it, so only the outer half of the stroke shows.
             Text(
                 "inspect", maxLines = 1, softWrap = false,
                 style = title.copy(
                     color = TagColors.Lime,
                     drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(
-                        width = side.value * 0.045f * LocalDensity.current.density,
+                        width = side.value * 0.034f * LocalDensity.current.density,
                         join = androidx.compose.ui.graphics.StrokeJoin.Round
                     )
                 )
             )
-            Text("inspect", maxLines = 1, softWrap = false, style = title.copy(color = TagColors.Black))
+            Text("inspect", maxLines = 1, softWrap = false, style = title.copy(color = ink))
         }
-    }
-}
-
-@Composable
-private fun InspectTile(modifier: Modifier, icon: Int, onClick: () -> Unit) {
-    TagTile(modifier, TagShapes.Rect, TileState.Static, onClick) { fg ->
-        TagIcon(icon, fg, Modifier.align(Alignment.Center), 32.dp)
     }
 }
 
@@ -790,7 +798,7 @@ private fun WeatherTile(
                         TagDial(labels, index, onIndex, ink = fg, cool = cool, warm = warm, modifier = Modifier.fillMaxSize(), showValue = false, compact = true)
                         // The interval sits in the open centre under the arc, as big as the room allows. No "every": the wheel
                         // is already a picker of intervals.
-                        val room = (maxHeight - 21.dp).coerceAtLeast(14.dp)
+                        val room = (maxHeight - 19.dp).coerceAtLeast(14.dp)
                         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(room), contentAlignment = Alignment.Center) {
                             Text(
                                 labels.getOrElse(index) { "" }, maxLines = 1, softWrap = false,

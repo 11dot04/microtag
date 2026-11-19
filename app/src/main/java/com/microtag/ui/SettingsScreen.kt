@@ -107,6 +107,7 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
     var amoled by remember { mutableStateOf(settings.amoled) }
     var multicolour by remember { mutableStateOf(settings.multicolour) }
     var appearance by remember { mutableStateOf(settings.appearance) }
+    var rightHanded by remember { mutableStateOf(settings.rightHanded) }
     var reducedMotion by remember { mutableStateOf(settings.reducedMotion) }
     var haptics by remember { mutableStateOf(settings.haptics) }
     var nightPause by remember { mutableStateOf(settings.nightPause) }
@@ -212,6 +213,15 @@ fun SettingsScreen(onBack: () -> Unit, onReplayIntro: () -> Unit) {
                         TagColors.useAppearance(next.id)
                     },
                     value = Appearance.fromId(appearance).label
+                ),
+                Item(
+                    "Dominant hand", "The back button and the main control of each screen sit on this side. Tap to switch.",
+                    onClick = {
+                        rightHanded = !rightHanded
+                        settings.rightHanded = rightHanded
+                        TagHand.right = rightHanded
+                    },
+                    value = if (rightHanded) "Right" else "Left"
                 ),
                 Item("Multicolour tiles", "Give neighbouring tiles different accents. Needs a palette with more than one.", multicolour, {
                     multicolour = it

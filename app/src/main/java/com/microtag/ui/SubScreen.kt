@@ -58,7 +58,8 @@ import kotlinx.coroutines.CancellationException
 /**
  * The frame every secondary screen lives in.
  *  - No top bar. Content scrolls edge to edge and simply fades out under the status bar.
- *  - A floating back button sits bottom-left, where the thumb is. An optional action floats bottom-right.
+ *  - A floating back button sits on the side of the hand that holds the phone (see TagHand). An optional action floats
+ *    in the opposite corner.
  *  - Predictive back: the whole screen shrinks and rounds off while the back gesture is held.
  */
 @Composable
@@ -120,12 +121,12 @@ private fun SubFrame(
                 .background(Brush.verticalGradient(listOf(Color.Transparent, TagColors.Black)))
         )
         FloatingButton(
-            Modifier.align(Alignment.BottomStart).padding(start = 20.dp, bottom = bottom + 16.dp),
+            Modifier.align(TagHand.major).padding(horizontal = 20.dp).padding(bottom = bottom + 16.dp),
             filled = true, onClick = onBack
         ) { tint -> TagIcon(R.drawable.ic_chevron_right, tint, Modifier.rotate(180f), 28.dp) }
 
         if (action != null) {
-            Box(Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = bottom + 16.dp)) { action() }
+            Box(Modifier.align(TagHand.minor).padding(horizontal = 20.dp).padding(bottom = bottom + 16.dp)) { action() }
         }
     }
 }

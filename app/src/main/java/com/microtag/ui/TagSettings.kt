@@ -2,6 +2,10 @@ package com.microtag.ui
 
 import android.content.Context
 import android.os.PowerManager
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.core.content.edit
 import java.util.Calendar
 
@@ -17,6 +21,25 @@ object TagKeys {
     const val AMBIENT_MUSIC = "tag_ambient_music_mod"
     const val UPLOADS = "tag_uploads"
     const val WEATHER = "tag_weather"
+}
+
+/**
+ * Which hand holds the phone more. The major control of a screen (the back button, the pause split button) sits on that
+ * side, within the thumb's reach; its counterpart goes to the other side. Backed by Compose state, so flipping it in
+ * Settings moves the buttons live.
+ */
+object TagHand {
+    private var _right by mutableStateOf(true)
+
+    var right: Boolean
+        get() = _right
+        set(v) { _right = v }
+
+    /** Bottom corner of the major control. */
+    val major: Alignment get() = if (_right) Alignment.BottomEnd else Alignment.BottomStart
+
+    /** Bottom corner of the counterpart. */
+    val minor: Alignment get() = if (_right) Alignment.BottomStart else Alignment.BottomEnd
 }
 
 /** Values behind the chevron tiles. On/off lives in MicrotagPrefs; "how" lives here. */
@@ -87,6 +110,11 @@ class TagSettings(context: Context) {
     var calendarExcluded: Set<String>
         get() = sp.getStringSet("calendar_excluded", emptySet())?.toSet() ?: emptySet()
         set(v) = sp.edit { putStringSet("calendar_excluded", v) }
+
+    /** True when the phone is held mostly in the right hand. Chosen in onboarding, changeable in Settings. */
+    var rightHanded: Boolean
+        get() = sp.getBoolean("right_handed", true)
+        set(v) = sp.edit { putBoolean("right_handed", v) }
 
     /** Swap the lime for the system accent colour. */
     var materialYou: Boolean
@@ -212,4 +240,5 @@ fun TagColors.applySettings(context: Context, settings: TagSettings) {
     useAppearance(settings.appearance)
     useMicro(settings.micro)
     useAmoled(settings.amoled)
+    TagHand.right = settings.rightHanded
 }

@@ -2,8 +2,13 @@ package com.microtag.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,20 +37,50 @@ import androidx.compose.ui.unit.sp
 fun InfoStrip(modifier: Modifier = Modifier) {
     val colour = TagColors.Highlight ?: return
     val ink = TagColors.Black
+    val label = TextStyle(
+        fontFamily = TagFonts.data, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.sp, color = ink
+    )
     Row(
-        modifier.fillMaxWidth().height(30.dp).background(colour).padding(horizontal = 20.dp).clearAndSetSemantics { },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier
+            .fillMaxWidth()
+            .height(34.dp)
+            .background(colour)
+            // A graduated edge along the foot, like the rule of an instrument: a tick every 6dp, every fifth one longer.
+            .drawBehind {
+                val step = 6.dp.toPx()
+                val w = 1.dp.toPx()
+                var i = 0
+                var x = 20.dp.toPx()
+                while (x <= size.width - 20.dp.toPx()) {
+                    val len = (if (i % 5 == 0) 6.dp else 3.dp).toPx()
+                    drawLine(ink.copy(alpha = 0.55f), Offset(x, size.height), Offset(x, size.height - len), w)
+                    x += step
+                    i++
+                }
+            }
+            .padding(horizontal = 20.dp)
+            .clearAndSetSemantics { },
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        // The revision, inverted like a label stuck on a casing.
         Text(
-            "REV 11.04  //  NO USER-SERVICEABLE PARTS",
+            "REV 11.04",
             maxLines = 1,
             softWrap = false,
-            style = TextStyle(
-                fontFamily = TagFonts.data, fontWeight = FontWeight.Bold, fontSize = 11.sp,
-                letterSpacing = 1.2.sp, color = ink
-            )
+            modifier = Modifier.clip(RoundedCornerShape(3.dp)).background(ink).padding(horizontal = 7.dp, vertical = 3.dp),
+            style = label.copy(color = colour)
         )
+        Spacer(Modifier.width(10.dp))
+        // Takes the room that is left and clips, so a narrow screen can never push it into the mark.
+        Text(
+            "NO USER-SERVICEABLE PARTS",
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Clip,
+            style = label
+        )
+        Spacer(Modifier.width(10.dp))
         // A conformity-style mark: an open arc, then three bars. Reads as a stamp, claims nothing.
         Canvas(Modifier.size(width = 26.dp, height = 14.dp)) {
             val w = 1.8.dp.toPx()

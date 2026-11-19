@@ -64,6 +64,8 @@ private const val TICK_DEG = 4f
 private const val MAJOR_EVERY = 9
 /** Marks further than this from the needle are not drawn. */
 private const val VISIBLE_DEG = 70f
+/** The same, for the compact dial. */
+private const val COMPACT_VISIBLE_DEG = 52f
 
 /**
  * A wheel under a fixed needle. Drag along the arc and the marks turn beneath the needle; every mark that passes
@@ -120,7 +122,7 @@ fun TagDial(
 
     // Geometry. The arc's top sits 40% down the box; its centre is R below that.
     fun radius(w: Float) = w * 0.62f
-    val compactTop = with(androidx.compose.ui.platform.LocalDensity.current) { 9.dp.toPx() }
+    val compactTop = with(androidx.compose.ui.platform.LocalDensity.current) { 7.dp.toPx() }
     fun arcTop(h: Float) = if (compact) compactTop else h * 0.40f
 
     /** The pointer's angle from straight up around the wheel's centre, clockwise positive, in degrees. */
@@ -193,15 +195,17 @@ fun TagDial(
             val last = (n - 1) * MAJOR_EVERY
             for (j in 0..last) {
                 val screen = j * TICK_DEG - wheel               // degrees from straight up, clockwise
-                if (abs(screen) > VISIBLE_DEG) continue
+                // A small box shows a shorter stretch of the wheel, so no mark ever runs down beside the value under it.
+                val visible = if (compact) COMPACT_VISIBLE_DEG else VISIBLE_DEG
+                if (abs(screen) > visible) continue
                 val major = j % MAJOR_EVERY == 0
-                val len = (if (compact) (if (major) 11.dp else 6.5.dp) else (if (major) 17.dp else 10.dp)).toPx()
+                val len = (if (compact) (if (major) 10.dp else 6.dp) else (if (major) 17.dp else 10.dp)).toPx()
                 val rad = Math.toRadians(screen.toDouble())
                 val dx = sin(rad).toFloat()
                 val dy = -cos(rad).toFloat()
                 val side = (abs(screen) / 55f).coerceIn(0f, 1f)
                 val tint = lerp(ink, if (screen < 0f) cool else warm, side)
-                val fade = 1f - (abs(screen) / VISIBLE_DEG).let { it * it }
+                val fade = 1f - (abs(screen) / visible).let { it * it }
                 drawLine(
                     color = tint.copy(alpha = fade * (if (major) 1f else 0.8f)),
                     start = Offset(cx + dx * r, cy + dy * r),
